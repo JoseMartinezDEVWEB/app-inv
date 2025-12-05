@@ -1,0 +1,58 @@
+{
+  "appId": "com.j4pro.gestor-inventario-desktop",
+  "productName": "Gestor Inventario J4 Pro",
+  "copyright": "Copyright © 2025 J4 Pro",
+  "directories": {
+    "output": "dist-installer",
+    "buildResources": "build"
+  },
+  "files": [
+    "dist/**/*",
+    "electron/**/*",
+    "resources/**/*",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "resources/backend",
+      "to": "backend",
+      "filter": ["**/*"]
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "src/img/logo_transparent.png",
+    "artifactName": "${productName}-Setup-${version}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Gestor Inventario J4 Pro",
+    "installerIcon": "src/img/logo_transparent.png",
+    "uninstallerIcon": "src/img/logo_transparent.png",
+    "installerHeaderIcon": "src/img/logo_transparent.png",
+    "language": "1034",
+    "warningsAsErrors": false
+  },
+  "mac": {
+    "target": ["dmg", "zip"],
+    "category": "public.app-category.business",
+    "icon": "src/img/logo_transparent.png",
+    "artifactName": "${productName}-${version}.${ext}"
+  },
+  "linux": {
+    "target": ["AppImage", "deb"],
+    "category": "Office",
+    "icon": "src/img/logo_transparent.png",
+    "artifactName": "${productName}-${version}.${ext}"
+  }
+}

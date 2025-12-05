@@ -1,0 +1,147 @@
+================================================================================
+  🚀 GENERAR APK - GESTOR DE INVENTARIO J4 PRO MOBILE
+================================================================================
+
+✅ CONFIGURACIÓN COMPLETADA:
+   - Backend configurado en puerto 4000
+   - Perfiles de build actualizados
+   - Assets verificados
+
+================================================================================
+  OPCIÓN 1: GENERAR APK RÁPIDO (RECOMENDADO)
+================================================================================
+
+1. Abrir terminal en: c:\Users\ASUS\Desktop\copia_app\frontend-mobile
+
+2. Ejecutar el script helper:
+   
+   build-apk.bat
+
+3. Seleccionar opción 1 (Preview)
+
+4. Esperar 10-20 minutos
+
+5. Descargar APK del enlace proporcionado
+
+================================================================================
+  OPCIÓN 2: COMANDOS MANUALES
+================================================================================
+
+# 1. Ir al directorio
+cd c:\Users\ASUS\Desktop\copia_app\frontend-mobile
+
+# 2. Instalar EAS CLI (solo primera vez)
+npm install -g eas-cli
+
+# 3. Login en Expo
+eas login
+
+# 4. Verificar configuración (opcional)
+npm run build:check
+
+# 5. Generar APK
+npm run build:preview
+
+# 6. Ver estado del build
+eas build:list
+
+================================================================================
+  CREDENCIALES DE EXPO
+================================================================================
+
+Si no tienes cuenta de Expo, créala gratis en:
+https://expo.dev/signup
+
+Luego ejecuta: eas login
+
+================================================================================
+  PERFILES DISPONIBLES
+================================================================================
+
+npm run build:preview       → APK para pruebas (backend en nube)
+npm run build:production    → APK de producción optimizada
+npm run build:local         → APK local (requiere Docker)
+
+================================================================================
+  DESPUÉS DE GENERAR LA APK
+================================================================================
+
+1. Descargar la APK del enlace que proporciona EAS Build
+
+2. Transferir a tu dispositivo Android:
+   - Email
+   - USB
+   - Google Drive
+   - etc.
+
+3. Habilitar "Instalar desde fuentes desconocidas" en Android:
+   Configuración → Seguridad → Orígenes desconocidos
+
+4. Abrir el archivo .apk en tu dispositivo
+
+5. Seguir instrucciones de instalación
+
+6. Abrir la app y hacer login:
+   Email: admin@j4pro.com
+   Contraseña: Jose.1919
+
+================================================================================
+  VERIFICAR BACKEND
+================================================================================
+
+Antes de probar la app, asegúrate que el backend esté corriendo:
+
+cd c:\Users\ASUS\Desktop\copia_app\backend-sqlite
+npm run dev
+
+El backend debe estar en: http://localhost:4000
+
+================================================================================
+  SOLUCIÓN DE PROBLEMAS
+================================================================================
+
+❌ Error: "Not logged in"
+   Solución: eas login
+
+❌ Error: "Project not configured"
+   Solución: eas build:configure
+
+❌ La app no se conecta
+   - Verifica que el backend esté corriendo
+   - La APK preview usa el backend en la nube por defecto
+   - Para backend local, usa tu IP de LAN en eas.json
+
+❌ Build falla
+   - Ejecuta: npm run build:check
+   - Revisa los logs en expo.dev
+
+================================================================================
+  ENLACES ÚTILES
+================================================================================
+
+Estado de builds:
+https://expo.dev/accounts/jose_alberto19/projects/gestor-inventario-j4-pro/builds
+
+Documentación completa:
+Ver archivo: INSTRUCCIONES_BUILD_APK.md
+
+Documentación EAS Build:
+https://docs.expo.dev/build/introduction/
+
+================================================================================
+  RESUMEN ULTRA RÁPIDO
+================================================================================
+
+Para los más impacientes:
+
+1. cd frontend-mobile
+2. build-apk.bat
+3. Opción 1
+4. Esperar 10-20 min
+5. Descargar APK
+6. Instalar en Android
+7. Login: admin@j4pro.com / Jose.1919
+
+================================================================================
+
+¡Listo! 🎉
