@@ -27,8 +27,8 @@ const generarTokens = (usuario) => {
 export const login = async (req, res) => {
   const { email, password } = req.body
 
-  // Buscar usuario
-  const usuario = Usuario.buscarPorEmail(email)
+  // Buscar usuario (por email o nombre de usuario)
+  const usuario = Usuario.buscarPorCredencial(email)
 
   if (!usuario) {
     throw new AppError('Credenciales inválidas', 401)

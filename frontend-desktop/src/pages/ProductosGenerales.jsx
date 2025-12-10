@@ -1,12 +1,12 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import { productosApi, handleApiError, handleApiResponse } from '../services/api'
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  Edit, 
-  Trash2, 
+import {
+  Plus,
+  Search,
+  Filter,
+  Edit,
+  Trash2,
   Package,
   DollarSign,
   Tag,
@@ -124,7 +124,7 @@ const ProductosGenerales = () => {
     }
   )
 
-  const productos = productosData?.productos || []
+  const productos = productosData?.datos || []
   const paginacion = productosData?.paginacion || {}
   const categorias = categoriasData?.categorias || []
 
@@ -313,11 +313,10 @@ const ProductosGenerales = () => {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => handleCategoryFilter('')}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                selectedCategory === ''
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${selectedCategory === ''
                   ? 'bg-primary-100 text-primary-700'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               Todas
             </button>
@@ -325,11 +324,10 @@ const ProductosGenerales = () => {
               <button
                 key={categoria}
                 onClick={() => handleCategoryFilter(categoria)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  selectedCategory === categoria
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${selectedCategory === categoria
                     ? 'bg-primary-100 text-primary-700'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                  }`}
               >
                 {categoria}
               </button>

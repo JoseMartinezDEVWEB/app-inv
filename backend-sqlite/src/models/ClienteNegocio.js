@@ -18,8 +18,8 @@ class ClienteNegocio {
     const stmt = db.prepare(`
       INSERT INTO clientes_negocios (
         nombre, telefono, direccion, contadorAsignadoId,
-        configuracionInventario, proximaVisita, notas
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        configuracionInventario, proximaVisita, notas, activo
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const info = stmt.run(
@@ -29,7 +29,8 @@ class ClienteNegocio {
       contadorAsignadoId,
       JSON.stringify(configuracionInventario),
       proximaVisita,
-      notas
+      notas,
+      1
     )
 
     return ClienteNegocio.buscarPorId(info.lastInsertRowid)
@@ -50,7 +51,6 @@ class ClienteNegocio {
     const cliente = stmt.get(id)
 
     if (cliente) {
-      cliente.configuracionInventario = JSON.parse(cliente.configuracionInventario || '{}')
       cliente.configuracionInventario = JSON.parse(cliente.configuracionInventario || '{}')
       cliente.estadisticas = JSON.parse(cliente.estadisticas || '{}')
       // Alias para compatibilidad con frontend que espera _id
@@ -110,7 +110,7 @@ class ClienteNegocio {
 
     const clientes = stmt.all(...params, limite, offset).map(cliente => ({
       ...cliente,
-      configuracionInventario: JSON.parse(cliente.configuracionInventario || '{}'),
+      ...cliente,
       configuracionInventario: JSON.parse(cliente.configuracionInventario || '{}'),
       estadisticas: JSON.parse(cliente.estadisticas || '{}'),
       // Alias para compatibilidad con frontend que espera _id

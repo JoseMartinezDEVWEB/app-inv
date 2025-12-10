@@ -32,8 +32,8 @@ class ProductoCliente {
         nombre, descripcion, costo, unidad, sku, clienteNegocioId,
         categoria, tipoContenedor, tieneUnidadesInternas, unidadesInternas,
         tipoPeso, esProductoSecundario, productoPadreId, productoHijoId,
-        codigoBarras, proveedor, creadoPorId, tipoCreacion, configuracion
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        codigoBarras, proveedor, creadoPorId, tipoCreacion, configuracion, activo
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const info = stmt.run(
@@ -55,7 +55,8 @@ class ProductoCliente {
       proveedor,
       creadoPorId,
       tipoCreacion,
-      JSON.stringify(configuracion)
+      JSON.stringify(configuracion),
+      1
     )
 
     return ProductoCliente.buscarPorId(info.lastInsertRowid)
@@ -276,7 +277,7 @@ class ProductoCliente {
   // Actualizar estadísticas
   static actualizarEstadisticas(id, cantidadContada) {
     const db = dbManager.getDatabase()
-    
+
     const producto = ProductoCliente.buscarPorId(id)
     if (!producto) return null
 
@@ -287,13 +288,13 @@ class ProductoCliente {
     // Calcular cantidad promedio
     const totalAnterior = estadisticas.vecesContado - 1
     const cantidadPromedioAnterior = estadisticas.cantidadPromedio || 0
-    estadisticas.cantidadPromedio = 
+    estadisticas.cantidadPromedio =
       (cantidadPromedioAnterior * totalAnterior + cantidadContada) / estadisticas.vecesContado
 
     // Calcular valor promedio total
     const valorTotal = cantidadContada * producto.costo
     const valorPromedioAnterior = estadisticas.valorPromedioTotal || 0
-    estadisticas.valorPromedioTotal = 
+    estadisticas.valorPromedioTotal =
       (valorPromedioAnterior * totalAnterior + valorTotal) / estadisticas.vecesContado
 
     const stmt = db.prepare(`

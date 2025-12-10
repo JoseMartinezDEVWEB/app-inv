@@ -23,13 +23,13 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
-    
+
     // Agregar timestamp para evitar cache
     config.params = {
       ...config.params,
       _t: Date.now(),
     }
-    
+
     return config
   },
   (error) => {
@@ -44,25 +44,27 @@ api.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config
-    
+
     // Si el error es 401 y no hemos intentado refrescar el token
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
-      
+
       try {
         const refreshToken = localStorage.getItem('refreshToken')
         if (refreshToken) {
           const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-            refresh_token: refreshToken,
+            refreshToken: refreshToken,
           })
 
-          const { access_token, refresh_token: newRefreshToken } = response.data
+          // La respuesta viene en format: { exito: true, datos: { accessToken, refreshToken } }
+          const { datos } = response.data
+          const { accessToken, refreshToken: newRefreshToken } = datos
 
-          localStorage.setItem('accessToken', access_token)
+          localStorage.setItem('accessToken', accessToken)
           localStorage.setItem('refreshToken', newRefreshToken)
-          
+
           // Reintentar la petición original
-          originalRequest.headers.Authorization = `Bearer ${access_token}`
+          originalRequest.headers.Authorization = `Bearer ${accessToken}`
           return api(originalRequest)
         }
       } catch (refreshError) {
@@ -76,7 +78,7 @@ api.interceptors.response.use(
         }
       }
     }
-    
+
     // Manejar otros errores (solo si no es 400 - Bad Request que se maneja en handleApiError)
     if (error.response?.status >= 500) {
       toast.error('Error del servidor. Por favor, intente más tarde.')
@@ -90,7 +92,7 @@ api.interceptors.response.use(
     } else if (!error.response) {
       toast.error('Error de conexión. Verifique su internet.')
     }
-    
+
     return Promise.reject(error)
   }
 )
@@ -184,11 +186,11 @@ export const productosApi = {
   deleteGeneral: (id) => api.delete(`/productos/generales/${id}`),
   getCategorias: () => api.get('/productos/generales/categorias'),
   buscarPorCodigoBarras: (codigo) => api.get(`/productos/generales/buscar/codigo-barras/${codigo}`),
-  
+
   // Productos de clientes
   getByCliente: (clienteId, params = {}) => api.get(`/productos/cliente/${clienteId}`, { params }),
   createForCliente: (clienteId, productoData) => api.post(`/productos/cliente/${clienteId}`, productoData),
-  asignarGenerales: (clienteId, productosIds, costoPersonalizado = {}) => 
+  asignarGenerales: (clienteId, productosIds, costoPersonalizado = {}) =>
     api.post(`/productos/cliente/${clienteId}/asignar`, { productosIds, costoPersonalizado }),
   getById: (id) => api.get(`/productos/${id}`),
   update: (id, productoData) => api.put(`/productos/${id}`, productoData),
@@ -212,7 +214,7 @@ export const solicitudesConexionApi = {
   solicitar: (data) => api.post('/solicitudes-conexion/solicitar', data),
   verificarEstado: (solicitudId) => api.get(`/solicitudes-conexion/estado/${solicitudId}`),
   agregarProductoOffline: (solicitudId, productoData) => api.post(`/solicitudes-conexion/${solicitudId}/productos-offline`, { productoData }),
-  
+
   // Protegidas (requieren auth)
   listarPendientes: () => api.get('/solicitudes-conexion/pendientes'),
   listarConectados: (sesionId) => api.get('/solicitudes-conexion/conectados', { params: { sesionId } }),

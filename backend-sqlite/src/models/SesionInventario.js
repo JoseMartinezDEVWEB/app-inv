@@ -206,7 +206,7 @@ class SesionInventario {
     }))
 
     return {
-      datos: sesiones,
+      sesiones: sesiones,
       paginacion: {
         total,
         pagina,

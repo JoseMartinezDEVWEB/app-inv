@@ -55,8 +55,24 @@ class Usuario {
 
     if (usuario) {
       usuario.configuracion = JSON.parse(usuario.configuracion || '{}')
-      usuario.configuracion = JSON.parse(usuario.configuracion || '{}')
       delete usuario.password
+      // Alias para compatibilidad con frontend que espera _id
+      usuario._id = usuario.id
+    }
+
+    return usuario
+  }
+
+  // Buscar usuario por credencial (email o nombre de usuario)
+  static buscarPorCredencial(credencial) {
+    const db = dbManager.getDatabase()
+    const stmt = db.prepare(`
+      SELECT * FROM usuarios WHERE (email = ? OR nombreUsuario = ?) AND activo = 1
+    `)
+    const usuario = stmt.get(credencial, credencial)
+
+    if (usuario) {
+      usuario.configuracion = JSON.parse(usuario.configuracion || '{}')
       // Alias para compatibilidad con frontend que espera _id
       usuario._id = usuario.id
     }

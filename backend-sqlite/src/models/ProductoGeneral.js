@@ -30,8 +30,8 @@ class ProductoGeneral {
         nombre, descripcion, categoria, unidad, costoBase,
         tipoContenedor, tieneUnidadesInternas, unidadesInternas,
         tipoPeso, esProductoSecundario, productoPadreId, productoHijoId,
-        proveedor, codigoBarras, notas, creadoPorId, tipoCreacion
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        proveedor, codigoBarras, notas, creadoPorId, tipoCreacion, activo
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const info = stmt.run(
@@ -51,7 +51,8 @@ class ProductoGeneral {
       codigoBarras,
       notas,
       creadoPorId,
-      tipoCreacion
+      tipoCreacion,
+      1
     )
 
     return ProductoGeneral.buscarPorId(info.lastInsertRowid)

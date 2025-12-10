@@ -4,13 +4,15 @@ import { respuestaError } from '../utils/helpers.js'
 // Middleware para capturar errores no manejados
 export const errorHandler = (err, req, res, next) => {
   // Registrar error en logs
-  logger.error(`Error: ${err.message}`, {
-    stack: err.stack,
-    url: req.originalUrl,
-    method: req.method,
-    ip: req.ip,
-    userId: req.usuario?.id,
-  })
+  if (process.env.NODE_ENV !== 'test') {
+    logger.error(`Error: ${err.message}`, {
+      stack: err.stack,
+      url: req.originalUrl,
+      method: req.method,
+      ip: req.ip,
+      userId: req.usuario?.id,
+    })
+  }
 
   // Errores de validación de Joi
   if (err.isJoi) {
@@ -22,12 +24,12 @@ export const errorHandler = (err, req, res, next) => {
     )
   }
 
-  // Errores de SQLite
-  if (err.code === 'SQLITE_CONSTRAINT') {
+  // Errores de SQLite de restricción única o llave foránea
+  if (err.code === 'SQLITE_CONSTRAINT' || (err.message && err.message.includes('UNIQUE constraint failed'))) {
     let mensaje = 'Violación de restricción de base de datos'
-    
-    if (err.message.includes('UNIQUE')) {
-      mensaje = 'Ya existe un registro con ese valor único'
+
+    if (err.message.includes('UNIQUE') || err.message.includes('unique')) {
+      mensaje = 'Ya existe un registro con ese valor único (ej. nombre o código)'
     } else if (err.message.includes('FOREIGN KEY')) {
       mensaje = 'Referencia a registro inexistente'
     }
@@ -35,10 +37,10 @@ export const errorHandler = (err, req, res, next) => {
     return res.status(400).json(respuestaError(mensaje))
   }
 
-  // Error de base de datos
+  // Otros errores de base de datos
   if (err.name === 'SqliteError') {
     return res.status(500).json(
-      respuestaError('Error de base de datos', 
+      respuestaError('Error de base de datos',
         process.env.NODE_ENV === 'development' ? err.message : undefined
       )
     )

@@ -2,37 +2,85 @@ import jwt from 'jsonwebtoken'
 import config from '../config/env.js'
 import Usuario from '../models/Usuario.js'
 import { respuestaError } from '../utils/helpers.js'
+import { AppError } from './errorHandler.js'
 
-// Verificar JWT y extraer usuario
+/**
+ * Middleware para validar JWT
+ * Verifica el token y adjunta el usuario al request
+ */
 export const validarJWT = async (req, res, next) => {
   try {
-    const token = req.headers.authorization?.replace('Bearer ', '')
+    // Obtener el token del header
+    const authHeader = req.headers.authorization
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw new AppError('Token no proporcionado o formato inválido', 401)
+    }
+
+    const token = authHeader.split(' ')[1]
 
     if (!token) {
-      return res.status(401).json(respuestaError('Token no proporcionado'))
+      throw new AppError('Token no proporcionado', 401)
     }
 
-    // Verificar token
+    // Verificar y decodificar el token
     const decoded = jwt.verify(token, config.jwt.secret)
 
-    // Buscar usuario
-    const usuario = Usuario.buscarPorId(decoded.id)
+    // Buscar usuario en la base de datos
+    const usuario = await Usuario.buscarPorId(decoded.id)
 
-    if (!usuario || !usuario.activo) {
-      return res.status(401).json(respuestaError('Usuario no válido o inactivo'))
+    if (!usuario) {
+      throw new AppError('Usuario no encontrado', 404)
     }
 
-    // Agregar usuario a request
-    req.usuario = usuario
+    if (!usuario.activo) {
+      throw new AppError('Usuario inactivo', 403)
+    }
+
+    // Adjuntar usuario al request para uso posterior
+    req.usuario = {
+      id: usuario.id,
+      email: usuario.email,
+      rol: usuario.rol,
+      nombre: usuario.nombre
+    }
+
+    // Continuar al siguiente middleware
     next()
   } catch (error) {
+    console.error('Error en validarJWT:', error)
+    
     if (error.name === 'TokenExpiredError') {
-      return res.status(401).json(respuestaError('Token expirado'))
+      return res.status(401).json({
+        ok: false,
+        mensaje: 'Sesión expirada. Por favor, inicia sesión nuevamente.',
+        codigo: 'TOKEN_EXPIRED'
+      })
     }
+
     if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json(respuestaError('Token inválido'))
+      return res.status(401).json({
+        ok: false,
+        mensaje: 'Token inválido o mal formado',
+        codigo: 'INVALID_TOKEN'
+      })
     }
-    return res.status(500).json(respuestaError('Error al validar token'))
+
+    // Manejar errores personalizados
+    if (error instanceof AppError) {
+      return res.status(error.statusCode || 500).json({
+        ok: false,
+        mensaje: error.message,
+        codigo: error.code
+      })
+    }
+
+    // Error inesperado
+    return res.status(500).json({
+      ok: false,
+      mensaje: 'Error en la autenticación',
+      codigo: 'AUTH_ERROR'
+    })
   }
 }
 

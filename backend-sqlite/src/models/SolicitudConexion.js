@@ -77,7 +77,7 @@ class SolicitudConexion {
 
     return solicitudes.map(sol => ({
       ...sol,
-      ...sol,
+
       metadata: JSON.parse(sol.metadata || '{}'),
       // Alias para compatibilidad con frontend que espera _id
       _id: sol.id,
@@ -97,7 +97,7 @@ class SolicitudConexion {
 
     return solicitudes.map(sol => ({
       ...sol,
-      ...sol,
+
       metadata: JSON.parse(sol.metadata || '{}'),
       // Alias para compatibilidad con frontend que espera _id
       _id: sol.id,
@@ -159,7 +159,7 @@ class SolicitudConexion {
       VALUES (?, ?, ?, ?, ?)
     `)
 
-    const info = stmt.run(solicitudConexionId, nombre, costo, unidad, categoria)
+    const info = stmt.run(solicitudId, nombre, costo, unidad, categoria)
 
     return info.lastInsertRowid
   }
