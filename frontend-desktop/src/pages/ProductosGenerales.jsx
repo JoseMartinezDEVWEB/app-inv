@@ -21,10 +21,15 @@ import Pagination from '../components/ui/Pagination'
 import Modal from '../components/ui/Modal'
 import ProductoForm from '../components/ProductoForm'
 import { toast } from 'react-hot-toast'
+import { useAuth } from '../context/AuthContext'
+import ImportModal from '../components/ui/ImportModal'
+import { Upload } from 'lucide-react'
 
 const ProductosGenerales = () => {
+  const { user } = useAuth()
   const queryClient = useQueryClient()
   const [showModal, setShowModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
@@ -158,6 +163,31 @@ const ProductosGenerales = () => {
     }
   }
 
+  const handleImportProducts = async (products) => {
+    const toastId = toast.loading(`Importando ${products.length} productos...`);
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const product of products) {
+      try {
+        await createMutation.mutateAsync(product);
+        successCount++;
+      } catch (error) {
+        console.error("Error importando producto:", product, error);
+        errorCount++;
+      }
+    }
+
+    toast.dismiss(toastId);
+    if (errorCount === 0) {
+      toast.success(`Se importaron ${successCount} productos correctamente`);
+    } else {
+      toast.error(`Importación completada. Éxito: ${successCount}, Errores: ${errorCount}`);
+    }
+
+    queryClient.invalidateQueries('productos-generales');
+  }
+
   const handleSearch = (e) => {
     setSearchTerm(e.target.value)
     setCurrentPage(1)
@@ -286,13 +316,25 @@ const ProductosGenerales = () => {
           <h1 className="text-2xl font-bold text-gray-900">Productos Generales</h1>
           <p className="text-gray-600">Gestiona la lista maestra de productos disponibles</p>
         </div>
-        <Button
-          onClick={handleCreateProduct}
-          className="flex items-center space-x-2"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Agregar Producto</span>
-        </Button>
+        <div className="flex gap-2">
+          {user?.rol === 'administrador' && (
+            <Button
+              onClick={() => setShowImportModal(true)}
+              variant="outline"
+              className="flex items-center space-x-2 bg-yellow-50 hover:bg-yellow-100 border-yellow-200 text-yellow-700"
+            >
+              <Upload className="w-4 h-4" />
+              <span>Importar Lista</span>
+            </Button>
+          )}
+          <Button
+            onClick={handleCreateProduct}
+            className="flex items-center space-x-2"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Agregar Producto</span>
+          </Button>
+        </div>
       </div>
 
       {/* Filtros y búsqueda */}
@@ -314,8 +356,8 @@ const ProductosGenerales = () => {
             <button
               onClick={() => handleCategoryFilter('')}
               className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${selectedCategory === ''
-                  ? 'bg-primary-100 text-primary-700'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                ? 'bg-primary-100 text-primary-700'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
             >
               Todas
@@ -325,8 +367,8 @@ const ProductosGenerales = () => {
                 key={categoria}
                 onClick={() => handleCategoryFilter(categoria)}
                 className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${selectedCategory === categoria
-                    ? 'bg-primary-100 text-primary-700'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-primary-100 text-primary-700'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
               >
                 {categoria}
@@ -416,6 +458,13 @@ const ProductosGenerales = () => {
           isLoading={createMutation.isLoading || updateMutation.isLoading}
         />
       </Modal>
+
+      {/* Modal de Importación */}
+      <ImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImport={handleImportProducts}
+      />
     </div>
   )
 }

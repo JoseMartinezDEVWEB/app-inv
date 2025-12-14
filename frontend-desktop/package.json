@@ -21,6 +21,7 @@
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "axios": "^1.6.2",
     "date-fns": "^2.30.0",
     "framer-motion": "^10.16.16",

@@ -7,6 +7,7 @@ import localDb from '../services/localDb';
 import { useNetInfo } from '@react-native-community/netinfo';
 import { LinearGradient } from 'expo-linear-gradient';
 import ProductModal from '../components/ProductModal'; // Importar el modal
+import ImportModal from '../components/modals/ImportModal';
 import { showMessage } from 'react-native-flash-message';
 
 // Esqueleto de carga para las tarjetas de producto
@@ -44,6 +45,7 @@ const ProductosGeneralesScreen = () => {
 
   const queryClient = useQueryClient();
   const [isModalVisible, setModalVisible] = useState(false);
+  const [isImportModalVisible, setImportModalVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
   const netInfo = useNetInfo();
@@ -112,6 +114,20 @@ const ProductosGeneralesScreen = () => {
     }
   };
 
+  const handleImportProducts = async (products) => {
+    let count = 0;
+    for (const p of products) {
+      try {
+        await createMutation.mutateAsync(p);
+        count++;
+      } catch (e) {
+        console.log("Error importando", p.nombre);
+      }
+    }
+    showMessage({ message: `Se importaron ${count} productos`, type: 'success' });
+    queryClient.invalidateQueries('productos');
+  };
+
   const renderContent = () => {
     if (isLoading) {
       return (
@@ -155,7 +171,12 @@ const ProductosGeneralesScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Productos Generales</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={styles.title}>Productos Generales</Text>
+          <TouchableOpacity onPress={() => setImportModalVisible(true)} style={{ padding: 5 }}>
+            <Ionicons name="cloud-upload-outline" size={24} color="#1e40af" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.searchContainer}>
@@ -182,6 +203,12 @@ const ProductosGeneralesScreen = () => {
         onClose={() => setModalVisible(false)}
         onSave={handleSaveProduct}
         product={selectedProduct}
+      />
+
+      <ImportModal
+        visible={isImportModalVisible}
+        onClose={() => setImportModalVisible(false)}
+        onImport={handleImportProducts}
       />
     </View>
   );
