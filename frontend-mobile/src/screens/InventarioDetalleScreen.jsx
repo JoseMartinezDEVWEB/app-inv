@@ -171,7 +171,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
       const interval = setInterval(() => {
         cargarColaboradoresConectados()
         cargarInvitaciones()
-      }, 10000)
+      }, 30000) // Aumentado de 10s a 30s para reducir solicitudes
 
       return () => clearInterval(interval)
     }

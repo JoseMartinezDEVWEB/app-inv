@@ -8,7 +8,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import { sesionesApi, productosApi, reportesApi, invitacionesApi, solicitudesConexionApi, handleApiError } from '../services/api'
 import logoInfocolmados from '../img/logo_transparent.png'
-import { ArrowLeft, Search, Trash2, Clock, TrendingUp, Users, CreditCard, Briefcase, PiggyBank, DollarSign, ShoppingCart, Barcode, X, Printer, FileText, Settings, TrendingDown, Wallet, Calculator, Calendar, Download, Share2, FileSpreadsheet, FileImage, UserMinus, Menu, Smartphone, QrCode, RefreshCw, Wifi, WifiOff } from 'lucide-react'
+import { ArrowLeft, Search, Trash2, Clock, TrendingUp, Users, CreditCard, Briefcase, PiggyBank, DollarSign, ShoppingCart, Barcode, X, Printer, FileText, Settings, TrendingDown, Wallet, Calculator, Calendar, Download, Share2, FileSpreadsheet, FileImage, UserMinus, Menu, Smartphone, QrCode, RefreshCw, Wifi, WifiOff, PieChart } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 
@@ -99,7 +99,9 @@ const InventarioDetalleNuevo = () => {
   const [showSearchEditModal, setShowSearchEditModal] = useState(false)
   const [invSearchTerm, setInvSearchTerm] = useState('')
   const [editValues, setEditValues] = useState({})
-  const [currentReportPage, setCurrentReportPage] = useState(1)
+  const [currentReportSection, setCurrentReportSection] = useState('portada') // 'portada', 'productos', 'distribucion', 'balance'
+  const [currentReportPage, setCurrentReportPage] = useState(0) // Para paginación dentro de productos
+  const [showReportMenu, setShowReportMenu] = useState(false)
   const [productNotFoundCode, setProductNotFoundCode] = useState('')
   const [isSearching, setIsSearching] = useState(false)
   // Estados para temporizador y modos de escaneo
@@ -281,7 +283,7 @@ const InventarioDetalleNuevo = () => {
       const interval = setInterval(() => {
         cargarColaboradoresConectados()
         cargarInvitaciones()
-      }, 10000)
+      }, 30000) // Aumentado de 10s a 30s para reducir solicitudes
 
       return () => clearInterval(interval)
     }
@@ -1580,31 +1582,50 @@ const InventarioDetalleNuevo = () => {
   }
 
   // Funciones para el reporte
+  const getTotalPaginasProductos = () => {
+    if (productosContados.length === 0) return 0
+    return Math.ceil(productosContados.length / PRODUCTOS_POR_PAGINA)
+  }
+
   const getProductosPaginados = () => {
-    // Página 1 = Portada, Páginas 2 a N = Productos
-    // Ajustar el índice restando 2 (1 para la portada, 1 para el índice base 0)
-    const paginaProducto = currentReportPage - 2
-    const inicio = paginaProducto * PRODUCTOS_POR_PAGINA
+    if (currentReportSection !== 'productos') return []
+    const inicio = currentReportPage * PRODUCTOS_POR_PAGINA
     const fin = inicio + PRODUCTOS_POR_PAGINA
     return productosContados.slice(inicio, fin)
   }
 
-  const getTotalPaginas = () => {
-    const totalPaginasProductos = productosContados.length > 0
-      ? Math.ceil(productosContados.length / PRODUCTOS_POR_PAGINA)
-      : 1
-    const paginasAdicionales = 2 // Balance general y distribución de saldo
-    const totalPaginas = 1 + totalPaginasProductos + paginasAdicionales // +1 Portada
-    return totalPaginas
+  const tieneMasDeUnaPaginaProductos = () => {
+    return getTotalPaginasProductos() > 1
   }
 
-  // Funciones eliminadas: getPaginaActualInfo y currentPageContent ya no se necesitan
-  // La lógica de renderizado está directamente en el modal
-
-  const esUltimaPagina = () => {
-    const total = getTotalPaginas()
-    return currentReportPage === total || currentReportPage === total - 1
+  const handleReportSectionChange = (section) => {
+    setCurrentReportSection(section)
+    setCurrentReportPage(0) // Resetear página cuando cambias de sección
+    setShowReportMenu(false) // Cerrar menú
   }
+
+  const getReportPageInfo = () => {
+    if (currentReportSection === 'portada') {
+      return { current: 1, total: 1, label: 'Portada' }
+    } else if (currentReportSection === 'productos') {
+      const total = getTotalPaginasProductos()
+      return { current: currentReportPage + 1, total, label: 'Listado de Productos' }
+    } else if (currentReportSection === 'balance') {
+      return { current: 1, total: 1, label: 'Balance General' }
+    } else if (currentReportSection === 'distribucion') {
+      return { current: 1, total: 1, label: 'Distribución de Saldo' }
+    }
+    return { current: 1, total: 1, label: '' }
+  }
+
+  // Resetear a portada cuando se abre el modal
+  useEffect(() => {
+    if (activeModal === 'reporteCompleto') {
+      setCurrentReportSection('portada')
+      setCurrentReportPage(0)
+      setShowReportMenu(false)
+    }
+  }, [activeModal])
 
   const formatearFecha = (fecha) => {
     if (!fecha) return new Date().toLocaleDateString('es-ES', {
@@ -5273,28 +5294,88 @@ const InventarioDetalleNuevo = () => {
 
       {/* Modal de Reporte Completo */}
       {activeModal === 'reporteCompleto' && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl">
-            <div className="flex items-center justify-between p-6 border-b bg-gray-50">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowReportMenu(false)
+            }
+          }}
+        >
+          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[95vh] overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-teal-600 to-teal-700">
               <div className="flex items-center space-x-3">
-                <FileText className="w-6 h-6 text-teal-600" />
+                <FileText className="w-6 h-6 text-white" />
                 <div>
-                  <h3 className="text-xl font-bold text-gray-800">Reporte de Inventario</h3>
-                  <p className="text-sm text-gray-600">
-                    Página {currentReportPage} de {getTotalPaginas()}
-                  </p>
+                  <h3 className="text-xl font-bold text-white">Reporte de Inventario</h3>
+                  {(() => {
+                    const pageInfo = getReportPageInfo()
+                    return (
+                      <p className="text-sm text-white/90">
+                        {pageInfo.label} {pageInfo.total > 1 ? `- Página ${pageInfo.current} de ${pageInfo.total}` : ''}
+                      </p>
+                    )
+                  })()}
                 </div>
               </div>
-              <button
-                onClick={closeFinancialModal}
-                className="text-gray-500 hover:text-gray-700 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
+              <div className="flex items-center space-x-3">
+                {/* Menú de navegación */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowReportMenu(!showReportMenu)}
+                    className="p-2 text-white hover:bg-white/20 rounded-lg transition-colors"
+                  >
+                    <Menu className="w-6 h-6" />
+                  </button>
+                  {showReportMenu && (
+                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
+                      <button
+                        onClick={() => handleReportSectionChange('productos')}
+                        className={`w-full flex items-center space-x-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors ${
+                          currentReportSection === 'productos' ? 'bg-teal-50 border-l-4 border-teal-600' : ''
+                        }`}
+                      >
+                        <ShoppingCart className={`w-5 h-5 ${currentReportSection === 'productos' ? 'text-teal-600' : 'text-gray-600'}`} />
+                        <span className={`font-medium ${currentReportSection === 'productos' ? 'text-teal-600' : 'text-gray-700'}`}>
+                          Ver Listado de Productos
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => handleReportSectionChange('distribucion')}
+                        className={`w-full flex items-center space-x-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors ${
+                          currentReportSection === 'distribucion' ? 'bg-teal-50 border-l-4 border-teal-600' : ''
+                        }`}
+                      >
+                        <PieChart className={`w-5 h-5 ${currentReportSection === 'distribucion' ? 'text-teal-600' : 'text-gray-600'}`} />
+                        <span className={`font-medium ${currentReportSection === 'distribucion' ? 'text-teal-600' : 'text-gray-700'}`}>
+                          Ver Distribución de Saldo
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => handleReportSectionChange('balance')}
+                        className={`w-full flex items-center space-x-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors ${
+                          currentReportSection === 'balance' ? 'bg-teal-50 border-l-4 border-teal-600' : ''
+                        }`}
+                      >
+                        <Calculator className={`w-5 h-5 ${currentReportSection === 'balance' ? 'text-teal-600' : 'text-gray-600'}`} />
+                        <span className={`font-medium ${currentReportSection === 'balance' ? 'text-teal-600' : 'text-gray-700'}`}>
+                          Balance General
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={closeFinancialModal}
+                  className="p-2 text-white hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
             </div>
 
             <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
-              {currentReportPage === 1 ? (
+              {currentReportSection === 'portada' ? (
                 // Página de Portada
                 <div className="p-10 bg-white flex flex-col items-center justify-between min-h-[600px]" style={{ fontFamily: 'Arial, sans-serif' }}>
                   <div className="w-full">
@@ -5343,8 +5424,7 @@ const InventarioDetalleNuevo = () => {
                     </div>
                   </div>
                 </div>
-              ) : esUltimaPagina() ? (
-                currentReportPage === getTotalPaginas() ? (
+              ) : currentReportSection === 'balance' ? (
                   // Página del Balance General
                   <div className="p-8 bg-white" style={{ fontFamily: 'Arial, sans-serif' }}>
                     <div className="text-center mb-8">
@@ -5366,7 +5446,7 @@ const InventarioDetalleNuevo = () => {
                               <span className="text-gray-800">EFECTIVO Y CAJA</span>
                               <span className="text-gray-800">{formatearMoneda(calculateTotalEfectivo())}</span>
                             </div>
-                            {Array.isArray(datosFinancieros.efectivoEnCajaYBanco) && datosFinancieros.efectivoEnCajaYBanco.length > 1 && (
+                            {Array.isArray(datosFinancieros.efectivoEnCajaYBanco) && datosFinancieros.efectivoEnCajaYBanco.length > 0 && (
                               <div className="ml-4 mt-1 space-y-1">
                                 {datosFinancieros.efectivoEnCajaYBanco.map((efectivo, index) => (
                                   <div key={index} className="text-xs text-gray-700 italic">
@@ -5379,10 +5459,10 @@ const InventarioDetalleNuevo = () => {
                               <span className="text-gray-800">CUENTAS POR COBRAR</span>
                               <span className="text-gray-800">{formatearMoneda(calculateTotalCuentasPorCobrar())}</span>
                             </div>
-                            {Array.isArray(datosFinancieros.cuentasPorCobrar) && datosFinancieros.cuentasPorCobrar.length > 1 && (
+                            {Array.isArray(datosFinancieros.cuentasPorCobrar) && datosFinancieros.cuentasPorCobrar.length > 0 && (
                               <div className="ml-4 mt-1 space-y-1">
                                 {datosFinancieros.cuentasPorCobrar.map((cuenta, index) => (
-                                  <div key={index} className="text-xs text-gray-500 italic">
+                                  <div key={index} className="text-xs text-gray-700 italic">
                                     • {cuenta.cliente || 'Cliente'}: {formatearMoneda(parseFloat(cuenta.monto || 0))} ({cuenta.descripcion || 'Sin descripción'})
                                   </div>
                                 ))}
@@ -5396,36 +5476,36 @@ const InventarioDetalleNuevo = () => {
                               <span className="text-gray-800">DEUDA A NEGOCIO</span>
                               <span className="text-gray-800">{formatearMoneda(calculateTotalDeudaANegocio())}</span>
                             </div>
-                            {Array.isArray(datosFinancieros.deudaANegocio) && datosFinancieros.deudaANegocio.length > 1 && (
+                            {Array.isArray(datosFinancieros.deudaANegocio) && datosFinancieros.deudaANegocio.length > 0 && (
                               <div className="ml-4 mt-1 space-y-1">
                                 {datosFinancieros.deudaANegocio.map((deuda, index) => (
-                                  <div key={index} className="text-xs text-gray-500 italic">
+                                  <div key={index} className="text-xs text-gray-700 italic">
                                     • {deuda.deudor || 'Deudor'}: {formatearMoneda(parseFloat(deuda.monto || 0))} ({deuda.descripcion || 'Sin descripción'})
                                   </div>
                                 ))}
                               </div>
                             )}
                             <div className="flex justify-between font-semibold border-t pt-1">
-                              <span>TOTAL CORRIENTES</span>
-                              <span>{formatearMoneda(calculateTotalEfectivo() + calculateTotalCuentasPorCobrar() + valorTotal + calculateTotalDeudaANegocio())}</span>
+                              <span className="text-gray-900">TOTAL CORRIENTES</span>
+                              <span className="text-gray-900">{formatearMoneda(calculateTotalEfectivo() + calculateTotalCuentasPorCobrar() + valorTotal + calculateTotalDeudaANegocio())}</span>
                             </div>
                           </div>
 
-                          <div className="font-semibold text-gray-700 mt-4">FIJOS</div>
+                          <div className="font-semibold text-gray-900 mt-4">FIJOS</div>
                           <div className="ml-4 space-y-1">
                             <div className="flex justify-between">
-                              <span>ACTIVOS FIJOS</span>
-                              <span>{formatearMoneda(datosFinancieros.activosFijos)}</span>
+                              <span className="text-gray-900">ACTIVOS FIJOS</span>
+                              <span className="text-gray-900">{formatearMoneda(datosFinancieros.activosFijos)}</span>
                             </div>
                             <div className="flex justify-between font-semibold border-t pt-1">
-                              <span>TOTAL FIJOS</span>
-                              <span>{formatearMoneda(datosFinancieros.activosFijos)}</span>
+                              <span className="text-gray-900">TOTAL FIJOS</span>
+                              <span className="text-gray-900">{formatearMoneda(datosFinancieros.activosFijos)}</span>
                             </div>
                           </div>
 
                           <div className="flex justify-between font-bold text-lg border-t-2 border-gray-400 pt-2 mt-4">
-                            <span>TOTAL ACTIVOS</span>
-                            <span>{formatearMoneda(calculateTotalEfectivo() + calculateTotalCuentasPorCobrar() + valorTotal + calculateTotalDeudaANegocio() + datosFinancieros.activosFijos)}</span>
+                            <span className="text-gray-900">TOTAL ACTIVOS</span>
+                            <span className="text-gray-900">{formatearMoneda(calculateTotalEfectivo() + calculateTotalCuentasPorCobrar() + valorTotal + calculateTotalDeudaANegocio() + datosFinancieros.activosFijos)}</span>
                           </div>
                         </div>
                       </div>
@@ -5441,32 +5521,32 @@ const InventarioDetalleNuevo = () => {
                               <span className="text-gray-800">CUENTAS POR PAGAR</span>
                               <span className="text-gray-800">{formatearMoneda(calculateTotalCuentasPorPagar())}</span>
                             </div>
-                            {Array.isArray(datosFinancieros.cuentasPorPagar) && datosFinancieros.cuentasPorPagar.length > 1 && (
+                            {Array.isArray(datosFinancieros.cuentasPorPagar) && datosFinancieros.cuentasPorPagar.length > 0 && (
                               <div className="ml-4 mt-1 space-y-1">
                                 {datosFinancieros.cuentasPorPagar.map((cuenta, index) => (
-                                  <div key={index} className="text-xs text-gray-500 italic">
+                                  <div key={index} className="text-xs text-gray-700 italic">
                                     • {cuenta.proveedor || 'Proveedor'}: {formatearMoneda(parseFloat(cuenta.monto || 0))} ({cuenta.descripcion || 'Sin descripción'})
                                   </div>
                                 ))}
                               </div>
                             )}
                             <div className="flex justify-between font-semibold border-t pt-1">
-                              <span>TOTAL PASIVOS</span>
-                              <span>{formatearMoneda(calculateTotalCuentasPorPagar())}</span>
+                              <span className="text-gray-900">TOTAL PASIVOS</span>
+                              <span className="text-gray-900">{formatearMoneda(calculateTotalCuentasPorPagar())}</span>
                             </div>
                           </div>
 
-                          <div className="font-semibold text-gray-700 mt-4">CAPITAL</div>
+                          <div className="font-semibold text-gray-900 mt-4">CAPITAL</div>
                           <div className="ml-4 space-y-1">
                             <div className="flex justify-between font-semibold border-t pt-1">
-                              <span>CAPITAL CONTABLE</span>
-                              <span>{formatearMoneda(capitalContable)}</span>
+                              <span className="text-gray-900">CAPITAL CONTABLE</span>
+                              <span className="text-gray-900">{formatearMoneda(capitalContable)}</span>
                             </div>
                           </div>
 
                           <div className="flex justify-between font-bold text-lg border-t-2 border-gray-400 pt-2 mt-4">
-                            <span>TOTAL PASIVOS + CAPITAL</span>
-                            <span>{formatearMoneda(calculateTotalEfectivo() + calculateTotalCuentasPorCobrar() + valorTotal + calculateTotalDeudaANegocio() + datosFinancieros.activosFijos)}</span>
+                            <span className="text-gray-900">TOTAL PASIVOS + CAPITAL</span>
+                            <span className="text-gray-900">{formatearMoneda(calculateTotalEfectivo() + calculateTotalCuentasPorCobrar() + valorTotal + calculateTotalDeudaANegocio() + datosFinancieros.activosFijos)}</span>
                           </div>
                         </div>
                         {/* Ventas y Gastos */}
@@ -5474,17 +5554,17 @@ const InventarioDetalleNuevo = () => {
                           <div className="font-semibold text-blue-700 mb-3">VENTAS Y GASTOS</div>
                           <div className="space-y-2">
                             <div className="flex justify-between">
-                              <span>VENTAS DEL MES</span>
+                              <span className="text-gray-900">VENTAS DEL MES</span>
                               <span className="font-semibold text-green-600">{formatearMoneda(datosFinancieros.ventasDelMes)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>GASTOS GENERALES</span>
+                              <span className="text-gray-900">GASTOS GENERALES</span>
                               <span className="font-semibold text-red-600">({formatearMoneda(calculateTotalGastos())})</span>
                             </div>
-                            {Array.isArray(datosFinancieros.gastosGenerales) && datosFinancieros.gastosGenerales.length > 1 && (
+                            {Array.isArray(datosFinancieros.gastosGenerales) && datosFinancieros.gastosGenerales.length > 0 && (
                               <div className="ml-4 mt-1 space-y-1">
                                 {datosFinancieros.gastosGenerales.map((gasto, index) => (
-                                  <div key={index} className="text-xs text-red-400 italic">
+                                  <div key={index} className="text-xs text-red-600 italic">
                                     • {gasto.categoria || 'Sin categoría'}: ({formatearMoneda(parseFloat(gasto.monto || 0))}) ({gasto.descripcion || 'Sin descripción'})
                                   </div>
                                 ))}
@@ -5507,13 +5587,13 @@ const InventarioDetalleNuevo = () => {
                               </div>
                             )}
                             <div className="flex justify-between text-lg font-bold text-blue-800 border-t pt-2">
-                              <span>UTILIDAD NETA</span>
-                              <span>{formatearMoneda(calculateUtilidadesNetas())}</span>
+                              <span className="text-gray-900">UTILIDAD NETA</span>
+                              <span className="text-gray-900">{formatearMoneda(calculateUtilidadesNetas())}</span>
                             </div>
                           </div>
-                          <div className="text-sm text-blue-600 mt-2 pt-2 border-t">
-                            <div>PORCENTAJE NETO: {datosFinancieros.ventasDelMes > 0 ? ((calculateUtilidadesNetas() / datosFinancieros.ventasDelMes * 100).toFixed(2)) : '0.00'}%</div>
-                            <div>PORCENTAJE BRUTO: {datosFinancieros.ventasDelMes > 0 ? (((datosFinancieros.ventasDelMes - valorTotal - calculateTotalGastos()) / datosFinancieros.ventasDelMes * 100).toFixed(2)) : '0.00'}%</div>
+                          <div className="text-sm text-gray-900 mt-2 pt-2 border-t">
+                            <div className="text-gray-900">PORCENTAJE NETO: {datosFinancieros.ventasDelMes > 0 ? ((calculateUtilidadesNetas() / datosFinancieros.ventasDelMes * 100).toFixed(2)) : '0.00'}%</div>
+                            <div className="text-gray-900">PORCENTAJE BRUTO: {datosFinancieros.ventasDelMes > 0 ? (((datosFinancieros.ventasDelMes - valorTotal - calculateTotalGastos()) / datosFinancieros.ventasDelMes * 100).toFixed(2)) : '0.00'}%</div>
                           </div>
                         </div>
                       </div>
@@ -5531,7 +5611,7 @@ const InventarioDetalleNuevo = () => {
                       </p>
                     </div>
                   </div>
-                ) : (
+                ) : currentReportSection === 'distribucion' ? (
                   // Página de Distribución de Saldo
                   <div className="p-8 bg-white" style={{ fontFamily: 'Arial, sans-serif' }}>
                     <div className="text-center mb-8">
@@ -5543,36 +5623,36 @@ const InventarioDetalleNuevo = () => {
 
                     <div className="space-y-6">
                       {/* Información General */}
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <h4 className="font-semibold text-gray-800 mb-3">Información General</h4>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="bg-gray-50 p-5 rounded-lg border border-gray-200">
+                        <h4 className="font-bold text-black mb-4 text-base">Información General</h4>
+                        <div className="grid grid-cols-2 gap-4 text-base">
                           <div>
-                            <span className="font-medium">Total de Utilidades Netas:</span>
-                            <span className="ml-2">{formatearMoneda(calculateUtilidadesNetas())}</span>
+                            <span className="font-semibold text-black">Total de Utilidades Netas:</span>
+                            <span className="ml-2 text-black font-bold">{formatearMoneda(calculateUtilidadesNetas())}</span>
                           </div>
                           <div>
-                            <span className="font-medium">Número de Socios:</span>
-                            <span className="ml-2">{distribucionData.numeroSocios}</span>
+                            <span className="font-semibold text-black">Número de Socios:</span>
+                            <span className="ml-2 text-black font-bold">{distribucionData.numeroSocios}</span>
                           </div>
                           <div>
-                            <span className="font-medium">Período:</span>
-                            <span className="ml-2">{distribucionData.fechaDesde} - {distribucionData.fechaHasta}</span>
+                            <span className="font-semibold text-black">Período:</span>
+                            <span className="ml-2 text-black font-bold">{distribucionData.fechaDesde} - {distribucionData.fechaHasta}</span>
                           </div>
                         </div>
                       </div>
 
                       {/* Tabla de Distribución por Socios */}
                       <div>
-                        <h4 className="font-semibold text-gray-800 mb-4">Distribución por Socios</h4>
+                        <h4 className="font-bold text-black mb-5 text-lg">Distribución por Socios</h4>
                         <table className="w-full border-collapse border border-gray-300">
                           <thead>
                             <tr className="bg-gray-100">
-                              <th className="border border-gray-300 px-4 py-2 text-left">Socio</th>
-                              <th className="border border-gray-300 px-4 py-2 text-center">Porcentaje</th>
-                              <th className="border border-gray-300 px-4 py-2 text-center">Utilidad del Período</th>
-                              <th className="border border-gray-300 px-4 py-2 text-center">Utilidad Acumulada</th>
-                              <th className="border border-gray-300 px-4 py-2 text-center">Cuenta Adeudada</th>
-                              <th className="border border-gray-300 px-4 py-2 text-center">Saldo Neto</th>
+                              <th className="border border-gray-300 px-4 py-3 text-left font-bold text-black text-sm">Socio</th>
+                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-black text-sm">Porcentaje</th>
+                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-black text-sm">Utilidad del Período</th>
+                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-black text-sm">Utilidad Acumulada</th>
+                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-black text-sm">Cuenta Adeudada</th>
+                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-black text-sm">Saldo Neto</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -5583,12 +5663,12 @@ const InventarioDetalleNuevo = () => {
                               const saldoNeto = utilidadAcumulada - cuentaAdeudada;
                               return (
                                 <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                  <td className="border border-gray-300 px-4 py-2 font-medium text-gray-800">{socio.nombre || `Socio ${index + 1}`}</td>
-                                  <td className="border border-gray-300 px-4 py-2 text-center text-gray-800">{safeToFixed(socio.porcentaje, 2)}%</td>
-                                  <td className="border border-gray-300 px-4 py-2 text-right text-gray-800">{formatearMoneda(utilidadPeriodo)}</td>
-                                  <td className="border border-gray-300 px-4 py-2 text-right text-gray-800">{formatearMoneda(utilidadAcumulada)}</td>
-                                  <td className="border border-gray-300 px-4 py-2 text-right text-gray-800">{formatearMoneda(cuentaAdeudada)}</td>
-                                  <td className={`border border-gray-300 px-4 py-2 text-right font-semibold ${saldoNeto < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                  <td className="border border-gray-300 px-4 py-3 font-semibold text-black text-sm">{socio.nombre || `Socio ${index + 1}`}</td>
+                                  <td className="border border-gray-300 px-4 py-3 text-center text-black font-medium text-sm">{safeToFixed(socio.porcentaje, 2)}%</td>
+                                  <td className="border border-gray-300 px-4 py-3 text-right text-black font-medium text-sm">{formatearMoneda(utilidadPeriodo)}</td>
+                                  <td className="border border-gray-300 px-4 py-3 text-right text-black font-medium text-sm">{formatearMoneda(utilidadAcumulada)}</td>
+                                  <td className="border border-gray-300 px-4 py-3 text-right text-black font-medium text-sm">{formatearMoneda(cuentaAdeudada)}</td>
+                                  <td className={`border border-gray-300 px-4 py-3 text-right font-bold text-sm ${saldoNeto < 0 ? 'text-red-600' : 'text-green-600'}`}>
                                     {formatearMoneda(saldoNeto)}
                                   </td>
                                 </tr>
@@ -5646,11 +5726,10 @@ const InventarioDetalleNuevo = () => {
                       )}
                     </div>
                   </div>
-                )
-              ) : (
-                // Páginas de productos paginados
-                <div className="p-8 bg-white" style={{ fontFamily: 'Arial, sans-serif' }}>
-                  <div className="text-center mb-6">
+                ) : currentReportSection === 'productos' ? (
+                  // Páginas de productos paginados
+                  <div className="p-8 bg-white" style={{ fontFamily: 'Arial, sans-serif' }}>
+                    <div className="text-center mb-6">
                     <h2 className="text-xl font-bold text-gray-800 mb-2">Reporte de inventario</h2>
                     <h3 className="text-lg font-semibold text-gray-700">Ordenado por Nombre de artículo</h3>
                     <div className="text-right text-sm text-gray-600 mt-4">Rev. 13</div>
@@ -5659,38 +5738,38 @@ const InventarioDetalleNuevo = () => {
                   <div className="mb-6">
                     <div className="grid grid-cols-2 gap-8">
                       <div>
-                        <p><strong>Cliente:</strong> {sesion?.clienteNegocio?.nombre}</p>
-                        <p><strong>Inventario No:</strong> {sesion?.numeroSesion}</p>
+                        <p className="text-black"><strong>Cliente:</strong> {sesion?.clienteNegocio?.nombre}</p>
+                        <p className="text-black"><strong>Inventario No:</strong> {sesion?.numeroSesion}</p>
                       </div>
                       <div className="text-right">
-                        <p><strong>Fecha:</strong> {formatearFecha(sesion?.fecha)}</p>
+                        <p className="text-black"><strong>Fecha:</strong> {formatearFecha(sesion?.fecha)}</p>
                       </div>
                     </div>
                   </div>
 
                   <div className="mb-4">
-                    <p><strong>Observación:</strong></p>
+                    <p className="text-black"><strong>Observación:</strong></p>
                     <div className="border-b border-gray-300 h-4"></div>
                   </div>
 
-                  <table className="w-full text-xs border-collapse border border-gray-400">
+                  <table className="w-full text-sm border-collapse border border-gray-400">
                     <thead>
                       <tr className="bg-gray-100">
-                        <th className="border border-gray-400 px-2 py-1 text-left">ARTÍCULO</th>
-                        <th className="border border-gray-400 px-2 py-1 text-center">UNIDAD</th>
-                        <th className="border border-gray-400 px-2 py-1 text-center">CANTIDAD</th>
-                        <th className="border border-gray-400 px-2 py-1 text-center">COSTO</th>
-                        <th className="border border-gray-400 px-2 py-1 text-center">TOTAL</th>
+                        <th className="border border-gray-400 px-3 py-2 text-left font-bold text-black">ARTÍCULO</th>
+                        <th className="border border-gray-400 px-3 py-2 text-center font-bold text-black">UNIDAD</th>
+                        <th className="border border-gray-400 px-3 py-2 text-center font-bold text-black">CANTIDAD</th>
+                        <th className="border border-gray-400 px-3 py-2 text-center font-bold text-black">COSTO</th>
+                        <th className="border border-gray-400 px-3 py-2 text-center font-bold text-black">TOTAL</th>
                       </tr>
                     </thead>
                     <tbody>
                       {getProductosPaginados().map((producto, index) => (
                         <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                          <td className="border border-gray-400 px-2 py-1">{producto.nombreProducto}</td>
-                          <td className="border border-gray-400 px-2 py-1 text-center">{producto.unidadProducto || 'UDS'}</td>
-                          <td className="border border-gray-400 px-2 py-1 text-center">{producto.cantidadContada.toFixed(2)}</td>
-                          <td className="border border-gray-400 px-2 py-1 text-center">{producto.costoProducto.toFixed(2)}</td>
-                          <td className="border border-gray-400 px-2 py-1 text-center">{formatearMoneda(producto.valorTotal)}</td>
+                          <td className="border border-gray-400 px-3 py-2 text-black font-medium">{producto.nombreProducto}</td>
+                          <td className="border border-gray-400 px-3 py-2 text-center text-black">{producto.unidadProducto || 'UDS'}</td>
+                          <td className="border border-gray-400 px-3 py-2 text-center text-black font-medium">{producto.cantidadContada.toFixed(2)}</td>
+                          <td className="border border-gray-400 px-3 py-2 text-center text-black font-medium">{producto.costoProducto.toFixed(2)}</td>
+                          <td className="border border-gray-400 px-3 py-2 text-center text-black font-semibold">{formatearMoneda(producto.valorTotal)}</td>
                         </tr>
                       ))}
 
@@ -5708,71 +5787,71 @@ const InventarioDetalleNuevo = () => {
                   </table>
 
                   <div className="mt-4 text-right">
-                    <p className="text-sm">
-                      <strong>Líneas {((currentReportPage - 2) * 45) + 1} a {Math.min((currentReportPage - 1) * 45, productosContados.length)}</strong>
+                    <p className="text-sm text-black font-semibold">
+                      Líneas {(currentReportPage * PRODUCTOS_POR_PAGINA) + 1} a {Math.min((currentReportPage + 1) * PRODUCTOS_POR_PAGINA, productosContados.length)}
                     </p>
-                    {currentReportPage === getTotalPaginas() - 2 && (
-                      <div className="mt-2 space-y-1">
-                        <p><strong>Total Página:</strong> {formatearMoneda(getProductosPaginados().reduce((sum, p) => sum + (Number(p.valorTotal) || 0), 0))}</p>
-                        <p><strong>Total Reporte:</strong> {formatearMoneda(valorTotal)}</p>
-                      </div>
-                    )}
+                    <div className="mt-2 space-y-1">
+                      <p className="text-sm text-black font-bold">Total Página: {formatearMoneda(getProductosPaginados().reduce((sum, p) => sum + (Number(p.valorTotal) || 0), 0))}</p>
+                      <p className="text-sm text-black font-bold">Total Reporte: {formatearMoneda(valorTotal)}</p>
+                    </div>
                   </div>
 
-                  <div className="mt-8 text-center text-sm text-gray-600">
-                    <p className="font-semibold">
+                  <div className="mt-8 text-center text-sm">
+                    <p className="font-semibold text-black">
                       {user?.rol === 'contador' || user?.rol === 'contable' ? 'Contador' : 'Usuario'} {user?.nombre?.toUpperCase() || 'USUARIO SISTEMA'}
                     </p>
-                    <p>Teléfono: {user?.telefono || user?.phone || 'No disponible'}</p>
-                    <p className="text-right text-xs mt-4">Pág. {currentReportPage} de {getTotalPaginas()}</p>
+                    <p className="text-black">Teléfono: {user?.telefono || user?.phone || 'No disponible'}</p>
+                    <p className="text-right text-xs mt-4 text-black font-semibold">Pág. {currentReportPage + 1} de {getTotalPaginasProductos()}</p>
                   </div>
                 </div>
-              )}
+              ) : null}
             </div>
 
-            {/* Navegación */}
-            <div className="flex justify-between items-center p-6 border-t bg-gray-50">
-              <button
-                onClick={() => setCurrentReportPage(prev => Math.max(1, prev - 1))}
-                disabled={currentReportPage === 1}
-                className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-500 shadow-md hover:shadow-lg transform hover:scale-105 disabled:transform-none"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Anterior</span>
-              </button>
+            {/* Navegación - Solo mostrar si estamos en productos y hay más de una página */}
+            {currentReportSection === 'productos' && tieneMasDeUnaPaginaProductos() && (
+              <div className="flex justify-between items-center p-6 border-t-2 border-gray-200 bg-gray-50">
+                <button
+                  onClick={() => setCurrentReportPage(prev => Math.max(0, prev - 1))}
+                  disabled={currentReportPage === 0}
+                  className="flex items-center space-x-3 px-8 py-4 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white rounded-lg font-bold text-base transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-500 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                  <span>Anterior</span>
+                </button>
 
-              <div className="flex items-center space-x-4">
-                <span className="text-sm font-medium text-gray-700 bg-white px-4 py-2 rounded-lg border border-gray-200 shadow-sm">
-                  Página {currentReportPage} de {getTotalPaginas()}
-                </span>
+                <div className="flex items-center space-x-4">
+                  <span className="text-base font-bold text-gray-900 bg-white px-5 py-3 rounded-lg border-2 border-gray-300 shadow-md">
+                    Página {currentReportPage + 1} de {getTotalPaginasProductos()}
+                  </span>
 
-                {/* Indicador visual de progreso */}
-                <div className="flex space-x-1">
-                  {Array.from({ length: getTotalPaginas() }).map((_, index) => (
-                    <div
-                      key={index}
-                      className={`w-2 h-2 rounded-full transition-colors ${index + 1 === currentReportPage
-                        ? 'bg-teal-600'
-                        : index + 1 < currentReportPage
-                          ? 'bg-teal-300'
-                          : 'bg-gray-300'
-                        }`}
-                    />
-                  ))}
+                  {/* Indicador visual de progreso */}
+                  <div className="flex space-x-1">
+                    {Array.from({ length: getTotalPaginasProductos() }).map((_, index) => (
+                      <div
+                        key={index}
+                        className={`w-2 h-2 rounded-full transition-colors ${index === currentReportPage
+                          ? 'bg-teal-600'
+                          : index < currentReportPage
+                            ? 'bg-teal-300'
+                            : 'bg-gray-300'
+                          }`}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <button
-                onClick={() => setCurrentReportPage(prev => Math.min(getTotalPaginas(), prev + 1))}
-                disabled={currentReportPage === getTotalPaginas()}
-                className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white rounded-lg font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-500 shadow-md hover:shadow-lg transform hover:scale-105 disabled:transform-none"
-              >
-                <span>Siguiente</span>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            </div>
+                <button
+                  onClick={() => setCurrentReportPage(prev => Math.min(getTotalPaginasProductos() - 1, prev + 1))}
+                  disabled={currentReportPage === getTotalPaginasProductos() - 1}
+                  className="flex items-center space-x-3 px-8 py-4 bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white rounded-lg font-bold text-base transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-500 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none"
+                >
+                  <span>Siguiente</span>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

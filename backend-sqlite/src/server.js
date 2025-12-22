@@ -87,16 +87,26 @@ if (config.isDevelopment) {
   }))
 }
 
-// Rate limiting - Desactivar en desarrollo para depuración
+// Rate limiting - Configuración mejorada
 const limiter = rateLimit({
-  windowMs: config.rateLimit.windowMs,
-  max: config.isDevelopment ? 10000 : config.rateLimit.maxRequests,
-  message: { exito: false, mensaje: 'Demasiadas solicitudes, intente más tarde' },
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: config.isDevelopment ? 10000 : 2000, // Mucho más alto en desarrollo, alto en producción
+  message: "Demasiadas solicitudes, intenta más tarde",
   standardHeaders: true,
   legacyHeaders: false,
-})
+  skip: (req) => {
+    // Saltar rate limiting para rutas de salud en desarrollo
+    return config.isDevelopment && req.path.includes('/salud')
+  }
+});
 
-app.use('/api/', limiter)
+// Aplicar rate limiting solo si no estamos en desarrollo o con límites más altos
+if (!config.isDevelopment) {
+  app.use('/api/', limiter)
+} else {
+  // En desarrollo, usar límites muy altos pero mantener la protección básica
+  app.use('/api/', limiter)
+}
 
 // ===== RUTAS =====
 

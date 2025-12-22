@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   View,
   Text,
@@ -14,7 +14,18 @@ import { LinearGradient } from 'expo-linear-gradient'
 const { width, height } = Dimensions.get('window')
 
 const InventoryReportModal = ({ visible, onClose, sesionData, productosContados, datosFinancieros, contadorData, user }) => {
-  const [currentPage, setCurrentPage] = useState(0)
+  const [currentSection, setCurrentSection] = useState('portada') // 'portada', 'productos', 'distribucion', 'balance'
+  const [currentPage, setCurrentPage] = useState(0) // Para paginación dentro de productos
+  const [showMenu, setShowMenu] = useState(false)
+
+  // Resetear a portada cuando se abre el modal
+  useEffect(() => {
+    if (visible) {
+      setCurrentSection('portada')
+      setCurrentPage(0)
+      setShowMenu(false)
+    }
+  }, [visible])
   
   // Calcular total de páginas dinámicamente (44 en la primera, 51 en las siguientes)
   const getTotalPages = () => {
@@ -193,14 +204,13 @@ const InventoryReportModal = ({ visible, onClose, sesionData, productosContados,
 
   // Obtener productos paginados (44 en primera hoja, 51 en siguientes)
   const getProductosPaginados = () => {
-    const paginaProducto = currentPage - 1 // -1 porque la portada es página 0
-    if (paginaProducto < 0) return []
-    if (paginaProducto === 0) {
+    if (currentPage < 0) return []
+    if (currentPage === 0) {
       const inicio = 0
       const fin = Math.min(44, validProductos.length)
       return validProductos.slice(inicio, fin)
     }
-    const inicio = 44 + (paginaProducto - 1) * 51
+    const inicio = 44 + (currentPage - 1) * 51
     const fin = inicio + 51
     return validProductos.slice(inicio, fin)
   }
@@ -212,17 +222,16 @@ const InventoryReportModal = ({ visible, onClose, sesionData, productosContados,
     return 1 + Math.ceil((total - 44) / 51)
   }
 
-  const esUltimaPaginaProductos = () => {
-    return currentPage === getTotalPaginasProductos()
+  const tieneMasDeUnaPagina = () => {
+    return getTotalPaginasProductos() > 1
   }
 
   // Página 1+: Lista de productos con paginación
   const renderPage1 = () => {
     const productosPagina = getProductosPaginados()
-    const paginaProducto = currentPage - 1
-    const esPrimeraPagina = currentPage === 1
+    const esPrimeraPagina = currentPage === 0
     const filasObjetivo = esPrimeraPagina ? 44 : 51
-    const inicioBase = esPrimeraPagina ? 0 : 44 + (paginaProducto - 1) * 51
+    const inicioBase = esPrimeraPagina ? 0 : 44 + (currentPage - 1) * 51
     const lineaInicio = inicioBase + 1
     const lineaFin = Math.min(inicioBase + productosPagina.length, validProductos.length)
     
@@ -250,7 +259,7 @@ const InventoryReportModal = ({ visible, onClose, sesionData, productosContados,
             <View style={styles.pageHeader}>
               <Text style={styles.reportTitleMain}>Reporte de inventario</Text>
               <Text style={styles.reportSubtitle}>Ordenado por Nombre de artículo</Text>
-              <Text style={styles.revNumber}>Rev. {currentPage}</Text>
+              <Text style={styles.revNumber}>Rev. {currentPage + 1}</Text>
             </View>
 
             <View style={styles.clientInfoSection}>
@@ -327,7 +336,7 @@ const InventoryReportModal = ({ visible, onClose, sesionData, productosContados,
               </Text>
               <Text style={styles.footerPhone}>Teléfono {user?.telefono || user?.phone || 'No disponible'}</Text>
             </View>
-            <Text style={styles.footerPageNumber}>Pag. {currentPage + 1}/ {totalPages}</Text>
+            <Text style={styles.footerPageNumber}>Pag. {currentPage + 1}/ {getTotalPaginasProductos()}</Text>
           </View>
         </View>
       </ScrollView>
@@ -471,7 +480,7 @@ const InventoryReportModal = ({ visible, onClose, sesionData, productosContados,
             <Text style={styles.balanceLabel}>EFECTIVO Y CAJA</Text>
             <Text style={styles.balanceValue}>RD$ {financialData.efectivoEnCajaYBancoTotal.toFixed(2)}</Text>
           </View>
-          {financialData.efectivoEnCajaYBanco.length > 1 && (
+          {financialData.efectivoEnCajaYBanco.length > 0 && (
             <View style={styles.balanceSubItems}>
               {financialData.efectivoEnCajaYBanco.map((efectivo, index) => (
                 <Text key={index} style={styles.balanceSubText}>
@@ -484,7 +493,7 @@ const InventoryReportModal = ({ visible, onClose, sesionData, productosContados,
             <Text style={styles.balanceLabel}>CUENTAS POR COBRAR</Text>
             <Text style={styles.balanceValue}>RD$ {financialData.cuentasPorCobrarTotal.toFixed(2)}</Text>
           </View>
-          {financialData.cuentasPorCobrar.length > 1 && (
+          {financialData.cuentasPorCobrar.length > 0 && (
             <View style={styles.balanceSubItems}>
               {financialData.cuentasPorCobrar.map((cuenta, index) => (
                 <Text key={index} style={styles.balanceSubText}>
@@ -501,7 +510,7 @@ const InventoryReportModal = ({ visible, onClose, sesionData, productosContados,
             <Text style={styles.balanceLabel}>DEUDA A NEGOCIO</Text>
             <Text style={styles.balanceValue}>RD$ {financialData.deudaANegocioTotal.toFixed(2)}</Text>
           </View>
-          {financialData.deudaANegocio.length > 1 && (
+          {financialData.deudaANegocio.length > 0 && (
             <View style={styles.balanceSubItems}>
               {financialData.deudaANegocio.map((deuda, index) => (
                 <Text key={index} style={styles.balanceSubText}>
@@ -540,7 +549,7 @@ const InventoryReportModal = ({ visible, onClose, sesionData, productosContados,
             <Text style={styles.balanceLabel}>CUENTAS POR PAGAR</Text>
             <Text style={styles.balanceValue}>RD$ {financialData.cuentasPorPagarTotal.toFixed(2)}</Text>
           </View>
-          {financialData.cuentasPorPagar.length > 1 && (
+          {financialData.cuentasPorPagar.length > 0 && (
             <View style={styles.balanceSubItems}>
               {financialData.cuentasPorPagar.map((cuenta, index) => (
                 <Text key={index} style={styles.balanceSubText}>
@@ -575,7 +584,7 @@ const InventoryReportModal = ({ visible, onClose, sesionData, productosContados,
               <Text style={styles.balanceLabel}>GASTOS GENERALES</Text>
               <Text style={[styles.balanceValue, styles.gastoValue]}>RD$ {financialData.gastosGeneralesTotal.toFixed(2)}</Text>
             </View>
-            {financialData.gastosGenerales.length > 1 && (
+            {financialData.gastosGenerales.length > 0 && (
               <View style={styles.balanceSubItems}>
                 {financialData.gastosGenerales.map((gasto, index) => (
                   <Text key={index} style={[styles.balanceSubText, styles.gastoValue]}>
@@ -598,24 +607,37 @@ const InventoryReportModal = ({ visible, onClose, sesionData, productosContados,
 
 
   const renderCurrentPage = () => {
-    const PRODUCTOS_POR_PAGINA = 44
-    const paginasProductos = Math.ceil(validProductos.length / PRODUCTOS_POR_PAGINA)
-    
-    if (currentPage === 0) {
-      // Página 0: Portada
+    if (currentSection === 'portada') {
       return renderPortada()
-    } else if (currentPage >= 1 && currentPage <= paginasProductos) {
-      // Páginas 1 a N: Productos
+    } else if (currentSection === 'productos') {
       return renderPage1()
-    } else if (currentPage === paginasProductos + 1) {
-      // Página N+1: Balance
+    } else if (currentSection === 'balance') {
       return renderPage3()
-    } else if (currentPage === paginasProductos + 2) {
-      // Página N+2: Distribución
+    } else if (currentSection === 'distribucion') {
       return renderPage2()
     } else {
       return renderPortada()
     }
+  }
+
+  const handleSectionChange = (section) => {
+    setCurrentSection(section)
+    setCurrentPage(0) // Resetear página cuando cambias de sección
+    setShowMenu(false) // Cerrar menú
+  }
+
+  const getPageInfo = () => {
+    if (currentSection === 'portada') {
+      return { current: 1, total: 1, label: 'Portada' }
+    } else if (currentSection === 'productos') {
+      const total = getTotalPaginasProductos()
+      return { current: currentPage + 1, total, label: 'Listado de Productos' }
+    } else if (currentSection === 'balance') {
+      return { current: 1, total: 1, label: 'Balance General' }
+    } else if (currentSection === 'distribucion') {
+      return { current: 1, total: 1, label: 'Distribución de Saldo' }
+    }
+    return { current: 1, total: 1, label: '' }
   }
 
   return (
@@ -634,11 +656,58 @@ const InventoryReportModal = ({ visible, onClose, sesionData, productosContados,
                 <Ionicons name="document-text" size={24} color="#ffffff" />
                 <Text style={styles.modalTitle}>Reporte de Inventario</Text>
               </View>
-              <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-                <Ionicons name="close" size={24} color="#ffffff" />
-              </TouchableOpacity>
+              <View style={styles.headerRight}>
+                {/* Menú de navegación */}
+                <TouchableOpacity 
+                  style={styles.menuButton}
+                  onPress={() => setShowMenu(!showMenu)}
+                >
+                  <Ionicons name="menu" size={24} color="#ffffff" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+                  <Ionicons name="close" size={24} color="#ffffff" />
+                </TouchableOpacity>
+              </View>
             </View>
-            <Text style={styles.pageIndicator}>Página {currentPage + 1} de {totalPages}</Text>
+            {showMenu && (
+              <View style={styles.menuDropdown}>
+                <TouchableOpacity 
+                  style={[styles.menuItem, currentSection === 'productos' && styles.menuItemActive]}
+                  onPress={() => handleSectionChange('productos')}
+                >
+                  <Ionicons name="list" size={20} color={currentSection === 'productos' ? '#14b8a6' : '#374151'} style={{ marginRight: 12 }} />
+                  <Text style={[styles.menuItemText, currentSection === 'productos' && styles.menuItemTextActive]}>
+                    Ver Listado de Productos
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.menuItem, currentSection === 'distribucion' && styles.menuItemActive]}
+                  onPress={() => handleSectionChange('distribucion')}
+                >
+                  <Ionicons name="pie-chart" size={20} color={currentSection === 'distribucion' ? '#14b8a6' : '#374151'} style={{ marginRight: 12 }} />
+                  <Text style={[styles.menuItemText, currentSection === 'distribucion' && styles.menuItemTextActive]}>
+                    Ver Distribución de Saldo
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.menuItem, currentSection === 'balance' && styles.menuItemActive]}
+                  onPress={() => handleSectionChange('balance')}
+                >
+                  <Ionicons name="calculator" size={20} color={currentSection === 'balance' ? '#14b8a6' : '#374151'} style={{ marginRight: 12 }} />
+                  <Text style={[styles.menuItemText, currentSection === 'balance' && styles.menuItemTextActive]}>
+                    Balance General
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {(() => {
+              const pageInfo = getPageInfo()
+              return (
+                <Text style={styles.pageIndicator}>
+                  {pageInfo.label} {pageInfo.total > 1 ? `- Página ${pageInfo.current} de ${pageInfo.total}` : ''}
+                </Text>
+              )
+            })()}
           </LinearGradient>
 
           {/* Content */}
@@ -646,37 +715,39 @@ const InventoryReportModal = ({ visible, onClose, sesionData, productosContados,
             {renderCurrentPage()}
           </View>
 
-          {/* Footer Navigation */}
-          <View style={styles.footer}>
-            <TouchableOpacity 
-              style={[styles.navButton, currentPage === 0 && styles.navButtonDisabled]}
-              onPress={() => setCurrentPage(Math.max(0, currentPage - 1))}
-              disabled={currentPage === 0}
-            >
-              <Ionicons name="chevron-back" size={16} color={currentPage === 0 ? "#9ca3af" : "#ffffff"} />
-              <Text style={[styles.navButtonText, currentPage === 0 && styles.navButtonTextDisabled]}>Anterior</Text>
-            </TouchableOpacity>
+          {/* Footer Navigation - Solo mostrar si estamos en productos y hay más de una página */}
+          {currentSection === 'productos' && tieneMasDeUnaPagina() && (
+            <View style={styles.footer}>
+              <TouchableOpacity 
+                style={[styles.navButton, currentPage === 0 && styles.navButtonDisabled]}
+                onPress={() => setCurrentPage(Math.max(0, currentPage - 1))}
+                disabled={currentPage === 0}
+              >
+                <Ionicons name="chevron-back" size={18} color={currentPage === 0 ? "#9ca3af" : "#ffffff"} />
+                <Text style={[styles.navButtonText, currentPage === 0 && styles.navButtonTextDisabled]}>Anterior</Text>
+              </TouchableOpacity>
 
-            <View style={styles.pageIndicatorContainer}>
-              {[0, 1, 2, 3].map((page) => (
-                <TouchableOpacity
-                  key={page}
-                  style={[styles.pageIndicatorDot, currentPage === page && styles.pageIndicatorDotActive]}
-                  onPress={() => setCurrentPage(page)}
-                />
-              ))}
-              <Text style={styles.pageText}>Página {currentPage + 1} de {totalPages}</Text>
+              <View style={styles.pageIndicatorContainer}>
+                {Array.from({ length: getTotalPaginasProductos() }).map((_, page) => (
+                  <TouchableOpacity
+                    key={page}
+                    style={[styles.pageIndicatorDot, currentPage === page && styles.pageIndicatorDotActive]}
+                    onPress={() => setCurrentPage(page)}
+                  />
+                ))}
+                <Text style={styles.pageText}>Página {currentPage + 1} de {getTotalPaginasProductos()}</Text>
+              </View>
+
+              <TouchableOpacity 
+                style={[styles.navButton, currentPage === getTotalPaginasProductos() - 1 && styles.navButtonDisabled]}
+                onPress={() => setCurrentPage(Math.min(getTotalPaginasProductos() - 1, currentPage + 1))}
+                disabled={currentPage === getTotalPaginasProductos() - 1}
+              >
+                <Text style={[styles.navButtonText, currentPage === getTotalPaginasProductos() - 1 && styles.navButtonTextDisabled]}>Siguiente</Text>
+                <Ionicons name="chevron-forward" size={18} color={currentPage === getTotalPaginasProductos() - 1 ? "#9ca3af" : "#ffffff"} />
+              </TouchableOpacity>
             </View>
-
-            <TouchableOpacity 
-              style={[styles.navButton, currentPage === 3 && styles.navButtonDisabled]}
-              onPress={() => setCurrentPage(Math.min(3, currentPage + 1))}
-              disabled={currentPage === 3}
-            >
-              <Text style={[styles.navButtonText, currentPage === 3 && styles.navButtonTextDisabled]}>Siguiente</Text>
-              <Ionicons name="chevron-forward" size={16} color={currentPage === 3 ? "#9ca3af" : "#ffffff"} />
-            </TouchableOpacity>
-          </View>
+          )}
         </View>
       </View>
     </Modal>
@@ -691,11 +762,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContainer: {
-    width: width * 0.95,
-    height: height * 0.9,
+    width: width * 0.98,
+    height: height * 0.95,
     backgroundColor: '#ffffff',
     borderRadius: 20,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
   },
   modalHeader: {
     paddingVertical: 15,
@@ -709,6 +785,44 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  menuButton: {
+    padding: 5,
+    marginRight: 10,
+  },
+  menuDropdown: {
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    marginTop: 10,
+    paddingVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  menuItemActive: {
+    backgroundColor: '#f0fdfa',
+  },
+  menuItemText: {
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '500',
+    fontFamily: 'System',
+  },
+  menuItemTextActive: {
+    color: '#14b8a6',
+    fontWeight: '700',
   },
   modalTitle: {
     fontSize: 18,
@@ -731,33 +845,38 @@ const styles = StyleSheet.create({
   },
   pageContent: {
     flex: 1,
-    padding: 15,
+    padding: 20,
   },
   pageHeader: {
     marginBottom: 15,
   },
   clientName: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold',
-    color: '#1f2937',
+    color: '#000000',
+    fontFamily: 'System',
   },
   inventoryNumber: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold',
-    color: '#1f2937',
+    color: '#000000',
+    fontFamily: 'System',
   },
   date: {
-    fontSize: 14,
-    color: '#1f2937',
+    fontSize: 15,
+    color: '#000000',
     position: 'absolute',
     right: 0,
     top: 0,
+    fontFamily: 'System',
+    fontWeight: '500',
   },
   observationTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold',
-    color: '#1f2937',
+    color: '#000000',
     marginBottom: 15,
+    fontFamily: 'System',
   },
   table: {
     borderWidth: 1,
@@ -766,15 +885,16 @@ const styles = StyleSheet.create({
   tableHeader: {
     flexDirection: 'row',
     backgroundColor: '#f3f4f6',
-    borderBottomWidth: 1,
+    borderBottomWidth: 2,
     borderBottomColor: '#d1d5db',
   },
   tableHeaderText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 'bold',
-    color: '#1f2937',
-    padding: 8,
+    color: '#000000',
+    padding: 10,
     textAlign: 'center',
+    fontFamily: 'System',
   },
   tableRow: {
     flexDirection: 'row',
@@ -782,10 +902,12 @@ const styles = StyleSheet.create({
     borderBottomColor: '#e5e7eb',
   },
   tableCell: {
-    fontSize: 9,
-    color: '#374151',
-    padding: 6,
+    fontSize: 11,
+    color: '#000000',
+    padding: 8,
     textAlign: 'center',
+    fontFamily: 'System',
+    fontWeight: '400',
   },
   col1: { flex: 3 },
   col2: { flex: 1.5 },
@@ -797,34 +919,41 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   companyName: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 5,
+    color: '#000000',
+    marginBottom: 6,
+    fontFamily: 'System',
   },
   reportTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 5,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000000',
+    marginBottom: 6,
+    fontFamily: 'System',
   },
   reportDate: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginBottom: 2,
+    fontSize: 14,
+    color: '#000000',
+    marginBottom: 3,
+    fontFamily: 'System',
+    fontWeight: '500',
   },
   currency: {
-    fontSize: 12,
-    color: '#6b7280',
+    fontSize: 14,
+    color: '#000000',
+    fontFamily: 'System',
+    fontWeight: '500',
   },
   section: {
     marginBottom: 20,
   },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 10,
+    color: '#000000',
+    marginBottom: 12,
+    fontFamily: 'System',
   },
   infoRow: {
     flexDirection: 'row',
@@ -832,13 +961,16 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   infoLabel: {
-    fontSize: 12,
-    color: '#374151',
+    fontSize: 13,
+    color: '#000000',
+    fontWeight: '600',
+    fontFamily: 'System',
   },
   infoValue: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#1f2937',
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#000000',
+    fontFamily: 'System',
   },
   distributionTable: {
     borderWidth: 1,
@@ -852,11 +984,12 @@ const styles = StyleSheet.create({
   },
   distributionHeaderText: {
     flex: 1,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: 'bold',
-    color: '#1f2937',
-    padding: 6,
+    color: '#000000',
+    padding: 10,
     textAlign: 'center',
+    fontFamily: 'System',
   },
   distributionRow: {
     flexDirection: 'row',
@@ -865,10 +998,12 @@ const styles = StyleSheet.create({
   },
   distributionCell: {
     flex: 1,
-    fontSize: 9,
-    color: '#374151',
-    padding: 6,
+    fontSize: 11,
+    color: '#000000',
+    padding: 8,
     textAlign: 'center',
+    fontFamily: 'System',
+    fontWeight: '400',
   },
   totalRow: {
     backgroundColor: '#f9fafb',
@@ -905,11 +1040,12 @@ const styles = StyleSheet.create({
     borderBottomColor: '#2563eb',
   },
   balanceSubtitle: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: 'bold',
-    color: '#374151',
-    marginTop: 10,
-    marginBottom: 5,
+    color: '#000000',
+    marginTop: 12,
+    marginBottom: 6,
+    fontFamily: 'System',
   },
   balanceItem: {
     flexDirection: 'row',
@@ -917,14 +1053,18 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   balanceLabel: {
-    fontSize: 10,
-    color: '#374151',
+    fontSize: 12,
+    color: '#000000',
     flex: 1,
+    fontWeight: '600',
+    fontFamily: 'System',
   },
   balanceValue: {
-    fontSize: 10,
-    color: '#1f2937',
+    fontSize: 12,
+    color: '#000000',
     textAlign: 'right',
+    fontWeight: '600',
+    fontFamily: 'System',
   },
   gastoValue: {
     color: '#dc2626', // Color rojo para gastos
@@ -936,16 +1076,18 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   balanceTotalLabel: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 'bold',
-    color: '#1f2937',
+    color: '#000000',
     flex: 1,
+    fontFamily: 'System',
   },
   balanceTotalValue: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 'bold',
-    color: '#1f2937',
+    color: '#000000',
     textAlign: 'right',
+    fontFamily: 'System',
   },
   grandTotalItem: {
     borderTopWidth: 2,
@@ -954,16 +1096,18 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   balanceGrandTotalLabel: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: 'bold',
-    color: '#1f2937',
+    color: '#000000',
     flex: 1,
+    fontFamily: 'System',
   },
   balanceGrandTotalValue: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: 'bold',
-    color: '#1f2937',
+    color: '#000000',
     textAlign: 'right',
+    fontFamily: 'System',
   },
   ventasSection: {
     marginTop: 15,
@@ -972,36 +1116,46 @@ const styles = StyleSheet.create({
     borderTopColor: '#e5e7eb',
   },
   percentageText: {
-    fontSize: 9,
-    color: '#2563eb',
-    marginTop: 2,
+    fontSize: 11,
+    color: '#000000',
+    marginTop: 3,
+    fontWeight: '600',
+    fontFamily: 'System',
   },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
+    paddingHorizontal: 25,
+    paddingVertical: 18,
+    borderTopWidth: 2,
+    borderTopColor: '#d1d5db',
     backgroundColor: '#f9fafb',
   },
   navButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#14b8a6',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
   },
   navButtonDisabled: {
     backgroundColor: '#e5e7eb',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   navButtonText: {
     color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '600',
-    marginHorizontal: 4,
+    fontSize: 14,
+    fontWeight: '700',
+    marginHorizontal: 6,
+    fontFamily: 'System',
   },
   navButtonTextDisabled: {
     color: '#9ca3af',
@@ -1011,19 +1165,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pageIndicatorDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: '#d1d5db',
-    marginHorizontal: 3,
+    marginHorizontal: 4,
   },
   pageIndicatorActive: {
     backgroundColor: '#14b8a6',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
   },
   pageText: {
-    fontSize: 10,
-    color: '#6b7280',
-    marginLeft: 8,
+    fontSize: 13,
+    color: '#374151',
+    marginLeft: 10,
+    fontWeight: '600',
+    fontFamily: 'System',
   },
   detailItem: {
     backgroundColor: '#f9fafb',
@@ -1083,10 +1242,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   balanceSubText: {
-    fontSize: 9,
-    color: '#6b7280',
-    marginBottom: 2,
+    fontSize: 11,
+    color: '#000000',
+    marginBottom: 3,
     fontStyle: 'italic',
+    fontFamily: 'System',
+    fontWeight: '400',
   },
   debtDetailItem: {
     backgroundColor: '#fef2f2',
@@ -1113,14 +1274,18 @@ const styles = StyleSheet.create({
     color: '#dc2626',
   },
   debtDescription: {
-    fontSize: 10,
-    color: '#6b7280',
-    marginBottom: 2,
+    fontSize: 12,
+    color: '#000000',
+    marginBottom: 3,
+    fontFamily: 'System',
+    fontWeight: '400',
   },
   debtType: {
-    fontSize: 9,
-    color: '#9ca3af',
+    fontSize: 11,
+    color: '#000000',
     fontStyle: 'italic',
+    fontFamily: 'System',
+    fontWeight: '400',
   },
   // Estilos de Portada
   portadaContainer: {
@@ -1207,17 +1372,20 @@ const styles = StyleSheet.create({
   },
   // Estilos de página de productos
   reportTitleMain: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#1f2937',
+    color: '#000000',
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
+    fontFamily: 'System',
   },
   reportSubtitle: {
-    fontSize: 14,
-    color: '#374151',
+    fontSize: 15,
+    color: '#000000',
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
+    fontFamily: 'System',
+    fontWeight: '500',
   },
   revNumber: {
     fontSize: 10,
@@ -1250,29 +1418,35 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   lineasText: {
-    fontSize: 10,
+    fontSize: 12,
     color: '#000000',
     flex: 1,
+    fontWeight: '600',
+    fontFamily: 'System',
   },
   totalesColumn: {
     alignItems: 'flex-end',
     flex: 1,
   },
   totalPaginaText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 'bold',
     color: '#000000',
-    marginBottom: 2,
+    marginBottom: 3,
+    fontFamily: 'System',
   },
   totalGeneralText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: 'bold',
     color: '#000000',
-    marginBottom: 2,
+    marginBottom: 3,
+    fontFamily: 'System',
   },
   lineasTotalText: {
-    fontSize: 9,
+    fontSize: 11,
     color: '#000000',
+    fontWeight: '500',
+    fontFamily: 'System',
   },
   separatorLine: {
     height: 2,
