@@ -87,7 +87,7 @@ const ProductosGeneralesModal = ({ isOpen, onClose, sesionId, clienteId }) => {
     }
   )
 
-  const productos = productosData?.productos || []
+  const productos = productosData?.datos || []
 
   const handleProductToggle = (productoId) => {
     setSelectedProducts(prev =>
@@ -145,7 +145,7 @@ const ProductosGeneralesModal = ({ isOpen, onClose, sesionId, clienteId }) => {
                 placeholder="Buscar productos generales..."
                 value={searchTerm}
                 onChange={handleSearch}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-900 placeholder-gray-500"
               />
             </div>
           </div>
@@ -169,7 +169,7 @@ const ProductosGeneralesModal = ({ isOpen, onClose, sesionId, clienteId }) => {
               placeholder="Ingrese código de barras..."
               value={barcodeSearch}
               onChange={(e) => setBarcodeSearch(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-900 placeholder-gray-500"
             />
           </div>
           <Button

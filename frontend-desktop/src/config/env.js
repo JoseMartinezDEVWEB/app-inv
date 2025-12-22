@@ -230,8 +230,8 @@ export const initConfig = async () => {
 // Getter para acceder a la configuración
 export const getConfig = () => {
   if (!configInstance) {
-    console.warn('⚠️ Configuración no inicializada. Llama a initConfig() primero.');
-    // Retornar configuración por defecto
+    // No mostrar warning en consola para evitar confusión - solo retornar valores por defecto
+    // Retornar configuración por defecto silenciosamente
     return {
       apiUrl: 'http://localhost:4000/api',
       wsUrl: 'http://localhost:4000',

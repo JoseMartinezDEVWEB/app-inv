@@ -16,18 +16,47 @@ import { productosApi } from '../../services/api';
 const ProductSearchModal = ({ visible, onClose, onSelectProduct, clienteId }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Buscar tanto productos del cliente como productos generales
+  // Cargar productos generales cuando se abre el modal (sin búsqueda o con menos de 3 caracteres)
+  const { data: generalProductsList, isLoading: loadingGeneralList, error: generalListError } = useQuery(
+    ['loadProductosGenerales', visible],
+    () => productosApi.getAllGenerales({ limite: 20, pagina: 1, soloActivos: true }),
+    {
+      select: (response) => {
+        // Backend SQLite devuelve: { exito: true, datos: { productos: [...], paginacion: {...} } }
+        return response.data?.datos?.productos || response.data?.productos || [];
+      },
+      enabled: Boolean(visible && searchTerm.length < 3),
+      retry: false,
+      staleTime: 30000,
+      onError: (error) => {
+        console.log('⚠️ Error cargando productos generales:', error.response?.status, error.message);
+      }
+    }
+  );
+
+  // Buscar productos del cliente cuando hay 3 o más caracteres
   const { data: clientProducts, isLoading: loadingClient, error: clientError } = useQuery(
     ['searchProductosCliente', clienteId, searchTerm],
-    () => productosApi.getByClient(clienteId, { buscar: searchTerm, limite: 10 }),
+    () => {
+      const searchTerm3 = searchTerm.trim().substring(0, 3);
+      return productosApi.getByClient(clienteId, { buscar: searchTerm3, limite: 10, soloActivos: true });
+    },
     {
-      select: (response) => response.data.datos?.productos || response.data.productos || [],
-      enabled: Boolean(searchTerm.length > 2 && visible && clienteId),
-      retry: false, // No reintentar para evitar loops
-      staleTime: 30000, // Mantener datos por 30 segundos
+      select: (response) => {
+        // Backend SQLite devuelve: { exito: true, datos: { productos: [...], paginacion: {...} } }
+        const productos = response.data?.datos?.productos || response.data?.productos || [];
+        // Filtrar productos que empiecen con las primeras 3 letras
+        return productos.filter(producto => {
+          const nombreProducto = (producto.nombre || '').toLowerCase();
+          const busqueda = searchTerm.trim().toLowerCase();
+          return nombreProducto.startsWith(busqueda.substring(0, 3));
+        });
+      },
+      enabled: Boolean(searchTerm.length >= 3 && visible && clienteId),
+      retry: false,
+      staleTime: 30000,
       onError: (error) => {
         console.log('⚠️ Error buscando productos del cliente:', error.response?.status, error.message);
-        // Si es 404, significa que no hay productos para este cliente, no es un error crítico
         if (error.response?.status !== 404) {
           console.error('❌ Error crítico en búsqueda de productos del cliente:', error);
         }
@@ -35,14 +64,27 @@ const ProductSearchModal = ({ visible, onClose, onSelectProduct, clienteId }) =>
     }
   );
 
+  // Buscar productos generales cuando hay 3 o más caracteres
   const { data: generalProducts, isLoading: loadingGeneral, error: generalError } = useQuery(
     ['searchProductosGenerales', searchTerm],
-    () => productosApi.getAll({ buscar: searchTerm, limite: 10 }),
+    () => {
+      const searchTerm3 = searchTerm.trim().substring(0, 3);
+      return productosApi.getAllGenerales({ buscar: searchTerm3, limite: 20, pagina: 1, soloActivos: true });
+    },
     {
-      select: (response) => response.data.datos?.productos || response.data.productos || [],
-      enabled: Boolean(searchTerm.length > 2 && visible),
-      retry: false, // No reintentar para evitar loops
-      staleTime: 30000, // Mantener datos por 30 segundos
+      select: (response) => {
+        // Backend SQLite devuelve: { exito: true, datos: { productos: [...], paginacion: {...} } }
+        const productos = response.data?.datos?.productos || response.data?.productos || [];
+        // Filtrar productos que empiecen con las primeras 3 letras
+        return productos.filter(producto => {
+          const nombreProducto = (producto.nombre || '').toLowerCase();
+          const busqueda = searchTerm.trim().toLowerCase();
+          return nombreProducto.startsWith(busqueda.substring(0, 3));
+        });
+      },
+      enabled: Boolean(searchTerm.length >= 3 && visible),
+      retry: false,
+      staleTime: 30000,
       onError: (error) => {
         console.log('⚠️ Error buscando productos generales:', error.response?.status, error.message);
         console.error('❌ Error en búsqueda de productos generales:', error);
@@ -50,24 +92,41 @@ const ProductSearchModal = ({ visible, onClose, onSelectProduct, clienteId }) =>
     }
   );
 
-  // Combinar resultados, priorizando productos del cliente
+  // Combinar resultados según el estado de búsqueda
   const searchResults = React.useMemo(() => {
     try {
-      const client = Array.isArray(clientProducts) ? clientProducts : [];
-      const general = Array.isArray(generalProducts) ? generalProducts : [];
-      
-      // Marcar productos del cliente vs generales
-      const clientMarked = client.map(p => ({ ...p, isClientProduct: true }));
-      const generalMarked = general.map(p => ({ ...p, isClientProduct: false }));
-      
-      return [...clientMarked, ...generalMarked];
+      if (searchTerm.length < 3) {
+        // Mostrar productos generales cuando no hay búsqueda o menos de 3 caracteres
+        const general = Array.isArray(generalProductsList) ? generalProductsList : [];
+        return general.map(p => ({ ...p, isClientProduct: false }));
+      } else {
+        // Buscar productos cuando hay 3 o más caracteres
+        const client = Array.isArray(clientProducts) ? clientProducts : [];
+        const general = Array.isArray(generalProducts) ? generalProducts : [];
+        
+        // Marcar productos del cliente vs generales
+        const clientMarked = client.map(p => ({ ...p, isClientProduct: true }));
+        const generalMarked = general.map(p => ({ ...p, isClientProduct: false }));
+        
+        // Combinar y eliminar duplicados
+        const todos = [...clientMarked, ...generalMarked];
+        const unicos = todos.filter((producto, index, self) =>
+          index === self.findIndex((p) => 
+            (p.nombre === producto.nombre) || 
+            (p._id === producto._id) || 
+            (p.id === producto.id)
+          )
+        );
+        
+        return unicos;
+      }
     } catch (error) {
       console.log('⚠️ Error combinando resultados de búsqueda:', error.message);
       return [];
     }
-  }, [clientProducts, generalProducts]);
+  }, [clientProducts, generalProducts, generalProductsList, searchTerm.length]);
 
-  const isLoading = loadingClient || loadingGeneral;
+  const isLoading = loadingClient || loadingGeneral || loadingGeneralList;
 
   useEffect(() => {
     if (!visible) {
@@ -140,13 +199,15 @@ const ProductSearchModal = ({ visible, onClose, onSelectProduct, clienteId }) =>
               ListEmptyComponent={
                 <View style={styles.emptyContainer}>
                   <Text style={styles.emptyText}>
-                    {(clientError || generalError) && searchTerm.length > 2 
-                      ? 'Error al buscar productos. Intenta de nuevo.' 
-                      : searchTerm.length > 2 
-                        ? 'No se encontraron productos.' 
-                        : 'Escribe al menos 3 letras para buscar.'}
+                    {searchTerm.length === 0
+                      ? '📦 Listado de productos generales'
+                      : searchTerm.length < 3
+                      ? 'Escribe al menos 3 caracteres para buscar'
+                      : (clientError || generalError)
+                      ? 'Error al buscar productos. Intenta de nuevo.'
+                      : 'No se encontraron productos.'}
                   </Text>
-                  {(clientError || generalError) && (
+                  {(clientError || generalError || generalListError) && (
                     <Text style={styles.errorText}>
                       {clientError && !generalError 
                         ? 'Buscando solo en productos generales...' 
@@ -154,6 +215,21 @@ const ProductSearchModal = ({ visible, onClose, onSelectProduct, clienteId }) =>
                     </Text>
                   )}
                 </View>
+              }
+              ListHeaderComponent={
+                searchTerm.length >= 3 && searchResults.length > 0 ? (
+                  <View style={styles.headerInfo}>
+                    <Text style={styles.headerInfoText}>
+                      🔍 Resultados: "{searchTerm}" ({searchResults.length})
+                    </Text>
+                  </View>
+                ) : searchTerm.length === 0 && searchResults.length > 0 ? (
+                  <View style={styles.headerInfo}>
+                    <Text style={styles.headerInfoText}>
+                      📦 Productos Generales ({searchResults.length})
+                    </Text>
+                  </View>
+                ) : null
               }
             />
           )}
@@ -183,6 +259,8 @@ const styles = StyleSheet.create({
   emptyContainer: { alignItems: 'center', marginTop: 50 },
   emptyText: { fontSize: 16, color: '#64748b' },
   errorText: { fontSize: 14, color: '#ef4444', marginTop: 8, textAlign: 'center' },
+  headerInfo: { backgroundColor: '#e0f2fe', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, marginBottom: 10 },
+  headerInfoText: { fontSize: 14, fontWeight: '600', color: '#0369a1' },
 });
 
 export default ProductSearchModal;

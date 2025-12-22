@@ -156,7 +156,7 @@ const ClientesScreen = ({ navigation }) => {
     }
     return (
       <FlatList
-        data={clientesData?.clientes || []}
+        data={clientesData?.datos || []}
         renderItem={({ item }) => (
           <ClienteCard 
             item={item} 

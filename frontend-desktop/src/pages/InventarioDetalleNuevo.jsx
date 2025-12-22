@@ -14,6 +14,35 @@ import { useAuth } from '../context/AuthContext'
 
 const PRODUCTOS_POR_PAGINA = 45
 
+// Helper para obtener el ID del cliente de la sesión
+const obtenerClienteId = (sesion) => {
+  if (!sesion) {
+    console.warn('⚠️ obtenerClienteId: sesion es null o undefined')
+    return null
+  }
+  
+  const clienteId = sesion?.clienteNegocio?.id || sesion?.clienteNegocio?._id || sesion?.clienteNegocioId
+  
+  if (!clienteId) {
+    console.warn('⚠️ obtenerClienteId: No se encontró clienteId')
+    console.warn('⚠️ sesion.clienteNegocio:', sesion.clienteNegocio)
+    console.warn('⚠️ sesion.clienteNegocioId:', sesion.clienteNegocioId)
+  }
+  
+  return clienteId
+}
+
+// Helper to highlight search terms
+const highlightMatch = (text, term) => {
+  if (!text || !term || term.length < 2) return text
+  const safeText = String(text)
+  const safeTerm = String(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape regex chars
+  const parts = safeText.split(new RegExp(`(${safeTerm})`, 'gi'))
+  return parts.map((part, i) =>
+    part.toLowerCase() === term.toLowerCase() ? <span key={i} className="bg-yellow-200 text-black font-bold px-0.5 rounded">{part}</span> : part
+  )
+}
+
 const InventarioDetalleNuevo = () => {
   // Obtener parámetros de la URL (ID de la sesión de inventario)
   const { id } = useParams()
@@ -81,6 +110,103 @@ const InventarioDetalleNuevo = () => {
   const [pendingProducts, setPendingProducts] = useState([])
   const [lastScannedTime, setLastScannedTime] = useState(0)
   const [lastScannedProduct, setLastScannedProduct] = useState(null)
+  // Estados para atajos de teclado
+  const [shortcutsActive, setShortcutsActive] = useState(false)
+  const [activeSection, setActiveSection] = useState(null) // 'financiera' | 'inventario' | null
+  
+  // Mapeo de atajos de teclado
+  const shortcutsMap = {
+    financiera: {
+      'F1': () => openFinancialModal('ventas'),
+      'F2': () => openFinancialModal('gastos'),
+      'F3': () => openFinancialModal('cuentasPorCobrar'),
+      'F4': () => openFinancialModal('cuentasPorPagar'),
+      'F5': () => openFinancialModal('efectivo'),
+      'F6': () => openFinancialModal('deudaANegocio'),
+      'F7': () => openFinancialModal('activosFijos'),
+      'F8': () => openFinancialModal('capital'),
+    },
+    inventario: {
+      'F1': () => openFinancialModal('imprimir'),
+      'F2': () => openFinancialModal('reporte'),
+      'F3': () => openFinancialModal('configuracion'),
+    },
+    global: {
+      'F9': () => {
+        if (productosContados.length === 0) {
+          toast.error('Agrega al menos un producto para guardar')
+          return
+        }
+        const zeroCost = productosContados.filter(p => (Number(p.costoProducto) || 0) === 0)
+        if (zeroCost.length > 0) {
+          const initial = {}
+          zeroCost.forEach(p => { initial[p.producto] = 0 })
+          setZeroCostEdits(initial)
+          setShowZeroCostModal(true)
+          return
+        }
+        completeMutation.mutate()
+      },
+      'F10': () => {
+        // Mostrar opciones de salir en lugar de salir directamente
+        setShowExitDropdown(true)
+      },
+      'F11': () => setShowMenuModal(!showMenuModal),
+      'Escape': () => {
+        if (selectedProducto) {
+          setSelectedProducto(null)
+          setNombreBusqueda('')
+          setCantidad('')
+          setCosto('')
+          toast.success('Producto quitado')
+        } else if (activeModal) {
+          closeFinancialModal()
+        } else if (showSearchModal) {
+          setShowSearchModal(false)
+        }
+      }
+    }
+  }
+  
+  // Manejar atajos de teclado
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ignorar si está escribiendo en un input
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        // Permitir ESC siempre
+        if (e.key === 'Escape') {
+          const handler = shortcutsMap.global['Escape']
+          if (handler) {
+            e.preventDefault()
+            handler()
+          }
+        }
+        return
+      }
+      
+      const key = e.key
+      const keyName = key.startsWith('F') ? key : key === 'Escape' ? 'Escape' : null
+      
+      if (!keyName) return
+      
+      // Verificar atajos globales primero
+      if (shortcutsMap.global[keyName]) {
+        e.preventDefault()
+        shortcutsMap.global[keyName]()
+        return
+      }
+      
+      // Verificar atajos de sección activa
+      if (activeSection && shortcutsMap[activeSection] && shortcutsMap[activeSection][keyName]) {
+        e.preventDefault()
+        shortcutsMap[activeSection][keyName]()
+        return
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [activeSection, selectedProducto, activeModal, showSearchModal, showMenuModal])
   // Estado para datos de nuevos productos
   const [newProductData, setNewProductData] = useState({
     nombre: '',
@@ -162,15 +288,31 @@ const InventarioDetalleNuevo = () => {
   }, [id])
 
   const cargarInvitaciones = async () => {
+    // Verificar si hay token antes de hacer la llamada
+    const token = localStorage.getItem('accessToken')
+    if (!token) {
+      return // No hacer la llamada si no hay token
+    }
+    
     try {
       const response = await invitacionesApi.listMine()
       setInvitaciones(response.data?.datos || [])
     } catch (error) {
-      console.error('Error al cargar invitaciones:', error)
+      // Solo mostrar error si no es 401 (no autenticado)
+      if (error.response?.status !== 401) {
+        console.error('Error al cargar invitaciones:', error)
+      }
+      // Silenciar errores 401 (no autenticado)
     }
   }
 
   const cargarColaboradoresConectados = async () => {
+    // Verificar si hay token antes de hacer la llamada
+    const token = localStorage.getItem('accessToken')
+    if (!token) {
+      return // No hacer la llamada si no hay token
+    }
+    
     try {
       const response = await solicitudesConexionApi.listarConectados(id)
       const colaboradores = response.data?.datos || []
@@ -189,7 +331,10 @@ const InventarioDetalleNuevo = () => {
             totalPendientes += productosOffline.length
           }
         } catch (error) {
-          console.error(`Error al cargar productos del colaborador ${colab._id}:`, error)
+          // Solo mostrar error si no es 401 (no autenticado)
+          if (error.response?.status !== 401) {
+            console.error(`Error al cargar productos del colaborador ${colab._id}:`, error)
+          }
         }
       }
 
@@ -203,14 +348,25 @@ const InventarioDetalleNuevo = () => {
         })
       }
     } catch (error) {
-      console.error('Error al cargar colaboradores:', error)
+      // Solo mostrar error si no es 401 (no autenticado)
+      if (error.response?.status !== 401) {
+        console.error('Error al cargar colaboradores:', error)
+      }
+      // Silenciar errores 401 (no autenticado)
     }
   }
 
   // Obtener sesión de inventario desde la API
   const { data: sesion, isLoading, refetch } = useQuery(
     ['sesion-inventario', id],
-    () => sesionesApi.getById(id).then((res) => res.data.datos?.sesion || res.data.sesion || res.data),
+    () => sesionesApi.getById(id).then((res) => {
+      // Backend SQLite devuelve: { exito: true, datos: sesion }
+      const sesionData = res.data.datos || res.data.sesion || res.data
+      console.log('📦 Sesión recibida:', sesionData)
+      console.log('📦 clienteNegocio:', sesionData?.clienteNegocio)
+      console.log('📦 clienteNegocioId:', sesionData?.clienteNegocioId)
+      return sesionData
+    }),
     {
       enabled: Boolean(id),
       onError: handleApiError,
@@ -296,7 +452,18 @@ const InventarioDetalleNuevo = () => {
   const addProductMutation = useMutation(
     (data) => sesionesApi.addProduct(id, data),
     {
-      onSuccess: () => {
+      onSuccess: async () => {
+        // Activar reloj si es el primer producto
+        const currentProductos = productosContados.length
+        if (currentProductos === 0) {
+          try {
+            await sesionesApi.resumeTimer(id)
+            toast.success('Reloj iniciado')
+          } catch (error) {
+            console.error('Error al iniciar reloj:', error)
+          }
+        }
+        
         refetch() // Refrescar datos de la sesión
         toast.success('Producto agregado')
         setSelectedProducto(null)
@@ -311,7 +478,21 @@ const InventarioDetalleNuevo = () => {
         setLastScannedProduct(null)
         searchInputRef.current?.focus()
       },
-      onError: handleApiError
+      onError: (error) => {
+        console.error('❌ Error agregando producto:', error)
+        console.error('❌ Detalles del error:', error.response?.data)
+        console.error('❌ Datos enviados:', error.config?.data)
+        
+        // Mensaje de error más específico
+        if (error.response?.status === 400) {
+          const mensaje = error.response?.data?.mensaje || 'Error al agregar producto'
+          toast.error(mensaje)
+        } else if (error.response?.status === 404) {
+          toast.error('Sesión o producto no encontrado')
+        } else {
+          handleApiError(error)
+        }
+      }
     }
   )
 
@@ -489,7 +670,11 @@ const InventarioDetalleNuevo = () => {
         if (productoExistente) {
           // Actualizar cantidad sumando
           const nuevaCantidad = (productoExistente.cantidadContada || 0) + Number(cantidadEditada)
-          await sesionesApi.updateProduct(id, productoExistente.productoId, {
+          const productoIdToUpdate = productoExistente.productoId || productoExistente.id || productoExistente._id
+          if (!productoIdToUpdate) {
+            throw new Error('No se pudo obtener el ID del producto contado')
+          }
+          await sesionesApi.updateProduct(id, productoIdToUpdate, {
             cantidadContada: nuevaCantidad,
             costoProducto: Number(productoData.costo) || 0
           })
@@ -504,7 +689,7 @@ const InventarioDetalleNuevo = () => {
             }
           } catch (error) {
             // Si no existe, crear uno nuevo
-            const nuevoProducto = await productosApi.createForCliente(sesion?.clienteNegocio?._id, {
+            const nuevoProducto = await productosApi.createForCliente(obtenerClienteId(sesion), {
               nombre: productoData.nombre,
               costo: Number(productoData.costo) || 0,
               unidad: 'unidad',
@@ -516,7 +701,7 @@ const InventarioDetalleNuevo = () => {
           // Agregar a la sesión
           if (productoClienteId) {
             await sesionesApi.addProduct(id, {
-              producto: productoClienteId,
+              productoClienteId: productoClienteId,
               cantidadContada: Number(cantidadEditada),
               costoProducto: Number(productoData.costo) || 0
             })
@@ -585,7 +770,11 @@ const InventarioDetalleNuevo = () => {
           )
 
           if (productoExistente) {
-            await sesionesApi.updateProduct(id, productoExistente.productoId, {
+            const productoIdToUpdate = productoExistente.productoId || productoExistente.id || productoExistente._id
+            if (!productoIdToUpdate) {
+              throw new Error('No se pudo obtener el ID del producto contado')
+            }
+            await sesionesApi.updateProduct(id, productoIdToUpdate, {
               cantidadContada: (productoExistente.cantidadContada || 0) + Number(productoData.cantidad || 1),
               costoProducto: Number(productoData.costo) || 0
             })
@@ -599,7 +788,7 @@ const InventarioDetalleNuevo = () => {
             } catch (e) { }
 
             if (!productoClienteId) {
-              const nuevo = await productosApi.createForCliente(sesion?.clienteNegocio?._id, {
+              const nuevo = await productosApi.createForCliente(obtenerClienteId(sesion), {
                 nombre: productoData.nombre,
                 costo: Number(productoData.costo) || 0,
                 unidad: 'unidad',
@@ -610,7 +799,7 @@ const InventarioDetalleNuevo = () => {
 
             if (productoClienteId) {
               await sesionesApi.addProduct(id, {
-                producto: productoClienteId,
+                productoClienteId: productoClienteId,
                 cantidadContada: Number(productoData.cantidad || 1),
                 costoProducto: Number(productoData.costo) || 0
               })
@@ -684,8 +873,22 @@ const InventarioDetalleNuevo = () => {
       setIsSearching(true)
       try {
         // Buscar directamente en productos generales
+        console.log('🔍 Buscando por código de barras:', codigoBarras)
         const generalResponse = await productosApi.buscarPorCodigoBarras(codigoBarras)
-        const productoGeneral = generalResponse.data.datos?.producto || generalResponse.data.producto
+        console.log('✅ Respuesta búsqueda código:', generalResponse.data)
+        
+        // Backend SQLite devuelve: { exito: true, datos: producto } o { exito: true, datos: { producto } }
+        let productoGeneral = generalResponse.data?.datos
+        
+        // Si datos es un objeto con propiedad producto, extraerlo
+        if (productoGeneral && productoGeneral.producto) {
+          productoGeneral = productoGeneral.producto
+        }
+        
+        // Asegurar que tenga _id para compatibilidad
+        if (productoGeneral && !productoGeneral._id && productoGeneral.id) {
+          productoGeneral._id = productoGeneral.id
+        }
 
         if (productoGeneral) {
           const now = Date.now()
@@ -756,50 +959,118 @@ const InventarioDetalleNuevo = () => {
     return () => clearTimeout(debounce)
   }, [codigoBarras, lastScannedProduct, lastScannedTime, pendingProducts])
 
-  // Buscar por nombre (modal)
+  // Cargar productos generales cuando se abre el modal (sin búsqueda o con menos de 3 caracteres)
+  useEffect(() => {
+    const loadGeneralProducts = async () => {
+      if (!showSearchModal) return
+
+      // Si hay búsqueda con 3 o más caracteres, no cargar productos generales aquí
+      if (nombreBusqueda.length >= 3) return
+
+      setIsSearching(true)
+      try {
+        // Cargar productos generales sin filtro de búsqueda
+        const generalesResponse = await productosApi.getAllGenerales({
+          limite: 20,
+          pagina: 1,
+          soloActivos: true
+        })
+        
+        // Backend SQLite devuelve: { exito: true, datos: { productos: [...], paginacion: {...} } }
+        const productosGenerales = generalesResponse.data?.datos?.productos || 
+                                   generalesResponse.data?.productos || 
+                                   []
+
+        setSearchResults(productosGenerales)
+      } catch (error) {
+        console.error('Error cargando productos generales:', error)
+        setSearchResults([])
+      } finally {
+        setIsSearching(false)
+      }
+    }
+
+    loadGeneralProducts()
+  }, [showSearchModal])
+
+  // Buscar por nombre (modal) - cuando hay 3 o más caracteres
   useEffect(() => {
     const searchByName = async () => {
-      if (!showSearchModal || nombreBusqueda.length < 2) {
-        if (showSearchModal && nombreBusqueda.length < 2) {
-          setSearchResults([])
+      if (!showSearchModal || nombreBusqueda.length < 3) {
+        if (showSearchModal && nombreBusqueda.length < 3 && nombreBusqueda.length > 0) {
+          // Si hay texto pero menos de 3 caracteres, mantener productos generales
+          return
         }
         return
       }
 
       setIsSearching(true)
       try {
-        // Buscar en productos generales
+        // Buscar en productos generales con las primeras 3 letras
+        const searchTerm = nombreBusqueda.trim().substring(0, 3)
+        console.log('🔍 Buscando por nombre (primeras 3 letras):', searchTerm)
+        
         const generalesResponse = await productosApi.getAllGenerales({
-          buscar: nombreBusqueda.trim(),
-          limite: 10,
-          pagina: 1
+          buscar: searchTerm,
+          limite: 20,
+          pagina: 1,
+          soloActivos: true
         })
-        const productosGenerales = generalesResponse.data.datos?.productos || []
+        
+        // Backend SQLite devuelve: { exito: true, datos: { productos: [...], paginacion: {...} } }
+        const productosGenerales = generalesResponse.data?.datos?.productos || 
+                                   generalesResponse.data?.productos || 
+                                   []
+
+        // Filtrar productos que empiecen con las primeras 3 letras (case insensitive)
+        const productosFiltrados = productosGenerales.filter(producto => {
+          const nombreProducto = (producto.nombre || '').toLowerCase()
+          const busqueda = nombreBusqueda.trim().toLowerCase()
+          return nombreProducto.startsWith(busqueda.substring(0, 3))
+        })
 
         // También buscar en productos del cliente para productos ya agregados
         let productosCliente = []
-        if (sesion?.clienteNegocio?._id) {
+        const clienteId = obtenerClienteId(sesion)
+        if (clienteId) {
           try {
-            const clienteResponse = await productosApi.getByCliente(sesion.clienteNegocio._id, {
-              buscar: nombreBusqueda.trim(),
-              limite: 5,
-              pagina: 1
+            const clienteResponse = await productosApi.getByCliente(clienteId, {
+              buscar: searchTerm,
+              limite: 10,
+              pagina: 1,
+              soloActivos: true
             })
-            productosCliente = clienteResponse.data.datos?.productos || []
+            
+            // Backend SQLite devuelve: { exito: true, datos: { productos: [...], paginacion: {...} } }
+            productosCliente = clienteResponse.data?.datos?.productos || 
+                              clienteResponse.data?.productos || 
+                              []
+            
+            // Filtrar también productos del cliente
+            const productosClienteFiltrados = productosCliente.filter(producto => {
+              const nombreProducto = (producto.nombre || '').toLowerCase()
+              const busqueda = nombreBusqueda.trim().toLowerCase()
+              return nombreProducto.startsWith(busqueda.substring(0, 3))
+            })
+            productosCliente = productosClienteFiltrados
           } catch (clienteError) {
             // Si falla, solo usar productos generales
-            console.log('No se pudieron cargar productos del cliente')
+            console.log('No se pudieron cargar productos del cliente:', clienteError)
           }
         }
 
         // Combinar resultados, priorizando productos del cliente
-        const todosProductos = [...productosCliente, ...productosGenerales]
-        // Eliminar duplicados por nombre
+        const todosProductos = [...productosCliente, ...productosFiltrados]
+        // Eliminar duplicados por nombre o ID
         const productosUnicos = todosProductos.filter((producto, index, self) =>
-          index === self.findIndex((p) => p.nombre === producto.nombre)
+          index === self.findIndex((p) => 
+            (p.nombre === producto.nombre) || 
+            (p._id === producto._id) || 
+            (p.id === producto.id)
+          )
         )
 
-        setSearchResults(productosUnicos.slice(0, 10))
+        setSearchResults(productosUnicos.slice(0, 20))
       } catch (error) {
         console.error('Error buscando productos:', error)
         setSearchResults([])
@@ -808,9 +1079,9 @@ const InventarioDetalleNuevo = () => {
       }
     }
 
-    const debounce = setTimeout(searchByName, 500)
+    const debounce = setTimeout(searchByName, 300)
     return () => clearTimeout(debounce)
-  }, [nombreBusqueda, showSearchModal, sesion?.clienteNegocio?._id])
+  }, [nombreBusqueda, showSearchModal, sesion?.clienteNegocio?.id, sesion?.clienteNegocio?._id, sesion?.clienteNegocioId])
 
   const handleSelectProduct = (producto) => {
     setSelectedProducto(producto)
@@ -825,6 +1096,13 @@ const InventarioDetalleNuevo = () => {
   }
 
   const handleOpenSearchModal = () => {
+    // Si hay un producto seleccionado, limpiarlo primero
+    if (selectedProducto) {
+      setSelectedProducto(null)
+      setNombreBusqueda('')
+      setCantidad('')
+      setCosto('')
+    }
     setShowSearchModal(true)
     setNombreBusqueda('')
     setSearchResults([])
@@ -861,7 +1139,14 @@ const InventarioDetalleNuevo = () => {
 
       try {
         // Actualizar la cantidad del producto existente
-        await sesionesApi.updateProduct(id, productoExistente.productoId, {
+        // Usar id o productoId (el backend ahora incluye ambos)
+        const productoIdToUpdate = productoExistente.productoId || productoExistente.id || productoExistente._id
+        if (!productoIdToUpdate) {
+          throw new Error('No se pudo obtener el ID del producto contado')
+        }
+        
+        console.log('🔄 Actualizando producto con ID:', productoIdToUpdate)
+        await sesionesApi.updateProduct(id, productoIdToUpdate, {
           cantidadContada: nuevaCantidad,
           costoProducto: costoFinal // También actualizar el costo si es diferente
         })
@@ -900,11 +1185,48 @@ const InventarioDetalleNuevo = () => {
     // Si el producto no existe, proceder con la lógica normal de agregar
     console.log('➕ Agregando nuevo producto:', selectedProducto.nombre)
 
+    // Verificar que la sesión esté cargada
+    if (!sesion) {
+      toast.error('Error: La sesión aún no está cargada. Por favor, espere un momento.')
+      console.error('❌ Sesión no disponible')
+      return
+    }
+
+    // Obtener ID del cliente usando helper
+    const clienteId = obtenerClienteId(sesion)
+    
+    if (!clienteId) {
+      toast.error('Error: No se pudo obtener el ID del cliente')
+      console.error('❌ Sesión completa:', JSON.stringify(sesion, null, 2))
+      console.error('❌ clienteNegocio:', sesion?.clienteNegocio)
+      console.error('❌ clienteNegocioId:', sesion?.clienteNegocioId)
+      console.error('❌ Estructura de sesion:', Object.keys(sesion || {}))
+      
+      // Intentar refrescar la sesión
+      console.log('🔄 Intentando refrescar la sesión...')
+      refetch()
+      return
+    }
+
+    // Convertir clienteId a número entero
+    const clienteIdNumero = parseInt(clienteId, 10)
+    if (isNaN(clienteIdNumero) || clienteIdNumero <= 0) {
+      toast.error(`Error: ID de cliente inválido: ${clienteId}`)
+      return
+    }
+
     // Si el producto es de ProductoGeneral, primero crear en ProductoCliente
     if (selectedProducto.costoBase !== undefined) {
       try {
+        console.log('🔄 Creando producto cliente para cliente:', clienteIdNumero)
+        console.log('📦 Datos del producto:', {
+          nombre: selectedProducto.nombre,
+          costo: costoFinal,
+          unidad: selectedProducto.unidad
+        })
+
         // Intentar crear producto en ProductoCliente
-        const nuevoProductoCliente = await productosApi.createForCliente(sesion?.clienteNegocio?._id, {
+        const nuevoProductoCliente = await productosApi.createForCliente(clienteIdNumero, {
           nombre: selectedProducto.nombre,
           descripcion: selectedProducto.descripcion,
           costo: costoFinal,
@@ -914,29 +1236,76 @@ const InventarioDetalleNuevo = () => {
           sku: selectedProducto.codigoBarras || ''
         })
 
-        const productoClienteCreado = nuevoProductoCliente.data.datos?.producto || nuevoProductoCliente.data.producto
+        console.log('✅ Respuesta crear producto cliente:', nuevoProductoCliente.data)
+
+        // Backend SQLite devuelve: { exito: true, datos: producto }
+        const productoClienteCreado = nuevoProductoCliente.data?.datos || nuevoProductoCliente.data?.producto || nuevoProductoCliente.data
+
+        // Backend SQLite usa 'id' no '_id', asegurar compatibilidad
+        const productoClienteId = productoClienteCreado?.id || productoClienteCreado?._id
+        
+        console.log('🔍 ID del producto creado:', productoClienteId)
+        
+        if (!productoClienteId) {
+          console.error('❌ Estructura de respuesta:', nuevoProductoCliente.data)
+          throw new Error('No se pudo obtener el ID del producto creado')
+        }
+
+        // Convertir a número entero para el backend SQLite
+        const productoIdNumero = parseInt(productoClienteId, 10)
+        
+        if (isNaN(productoIdNumero) || productoIdNumero <= 0) {
+          throw new Error(`ID de producto inválido: ${productoClienteId}`)
+        }
+
+        console.log('✅ Agregando producto a sesión con ID:', productoIdNumero)
 
         // Ahora agregar a la sesión con el ID del ProductoCliente
         addProductMutation.mutate({
-          producto: productoClienteCreado._id,
-          cantidadContada: cantidadNueva,
-          costoProducto: costoFinal
+          productoClienteId: productoIdNumero,
+          cantidadContada: cantidadNueva
         })
       } catch (error) {
+        console.error('❌ Error completo:', error)
+        console.error('❌ Response data:', error.response?.data)
+        console.error('❌ Response status:', error.response?.status)
+        
         // Si el producto ya existe, el backend debería devolver el producto existente
         // o podemos simplemente mostrar un error más amigable
         if (error.response?.status === 400 && error.response?.data?.mensaje?.includes('Ya existe')) {
           toast.error('Este producto ya fue agregado a este cliente. Intenta buscarlo por nombre.')
         } else {
+          const mensajeError = error.response?.data?.mensaje || error.message || 'Error al crear producto'
+          toast.error(`Error: ${mensajeError}`)
           handleApiError(error)
         }
       }
     } else {
       // El producto ya es de ProductoCliente
+      // Backend SQLite usa 'id' no '_id', asegurar compatibilidad
+      const productoClienteId = selectedProducto?.id || selectedProducto?._id
+      
+      console.log('🔄 Producto ya es de cliente, ID:', productoClienteId)
+      
+      if (!productoClienteId) {
+        console.error('❌ Producto seleccionado:', selectedProducto)
+        toast.error('Error: No se pudo obtener el ID del producto')
+        return
+      }
+
+      // Convertir a número entero para el backend SQLite
+      const productoIdNumero = parseInt(productoClienteId, 10)
+      
+      if (isNaN(productoIdNumero) || productoIdNumero <= 0) {
+        toast.error(`Error: ID de producto inválido: ${productoClienteId}`)
+        return
+      }
+
+      console.log('✅ Agregando producto existente a sesión con ID:', productoIdNumero)
+
       addProductMutation.mutate({
-        producto: selectedProducto._id,
-        cantidadContada: cantidadNueva,
-        costoProducto: costoFinal
+        productoClienteId: productoIdNumero,
+        cantidadContada: cantidadNueva
       })
     }
   }
@@ -1790,6 +2159,9 @@ const InventarioDetalleNuevo = () => {
       incluirDistribucion: true // Siempre incluir distribución de saldo
     }
 
+    // Pausar reloj antes de imprimir
+    sesionesApi.pauseTimer(id).catch(() => {})
+    
     reportesApi.downloadInventoryPDF(id, options)
       .then((resp) => {
         const blob = new Blob([resp.data], { type: 'application/pdf' })
@@ -1810,6 +2182,7 @@ const InventarioDetalleNuevo = () => {
         ventana.onafterprint = () => {
           ventana.close()
           URL.revokeObjectURL(url)
+          toast.success('Reloj pausado - Inventario finalizado')
         }
 
         toast.success('Enviando a impresión...')
@@ -1859,7 +2232,20 @@ const InventarioDetalleNuevo = () => {
   }, [id, sesion?.timerEnMarcha])
 
   const updateProductMutation = useMutation(
-    ({ productoId, field, value }) => sesionesApi.updateProduct(id, productoId, { [field]: value }),
+    ({ productoId, field, value }) => {
+      // Si es nombreProducto, también necesitamos el productoClienteId para actualizar correctamente
+      const updateData = { [field]: value }
+      
+      // Si estamos actualizando el nombre, también necesitamos el productoClienteId
+      if (field === 'nombreProducto') {
+        const producto = productosContados.find(p => p.productoId === productoId)
+        if (producto && producto.productoClienteId) {
+          updateData.productoClienteId = producto.productoClienteId
+        }
+      }
+      
+      return sesionesApi.updateProduct(id, productoId, updateData)
+    },
     {
       onSuccess: () => {
         refetch() // Refrescar datos de la sesión
@@ -1870,7 +2256,9 @@ const InventarioDetalleNuevo = () => {
   )
 
   const handleUpdateProductField = (productoId, field, value) => {
-    updateProductMutation.mutate({ productoId, field, value: parseFloat(value) || 0 })
+    // Si el campo es nombreProducto, mantener como string, de lo contrario convertir a número
+    const processedValue = field === 'nombreProducto' ? String(value || '').trim() : (parseFloat(value) || 0)
+    updateProductMutation.mutate({ productoId, field, value: processedValue })
   }
 
   // Mutación para crear producto general
@@ -1915,15 +2303,19 @@ const InventarioDetalleNuevo = () => {
       return
     }
 
+    // Validar que la categoría sea válida
+    const categoriasValidas = ['General', 'Alimentos General', 'Enlatados', 'Mercado', 'Embutidos', 'Carnes', 'Bebidas', 'Desechables', 'Electricidad', 'Dulce']
+    const categoriaFinal = categoriasValidas.includes(newProductData.categoria) ? newProductData.categoria : 'General'
+    
     createProductMutation.mutate({
-      nombre: newProductData.nombre,
-      descripcion: newProductData.descripcion,
-      categoria: newProductData.categoria,
-      unidad: newProductData.unidad,
+      nombre: newProductData.nombre.trim(),
+      descripcion: newProductData.descripcion?.trim() || null,
+      categoria: categoriaFinal,
+      unidad: newProductData.unidad || 'unidad',
       costoBase: parseFloat(newProductData.costo || '0') || 0,
-      proveedor: newProductData.proveedor || '',
-      codigoBarras: newProductData.codigoBarras || productNotFoundCode,
-      notas: newProductData.descripcion
+      proveedor: newProductData.proveedor?.trim() || null,
+      codigoBarras: (newProductData.codigoBarras || productNotFoundCode)?.trim() || null,
+      notas: newProductData.descripcion?.trim() || null
     })
   }
 
@@ -2067,10 +2459,25 @@ const InventarioDetalleNuevo = () => {
       <div className="bg-slate-800 border-b border-slate-600 px-4 py-2 flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <button
-            onClick={handleExit}
+            onClick={() => {
+              if (productosContados.length === 0) {
+                toast.error('Agrega al menos un producto para guardar')
+                return
+              }
+              const zeroCost = productosContados.filter(p => (Number(p.costoProducto) || 0) === 0)
+              if (zeroCost.length > 0) {
+                const initial = {}
+                zeroCost.forEach(p => { initial[p.producto] = 0 })
+                setZeroCostEdits(initial)
+                setShowZeroCostModal(true)
+                return
+              }
+              completeMutation.mutate()
+            }}
             className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded font-medium transition-colors"
+            title="Guardar sesión (F9)"
           >
-            Guardar
+            Guardar <span className="text-xs opacity-75">(F9)</span>
           </button>
 
           {/* Selector de Salir */}
@@ -2078,8 +2485,10 @@ const InventarioDetalleNuevo = () => {
             <button
               onClick={() => setShowExitDropdown(!showExitDropdown)}
               className="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded font-medium transition-colors flex items-center space-x-2"
+              title="Salir (F10)"
             >
               <span>Salir</span>
+              <span className="text-xs opacity-75">(F10)</span>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
@@ -2130,8 +2539,11 @@ const InventarioDetalleNuevo = () => {
                     </button>
                     <button
                       onClick={() => {
-                        if (deleteTarget?.productoId) {
-                          removeProductMutation.mutate(deleteTarget.productoId)
+                        const productoIdToDelete = deleteTarget?.productoId || deleteTarget?.id || deleteTarget?._id
+                        if (productoIdToDelete) {
+                          removeProductMutation.mutate(productoIdToDelete)
+                        } else {
+                          toast.error('No se pudo obtener el ID del producto a eliminar')
                         }
                         setShowDeleteConfirm(false)
                         setDeleteTarget(null)
@@ -2155,9 +2567,10 @@ const InventarioDetalleNuevo = () => {
           <button
             onClick={() => setShowMenuModal(true)}
             className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
-            title="Menú"
+            title="Menú (F11)"
           >
             <Menu className="w-5 h-5 text-white" />
+            <span className="text-xs absolute -bottom-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap opacity-75">F11</span>
           </button>
         </div>
       </div>
@@ -2297,8 +2710,8 @@ const InventarioDetalleNuevo = () => {
                             </td>
                             <td className="px-4 py-2">
                               <span className={`text-xs px-2 py-1 rounded-full ${inv.estado === 'pendiente' ? 'bg-yellow-100 text-yellow-800' :
-                                  inv.estado === 'consumida' ? 'bg-green-100 text-green-800' :
-                                    'bg-gray-100 text-gray-800'
+                                inv.estado === 'consumida' ? 'bg-green-100 text-green-800' :
+                                  'bg-gray-100 text-gray-800'
                                 }`}>
                                 {inv.estado}
                               </span>
@@ -2382,8 +2795,8 @@ const InventarioDetalleNuevo = () => {
                               </td>
                               <td className="px-4 py-4 whitespace-nowrap">
                                 <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${colab.estadoConexion === 'conectado'
-                                    ? 'bg-green-100 text-green-800'
-                                    : 'bg-gray-100 text-gray-800'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-gray-100 text-gray-800'
                                   }`}>
                                   {colab.estadoConexion === 'conectado' ? (
                                     <><Wifi className="w-3 h-3 mr-1 inline" /> Conectado</>
@@ -2644,8 +3057,8 @@ const InventarioDetalleNuevo = () => {
                     <div className="flex items-center justify-between px-4 py-2 bg-white rounded-lg">
                       <span className="text-sm font-medium text-gray-600">Estado:</span>
                       <span className={`text-sm font-semibold ${colaboradorSeleccionado?.estadoConexion === 'conectado'
-                          ? 'text-green-600'
-                          : 'text-gray-600'
+                        ? 'text-green-600'
+                        : 'text-gray-600'
                         }`}>
                         {colaboradorSeleccionado?.estadoConexion === 'conectado' ? 'Conectado' : 'Desconectado'}
                       </span>
@@ -2709,7 +3122,7 @@ const InventarioDetalleNuevo = () => {
       )}
 
       {/* Main Content */}
-      <div className="flex h-[calc(100vh-60px)]">
+      <div className="flex h-[calc(100vh-140px)]">
         {/* Left Sidebar - Financial Buttons */}
         <div className="w-80 bg-slate-800 border-r border-slate-600 p-4 space-y-4 overflow-y-auto">
           <h3 className="text-white font-semibold text-sm mb-4 text-center border-b border-slate-600 pb-2">
@@ -2782,8 +3195,17 @@ const InventarioDetalleNuevo = () => {
           {/* Separador */}
           <div className="border-t border-slate-600 my-4"></div>
 
-          <h3 className="text-white font-semibold text-sm mb-4 text-center border-b border-slate-600 pb-2">
-            Gestión de Inventario
+          <h3 
+            className={`text-white font-semibold text-sm mb-4 text-center border-b border-slate-600 pb-2 cursor-pointer transition-all ${
+              activeSection === 'inventario' ? 'bg-blue-600 rounded px-2 py-1' : 'hover:bg-slate-700 rounded px-2 py-1'
+            }`}
+            onClick={() => {
+              setActiveSection(activeSection === 'inventario' ? null : 'inventario')
+              toast.success(activeSection === 'inventario' ? 'Atajos de Gestión de Inventario desactivados' : 'Atajos de Gestión de Inventario activados (F1-F3)', { duration: 2000 })
+            }}
+            title="Click para activar atajos de teclado (F1-F3)"
+          >
+            Gestión de Inventario {activeSection === 'inventario' && '✓'}
           </h3>
 
           {/* Nuevos botones de gestión */}
@@ -2813,7 +3235,18 @@ const InventarioDetalleNuevo = () => {
         </div>
 
         {/* Center - Product Input */}
-        <div className="flex-1 flex flex-col">
+        <div 
+          className="flex-1 flex flex-col"
+          onClick={(e) => {
+            // Si el click no es en un input, botón o elemento interactivo, enfocar el input de código de barras
+            const target = e.target
+            if (target.tagName !== 'INPUT' && target.tagName !== 'BUTTON' && target.tagName !== 'A' && !target.closest('button') && !target.closest('input') && !target.closest('a') && !target.closest('[role="button"]')) {
+              setTimeout(() => {
+                searchInputRef.current?.focus()
+              }, 100)
+            }
+          }}
+        >
           {/* Input Section */}
           <div className="bg-slate-800 border-b border-slate-600 p-4">
             <div className="grid grid-cols-4 gap-3">
@@ -2831,25 +3264,42 @@ const InventarioDetalleNuevo = () => {
                       e.preventDefault()
                     }
                   }}
-                  placeholder="Escanea o escribe código"
-                  className="w-full px-4 py-3 bg-slate-700 text-white placeholder-slate-400 rounded border border-slate-600 focus:outline-none focus:border-blue-400 text-lg"
-                  autoFocus
+                  placeholder="Escanee o ingrese código de barras"
+                  className="w-full px-3 py-2 bg-slate-700 text-white border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
+                  style={{ textShadow: '0 0 1px rgba(255,255,255,0.5)' }}
                 />
               </div>
 
               {/* Input Buscar por Nombre */}
               <div>
                 <label className="block text-white text-sm mb-1">Buscar por Nombre</label>
-                <button
-                  onClick={handleOpenSearchModal}
-                  className="w-full px-4 py-3 bg-slate-700 rounded border border-slate-600 hover:border-blue-400 focus:outline-none focus:border-blue-400 text-lg text-left flex items-center justify-between transition-colors"
-                >
-                  <span className={`truncate font-semibold ${selectedProducto ? 'text-white' : 'text-slate-400'
-                    }`}>
-                    {selectedProducto ? selectedProducto.nombre : 'Click para buscar...'}
-                  </span>
-                  <Search className="w-5 h-5 flex-shrink-0 text-slate-400" />
-                </button>
+                <div className="relative">
+                  <button
+                    onClick={handleOpenSearchModal}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape' && selectedProducto) {
+                        e.preventDefault()
+                        setSelectedProducto(null)
+                        setNombreBusqueda('')
+                        setCantidad('')
+                        setCosto('')
+                        toast.success('Producto quitado')
+                      }
+                    }}
+                    className="w-full px-4 py-3 bg-slate-700 rounded border border-slate-600 hover:border-blue-400 focus:outline-none focus:border-blue-400 text-lg text-left flex items-center justify-between transition-colors"
+                  >
+                    <span className={`truncate font-semibold ${selectedProducto ? 'text-white' : 'text-slate-400'
+                      }`}>
+                      {selectedProducto ? selectedProducto.nombre : 'Click para buscar...'}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {selectedProducto && (
+                        <span className="text-xs text-slate-400">ESC para quitar</span>
+                      )}
+                      <Search className="w-5 h-5 flex-shrink-0 text-slate-400" />
+                    </div>
+                  </button>
+                </div>
               </div>
 
               {/* Input Cantidad */}
@@ -2985,17 +3435,28 @@ const InventarioDetalleNuevo = () => {
                     <tr key={producto._id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                       {/* Artículo */}
                       <td className="px-3 py-2 text-gray-800 text-sm">
-                        <div className="font-medium">{producto.nombreProducto}</div>
+                        <input
+                          type="text"
+                          value={producto.nombreProducto || ''}
+                          onKeyDown={(e) => { 
+                            if (e.key === 'Enter') { 
+                              handleUpdateProductField(producto.productoId, 'nombreProducto', e.target.value); 
+                              e.currentTarget.blur() 
+                            } 
+                          }}
+                          onBlur={(e) => handleUpdateProductField(producto.productoId, 'nombreProducto', e.target.value)}
+                          className="w-full bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-blue-400 rounded px-1 font-medium"
+                          style={{ minWidth: '200px' }}
+                        />
                       </td>
 
                       {/* Cantidad - Anterior */}
                       <td className="px-2 py-2 text-center bg-green-50 text-gray-600 text-sm">
                         <input
                           type="number"
-                          defaultValue="0.0"
-                          onKeyDown={(e) => { if (e.key === 'Enter') { handleUpdateProductField(producto.productoId, 'cantidadAnterior', e.target.value); e.currentTarget.blur() } }}
-                          onBlur={(e) => handleUpdateProductField(producto.productoId, 'cantidadAnterior', e.target.value)}
-                          className="w-full text-center bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-blue-400 rounded px-1"
+                          value={safeToFixed(producto.cantidadAnterior || 0, 1)}
+                          readOnly
+                          className="w-full text-center bg-transparent border-none cursor-default"
                           step="0.1"
                         />
                       </td>
@@ -3016,10 +3477,9 @@ const InventarioDetalleNuevo = () => {
                       <td className="px-2 py-2 text-center bg-green-200 text-green-800 font-semibold text-sm">
                         <input
                           type="number"
-                          value={safeToFixed(producto.cantidadDiferencia || (producto.cantidadContada - producto.cantidadAnterior) || 0, 1)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') { handleUpdateProductField(producto.productoId, 'cantidadDiferencia', e.target.value); e.currentTarget.blur() } }}
-                          onBlur={(e) => handleUpdateProductField(producto.productoId, 'cantidadDiferencia', e.target.value)}
-                          className="w-full text-center bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-blue-400 rounded px-1 font-semibold"
+                          value={safeToFixed(producto.cantidadDiferencia || (producto.cantidadContada - (producto.cantidadAnterior || 0)) || 0, 1)}
+                          readOnly
+                          className="w-full text-center bg-transparent border-none cursor-default font-semibold"
                           step="0.1"
                         />
                       </td>
@@ -3028,10 +3488,9 @@ const InventarioDetalleNuevo = () => {
                       <td className="px-2 py-2 text-center bg-blue-50 text-gray-600 text-sm">
                         <input
                           type="number"
-                          defaultValue="0.0"
-                          onKeyDown={(e) => { if (e.key === 'Enter') { handleUpdateProductField(producto.productoId, 'costoAnterior', e.target.value); e.currentTarget.blur() } }}
-                          onBlur={(e) => handleUpdateProductField(producto.productoId, 'costoAnterior', e.target.value)}
-                          className="w-full text-center bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-blue-400 rounded px-1"
+                          value={safeToFixed(producto.costoAnterior || 0, 2)}
+                          readOnly
+                          className="w-full text-center bg-transparent border-none cursor-default"
                           step="0.01"
                         />
                       </td>
@@ -3052,10 +3511,9 @@ const InventarioDetalleNuevo = () => {
                       <td className="px-2 py-2 text-center bg-yellow-200 text-yellow-800 font-semibold text-sm">
                         <input
                           type="number"
-                          value={safeToFixed(producto.costoDiferencia || (producto.costoProducto - producto.costoAnterior) || 0, 2)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') { handleUpdateProductField(producto.productoId, 'costoDiferencia', e.target.value); e.currentTarget.blur() } }}
-                          onBlur={(e) => handleUpdateProductField(producto.productoId, 'costoDiferencia', e.target.value)}
-                          className="w-full text-center bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-blue-400 rounded px-1 font-semibold"
+                          value={safeToFixed(producto.costoDiferencia || (producto.costoProducto - (producto.costoAnterior || 0)) || 0, 2)}
+                          readOnly
+                          className="w-full text-center bg-transparent border-none cursor-default font-semibold"
                           step="0.01"
                         />
                       </td>
@@ -3158,7 +3616,7 @@ const InventarioDetalleNuevo = () => {
                 value={nombreBusqueda}
                 onChange={(e) => setNombreBusqueda(e.target.value)}
                 placeholder="Escribe el nombre del producto..."
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-lg"
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-lg text-gray-900 bg-white"
                 autoFocus
               />
             </div>
@@ -3174,43 +3632,71 @@ const InventarioDetalleNuevo = () => {
                 <div className="p-8 text-center text-gray-500">
                   <Search className="w-12 h-12 mx-auto mb-2 text-gray-300" />
                   <p>
-                    {nombreBusqueda.length < 2
-                      ? 'Escribe al menos 2 caracteres para buscar'
+                    {nombreBusqueda.length === 0
+                      ? 'Listado de productos generales'
+                      : nombreBusqueda.length < 3
+                      ? 'Escribe al menos 3 caracteres para buscar'
                       : 'No se encontraron productos'}
                   </p>
                 </div>
               ) : (
                 <div className="divide-y divide-gray-200">
+                  {/* Mostrar mensaje según el tipo de búsqueda */}
+                  {nombreBusqueda.length === 0 ? (
+                    <div className="px-4 py-2 bg-blue-50 text-blue-800 text-sm font-medium">
+                      📦 Productos Generales ({searchResults.length})
+                    </div>
+                  ) : nombreBusqueda.length < 3 ? (
+                    <div className="px-4 py-2 bg-yellow-50 text-yellow-800 text-sm">
+                      Escribe al menos 3 caracteres para filtrar los productos
+                    </div>
+                  ) : (
+                    <div className="px-4 py-2 bg-green-50 text-green-800 text-sm font-medium">
+                      🔍 Resultados de búsqueda: "{nombreBusqueda}" ({searchResults.length})
+                    </div>
+                  )}
+
                   {/* Opción para crear producto si no tiene código de barras */}
-                  <div className="px-4 py-2 bg-yellow-50 text-yellow-800 text-sm">
-                    ¿No tiene código de barras? Puedes crear el producto ahora.
-                    <button
-                      onClick={() => {
-                        setShowSearchModal(false)
-                        setShowAddProductModal(true)
-                        setNewProductData({ nombre: nombreBusqueda, codigoBarras: '', sku: '', categoria: '', unidad: 'unidad', costo: '', descripcion: '', proveedor: '' })
-                      }}
-                      className="ml-2 px-2 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded"
-                    >
-                      Crear producto
-                    </button>
-                  </div>
+                  {nombreBusqueda.length > 0 && (
+                    <div className="px-4 py-2 bg-yellow-50 text-yellow-800 text-sm">
+                      ¿No encuentra el producto? Puedes crearlo ahora.
+                      <button
+                        onClick={() => {
+                          setShowSearchModal(false)
+                          setShowAddProductModal(true)
+                          setNewProductData({ nombre: nombreBusqueda, codigoBarras: '', sku: '', categoria: '', unidad: 'unidad', costo: '', descripcion: '', proveedor: '' })
+                        }}
+                        className="ml-2 px-2 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded"
+                      >
+                        Crear producto
+                      </button>
+                    </div>
+                  )}
 
                   {searchResults.map((producto) => (
                     <button
-                      key={producto._id}
+                      key={producto._id || producto.id}
                       onClick={() => handleSelectProduct(producto)}
                       className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors flex items-center justify-between"
                     >
                       <div className="flex-1">
-                        <div className="font-semibold text-gray-900">{producto.nombre}</div>
+                        <div className="font-semibold text-gray-900">
+                          {nombreBusqueda.length >= 3 
+                            ? highlightMatch(producto.nombre, nombreBusqueda) 
+                            : producto.nombre}
+                        </div>
                         <div className="text-sm text-gray-600">
-                          {producto.categoria} • {producto.unidad}
+                          {producto.categoria || 'Sin categoría'} • {producto.unidad || 'unidad'}
+                          {producto.codigoBarras && ` • Código: ${producto.codigoBarras}`}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-bold text-blue-600">${safeToFixed(producto.costo || producto.costoBase, 2)}</div>
-                        <div className="text-xs text-gray-500">{producto.sku || 'Sin SKU'}</div>
+                        <div className="font-bold text-blue-600">
+                          ${safeToFixed(producto.costo || producto.costoBase || 0, 2)}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {producto.sku || producto.codigoBarras || 'Sin SKU'}
+                        </div>
                       </div>
                     </button>
                   ))}
@@ -3648,8 +4134,8 @@ const InventarioDetalleNuevo = () => {
                         </td>
                         <td className="px-4 py-3 text-center">
                           <span className={`px-2 py-1 rounded text-sm font-medium ${nuevoTotal > 0
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-gray-100 text-gray-600'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-600'
                             }`}>
                             ${safeToFixed(nuevoTotal, 2)}
                           </span>
@@ -3853,7 +4339,7 @@ const InventarioDetalleNuevo = () => {
 
                         // Si el producto es de ProductoGeneral, primero crear en ProductoCliente
                         if (item.producto.costoBase !== undefined) {
-                          const nuevoProductoCliente = await productosApi.createForCliente(sesion?.clienteNegocio?._id, {
+                          const nuevoProductoCliente = await productosApi.createForCliente(obtenerClienteId(sesion), {
                             nombre: item.producto.nombre,
                             descripcion: item.producto.descripcion,
                             costo: Number(item.costo),
@@ -3912,8 +4398,8 @@ const InventarioDetalleNuevo = () => {
       {activeModal && activeModal !== 'reporteCompleto' && modalData.title && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
           <div className={`bg-white rounded-lg shadow-2xl ${modalData.isCustomModal || activeModal === 'configuracion'
-              ? 'max-w-6xl w-full max-h-[90vh] overflow-hidden'
-              : 'max-w-md w-full'
+            ? 'max-w-6xl w-full max-h-[90vh] overflow-hidden'
+            : 'max-w-md w-full'
             }`}>
             <div className="flex items-center justify-between p-6 border-b">
               <h3 className="text-xl font-bold text-gray-800">{modalData.title}</h3>
@@ -3937,8 +4423,8 @@ const InventarioDetalleNuevo = () => {
                           <button
                             onClick={() => setActiveConfigTab('general')}
                             className={`py-2 px-1 border-b-2 font-medium text-sm ${activeConfigTab === 'general'
-                                ? 'border-slate-500 text-slate-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                              ? 'border-slate-500 text-slate-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                               }`}
                           >
                             Configuración General
@@ -3946,8 +4432,8 @@ const InventarioDetalleNuevo = () => {
                           <button
                             onClick={() => setActiveConfigTab('distribucion')}
                             className={`py-2 px-1 border-b-2 font-medium text-sm ${activeConfigTab === 'distribucion'
-                                ? 'border-emerald-500 text-emerald-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                              ? 'border-emerald-500 text-emerald-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                               }`}
                           >
                             <Calculator className="w-4 h-4 inline mr-2" />
@@ -3956,8 +4442,8 @@ const InventarioDetalleNuevo = () => {
                           <button
                             onClick={() => setActiveConfigTab('contador')}
                             className={`py-2 px-1 border-b-2 font-medium text-sm ${activeConfigTab === 'contador'
-                                ? 'border-amber-500 text-amber-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                              ? 'border-amber-500 text-amber-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                               }`}
                           >
                             <Calendar className="w-4 h-4 inline mr-2" />
@@ -3966,8 +4452,8 @@ const InventarioDetalleNuevo = () => {
                           <button
                             onClick={() => setActiveConfigTab('descargar')}
                             className={`py-2 px-1 border-b-2 font-medium text-sm ${activeConfigTab === 'descargar'
-                                ? 'border-cyan-500 text-cyan-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                              ? 'border-cyan-500 text-cyan-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                               }`}
                           >
                             <Download className="w-4 h-4 inline mr-2" />
@@ -3976,8 +4462,8 @@ const InventarioDetalleNuevo = () => {
                           <button
                             onClick={() => setActiveConfigTab('empleados')}
                             className={`py-2 px-1 border-b-2 font-medium text-sm ${activeConfigTab === 'empleados'
-                                ? 'border-blue-500 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                              ? 'border-blue-500 text-blue-600'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                               }`}
                           >
                             <Users className="w-4 h-4 inline mr-2" />
@@ -4823,7 +5309,7 @@ const InventarioDetalleNuevo = () => {
                   </div>
 
                   <div className="flex-1 flex flex-col items-center justify-center text-center mt-16 mb-12">
-                    <div className="text-4xl font-black tracking-wide text-gray-900">{(sesion?.clienteNegocio?.nombre || 'Cliente no registrado').toUpperCase()}</div>
+                    <div className="text-4xl font-black tracking-wide text-gray-900">{(sesion?.clienteNegocio?.nombre || sesion?.clienteNegocio?.razonSocial || 'CLIENTE').toUpperCase()}</div>
                     {(sesion?.clienteNegocio?.telefono || sesion?.clienteNegocio?.codigo) && (
                       <div className="text-xl text-gray-700 mt-2">{sesion?.clienteNegocio?.telefono || sesion?.clienteNegocio?.codigo}</div>
                     )}
@@ -4877,21 +5363,21 @@ const InventarioDetalleNuevo = () => {
                           <div className="font-semibold text-gray-700">CORRIENTES</div>
                           <div className="ml-4 space-y-1">
                             <div className="flex justify-between">
-                              <span>EFECTIVO Y CAJA</span>
-                              <span>{formatearMoneda(calculateTotalEfectivo())}</span>
+                              <span className="text-gray-800">EFECTIVO Y CAJA</span>
+                              <span className="text-gray-800">{formatearMoneda(calculateTotalEfectivo())}</span>
                             </div>
                             {Array.isArray(datosFinancieros.efectivoEnCajaYBanco) && datosFinancieros.efectivoEnCajaYBanco.length > 1 && (
                               <div className="ml-4 mt-1 space-y-1">
                                 {datosFinancieros.efectivoEnCajaYBanco.map((efectivo, index) => (
-                                  <div key={index} className="text-xs text-gray-500 italic">
+                                  <div key={index} className="text-xs text-gray-700 italic">
                                     • {efectivo.tipoCuenta || 'Caja'}: {formatearMoneda(parseFloat(efectivo.monto || 0))} ({efectivo.descripcion || 'Sin descripción'})
                                   </div>
                                 ))}
                               </div>
                             )}
                             <div className="flex justify-between">
-                              <span>CUENTAS POR COBRAR</span>
-                              <span>{formatearMoneda(calculateTotalCuentasPorCobrar())}</span>
+                              <span className="text-gray-800">CUENTAS POR COBRAR</span>
+                              <span className="text-gray-800">{formatearMoneda(calculateTotalCuentasPorCobrar())}</span>
                             </div>
                             {Array.isArray(datosFinancieros.cuentasPorCobrar) && datosFinancieros.cuentasPorCobrar.length > 1 && (
                               <div className="ml-4 mt-1 space-y-1">
@@ -4903,12 +5389,12 @@ const InventarioDetalleNuevo = () => {
                               </div>
                             )}
                             <div className="flex justify-between">
-                              <span>INVENTARIO DE MERCANCIA</span>
-                              <span>{formatearMoneda(valorTotal)}</span>
+                              <span className="text-gray-800">INVENTARIO DE MERCANCIA</span>
+                              <span className="text-gray-800">{formatearMoneda(valorTotal)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>DEUDA A NEGOCIO</span>
-                              <span>{formatearMoneda(calculateTotalDeudaANegocio())}</span>
+                              <span className="text-gray-800">DEUDA A NEGOCIO</span>
+                              <span className="text-gray-800">{formatearMoneda(calculateTotalDeudaANegocio())}</span>
                             </div>
                             {Array.isArray(datosFinancieros.deudaANegocio) && datosFinancieros.deudaANegocio.length > 1 && (
                               <div className="ml-4 mt-1 space-y-1">
@@ -4952,8 +5438,8 @@ const InventarioDetalleNuevo = () => {
                           <div className="font-semibold text-gray-700">PASIVOS</div>
                           <div className="ml-4 space-y-1">
                             <div className="flex justify-between">
-                              <span>CUENTAS POR PAGAR</span>
-                              <span>{formatearMoneda(calculateTotalCuentasPorPagar())}</span>
+                              <span className="text-gray-800">CUENTAS POR PAGAR</span>
+                              <span className="text-gray-800">{formatearMoneda(calculateTotalCuentasPorPagar())}</span>
                             </div>
                             {Array.isArray(datosFinancieros.cuentasPorPagar) && datosFinancieros.cuentasPorPagar.length > 1 && (
                               <div className="ml-4 mt-1 space-y-1">
@@ -5034,10 +5520,10 @@ const InventarioDetalleNuevo = () => {
                     </div>
 
                     <div className="mt-8 pt-4 border-t text-center text-sm text-gray-600">
-                      <p className="font-semibold">
-                        {user?.rol === 'contador' || user?.rol === 'contable' ? 'Contador' : 'Usuario'} {user?.nombre?.toUpperCase() || 'USUARIO SISTEMA'}
+                      <p className="font-semibold text-gray-800">
+                        Contador: {user?.nombre?.toUpperCase() || 'USUARIO SISTEMA'}
                       </p>
-                      <p>Teléfono: {user?.telefono || user?.phone || 'No disponible'}</p>
+                      <p className="text-gray-700">Teléfono: {user?.telefono || user?.phone || 'No disponible'}</p>
                       <p className="mt-2 text-xs">
                         Solo somos responsables de los datos introducidos en el inventario de mercancía. Los resultados del balance del
                         negocio son responsabilidad del propietario del negocio resultados del inventario y reconocimiento del
@@ -5097,11 +5583,11 @@ const InventarioDetalleNuevo = () => {
                               const saldoNeto = utilidadAcumulada - cuentaAdeudada;
                               return (
                                 <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                  <td className="border border-gray-300 px-4 py-2 font-medium">{socio.nombre || `Socio ${index + 1}`}</td>
-                                  <td className="border border-gray-300 px-4 py-2 text-center">{safeToFixed(socio.porcentaje, 2)}%</td>
-                                  <td className="border border-gray-300 px-4 py-2 text-right">{formatearMoneda(utilidadPeriodo)}</td>
-                                  <td className="border border-gray-300 px-4 py-2 text-right">{formatearMoneda(utilidadAcumulada)}</td>
-                                  <td className="border border-gray-300 px-4 py-2 text-right">{formatearMoneda(cuentaAdeudada)}</td>
+                                  <td className="border border-gray-300 px-4 py-2 font-medium text-gray-800">{socio.nombre || `Socio ${index + 1}`}</td>
+                                  <td className="border border-gray-300 px-4 py-2 text-center text-gray-800">{safeToFixed(socio.porcentaje, 2)}%</td>
+                                  <td className="border border-gray-300 px-4 py-2 text-right text-gray-800">{formatearMoneda(utilidadPeriodo)}</td>
+                                  <td className="border border-gray-300 px-4 py-2 text-right text-gray-800">{formatearMoneda(utilidadAcumulada)}</td>
+                                  <td className="border border-gray-300 px-4 py-2 text-right text-gray-800">{formatearMoneda(cuentaAdeudada)}</td>
                                   <td className={`border border-gray-300 px-4 py-2 text-right font-semibold ${saldoNeto < 0 ? 'text-red-600' : 'text-green-600'}`}>
                                     {formatearMoneda(saldoNeto)}
                                   </td>
@@ -5266,10 +5752,10 @@ const InventarioDetalleNuevo = () => {
                     <div
                       key={index}
                       className={`w-2 h-2 rounded-full transition-colors ${index + 1 === currentReportPage
-                          ? 'bg-teal-600'
-                          : index + 1 < currentReportPage
-                            ? 'bg-teal-300'
-                            : 'bg-gray-300'
+                        ? 'bg-teal-600'
+                        : index + 1 < currentReportPage
+                          ? 'bg-teal-300'
+                          : 'bg-gray-300'
                         }`}
                     />
                   ))}

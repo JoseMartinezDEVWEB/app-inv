@@ -87,10 +87,10 @@ if (config.isDevelopment) {
   }))
 }
 
-// Rate limiting
+// Rate limiting - Desactivar en desarrollo para depuración
 const limiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
-  max: config.rateLimit.maxRequests,
+  max: config.isDevelopment ? 10000 : config.rateLimit.maxRequests,
   message: { exito: false, mensaje: 'Demasiadas solicitudes, intente más tarde' },
   standardHeaders: true,
   legacyHeaders: false,

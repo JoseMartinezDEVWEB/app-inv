@@ -42,12 +42,11 @@ const Inventarios = () => {
   // Obtener sesiones
   const { data: sesionesData, isLoading, error: sesionesError } = useQuery(
     ['sesiones', searchTerm],
-    () => sesionesApi.getAll({ buscar: searchTerm, limite: 50, pagina: 1 }),
+    async () => {
+      const response = await sesionesApi.getAll({ buscar: searchTerm, limite: 50, pagina: 1 })
+      return handleApiResponse(response)
+    },
     {
-      select: (response) => {
-        // La estructura es: { data: { exito: true, datos: { sesiones, paginacion } } }
-        return response?.data?.datos
-      },
       onError: (error) => {
         console.error('❌ Error al cargar sesiones:', error)
         toast.error('Error al cargar las sesiones de inventario')
@@ -200,17 +199,17 @@ const Inventarios = () => {
       return
     }
     
-    // Validar que el ID tenga 24 caracteres
+    // Validar que el ID sea un número válido
     const clienteId = String(formData.clienteNegocio).trim()
-    if (clienteId.length !== 24) {
-      toast.error(`ID de cliente inválido (${clienteId.length} caracteres, se requieren 24)`)
-      console.error('❌ ID inválido:', clienteId, 'Longitud:', clienteId.length)
+    if (!clienteId || isNaN(clienteId) || parseInt(clienteId) <= 0) {
+      toast.error('ID de cliente inválido. Debe ser un número positivo.')
+      console.error('❌ ID inválido:', clienteId)
       return
     }
     
     // Preparar datos para enviar
     const datosEnviar = {
-      clienteNegocio: clienteId,
+      clienteNegocioId: parseInt(clienteId),
       notas: formData.notas || ''
     }
     

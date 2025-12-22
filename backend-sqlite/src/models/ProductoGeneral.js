@@ -148,7 +148,7 @@ class ProductoGeneral {
     }))
 
     return {
-      datos: productos,
+      productos: productos,
       paginacion: {
         total,
         pagina,

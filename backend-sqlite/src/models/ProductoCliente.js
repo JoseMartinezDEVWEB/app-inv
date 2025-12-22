@@ -141,7 +141,7 @@ class ProductoCliente {
     }))
 
     return {
-      datos: productos,
+      productos: productos,
       paginacion: {
         total,
         pagina,

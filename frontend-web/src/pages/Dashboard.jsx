@@ -33,7 +33,8 @@ const Dashboard = () => {
     async () => {
       const response = await clientesApi.getAll({ limite: 1, pagina: 1 })
       const datos = handleApiResponse(response)
-      return datos.paginacion?.totalRegistros ?? 0
+      // El backend devuelve: { datos: [...], paginacion: { total, ... } }
+      return datos.paginacion?.total ?? 0
     }
   )
 

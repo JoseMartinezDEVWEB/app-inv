@@ -56,7 +56,6 @@ api.interceptors.response.use(
             refreshToken: refreshToken,
           })
 
-          // La respuesta viene en format: { exito: true, datos: { accessToken, refreshToken } }
           const { datos } = response.data
           const { accessToken, refreshToken: newRefreshToken } = datos
 
@@ -105,7 +104,7 @@ export const handleApiResponse = (response) => {
 
   const { data } = response
 
-  // Si tiene estructura de respuesta específica del backend Node.js
+  // Si tiene estructura de respuesta específica del backend SQLite
   if (data.exito !== undefined) {
     if (!data.exito) {
       throw new Error(data.mensaje || 'Error en la operación')
@@ -186,6 +185,20 @@ export const productosApi = {
   deleteGeneral: (id) => api.delete(`/productos/generales/${id}`),
   getCategorias: () => api.get('/productos/generales/categorias'),
   buscarPorCodigoBarras: (codigo) => api.get(`/productos/generales/buscar/codigo-barras/${codigo}`),
+  buscarPorNombre: (nombre) => api.get('/productos/generales', { params: { buscar: nombre, limite: 20 } }),
+  importarDesdeArchivo: (archivo, apiKey = null) => {
+    const formData = new FormData()
+    formData.append('archivo', archivo)
+    if (apiKey) {
+      formData.append('apiKey', apiKey)
+    }
+    return api.post('/productos/generales/importar', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 120000, // 2 minutos para archivos grandes
+    })
+  },
 
   // Productos de clientes
   getByCliente: (clienteId, params = {}) => api.get(`/productos/cliente/${clienteId}`, { params }),

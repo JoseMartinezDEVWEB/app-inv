@@ -3,7 +3,7 @@ import { View, Text, Modal, StyleSheet, TouchableOpacity, TextInput, ActivityInd
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { parseExcelMobile, processWithAIMobile } from '../../services/importService';
+import { importarProductosDesdeArchivo } from '../../services/importService';
 
 const ImportModal = ({ visible, onClose, onImport }) => {
     const [step, setStep] = useState(1);
@@ -25,7 +25,11 @@ const ImportModal = ({ visible, onClose, onImport }) => {
     const handlePickDocument = async () => {
         try {
             const result = await DocumentPicker.getDocumentAsync({
-                type: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'],
+                type: [
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'application/vnd.ms-excel',
+                    'application/pdf'
+                ],
                 copyToCacheDirectory: true
             });
 
@@ -39,22 +43,29 @@ const ImportModal = ({ visible, onClose, onImport }) => {
 
     const handleProcess = async () => {
         if (!file) return Alert.alert("Error", "Selecciona un archivo");
-        if (!apiKey) return Alert.alert("Error", "Ingresa tu API Key de Gemini");
 
         setLoading(true);
-        setStatusMsg("Leyendo archivo...");
+        setStatusMsg("Enviando archivo al servidor...");
         try {
-            await AsyncStorage.setItem('gemini_api_key', apiKey);
+            if (apiKey) {
+                await AsyncStorage.setItem('gemini_api_key', apiKey);
+            }
 
-            const rawData = await parseExcelMobile(file.uri);
+            setStatusMsg("El servidor procesará el archivo con Python e IA...");
 
-            setStatusMsg("Analizando con IA...");
-            const products = await processWithAIMobile(rawData, apiKey);
+            // Usar el nuevo servicio que llama al backend Python
+            const products = await importarProductosDesdeArchivo(file, apiKey);
 
-            setPreviewData(products);
-            setStep(2);
+            if (Array.isArray(products) && products.length > 0) {
+                setPreviewData(products);
+                setStep(2);
+                setStatusMsg(`Se encontraron ${products.length} productos.`);
+            } else {
+                throw new Error("No se encontraron productos válidos en el archivo");
+            }
         } catch (error) {
-            Alert.alert("Error", error.message);
+            const errorMessage = error.response?.data?.mensaje || error.message || "Error al procesar el archivo";
+            Alert.alert("Error", errorMessage);
         } finally {
             setLoading(false);
             setStatusMsg('');
@@ -83,16 +94,19 @@ const ImportModal = ({ visible, onClose, onImport }) => {
                     <View style={styles.content}>
                         {step === 1 && (
                             <>
-                                <Text style={styles.label}>1. API Key Gemini (Gratis)</Text>
+                                <Text style={styles.label}>1. API Key Gemini (Opcional - Solo para PDFs complejos)</Text>
                                 <TextInput
                                     style={styles.input}
-                                    placeholder="Pega tu API Key aquí"
+                                    placeholder="Pega tu API Key aquí (opcional)"
                                     value={apiKey}
                                     onChangeText={setApiKey}
                                     secureTextEntry
                                 />
+                                <Text style={[styles.label, { fontSize: 12, color: '#64748b', fontWeight: 'normal' }]}>
+                                    Para archivos Excel no es necesario. Solo se requiere para PDFs complejos.
+                                </Text>
 
-                                <Text style={styles.label}>2. Archivo Excel</Text>
+                                <Text style={styles.label}>2. Archivo Excel o PDF</Text>
                                 <TouchableOpacity style={styles.uploadBox} onPress={handlePickDocument}>
                                     {file ? (
                                         <View style={{ alignItems: 'center' }}>
@@ -115,11 +129,11 @@ const ImportModal = ({ visible, onClose, onImport }) => {
                                 )}
 
                                 <TouchableOpacity
-                                    style={[styles.btn, (!file || !apiKey || loading) && styles.btnDisabled]}
+                                    style={[styles.btn, (!file || loading) && styles.btnDisabled]}
                                     onPress={handleProcess}
-                                    disabled={!file || !apiKey || loading}
+                                    disabled={!file || loading}
                                 >
-                                    <Text style={styles.btnText}>Analizar Archivo</Text>
+                                    <Text style={styles.btnText}>{loading ? 'Procesando...' : 'Analizar Archivo'}</Text>
                                 </TouchableOpacity>
                             </>
                         )}

@@ -1,5 +1,5 @@
 import { useQuery } from 'react-query'
-import { clientesApi, handleApiError } from '../services/api'
+import { clientesApi, handleApiError, handleApiResponse } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 
@@ -32,23 +32,16 @@ export const useClientes = (options = {}) => {
 
       console.log('📦 Respuesta completa:', response)
       
-      // Manejar diferentes estructuras de respuesta
-      let clientes = []
+      // El backend devuelve: { exito: true, datos: { datos: [...], paginacion: {...} } }
+      // handleApiResponse devuelve: { datos: [...], paginacion: {...} }
+      const data = handleApiResponse(response)
       
-      if (response?.data?.exito) {
-        // Estructura: { exito: true, datos: { clientes: [...] } }
-        clientes = response.data.datos?.clientes || []
-      } else if (response?.data?.clientes) {
-        // Estructura: { clientes: [...] }
-        clientes = response.data.clientes
-      } else if (Array.isArray(response?.data)) {
-        // Estructura: [...]
-        clientes = response.data
-      }
+      // Extraer el array de clientes
+      const clientes = data?.datos || []
 
       if (!Array.isArray(clientes)) {
         console.warn('⚠️ Respuesta inesperada al cargar clientes:', response)
-        clientes = []
+        return []
       }
 
       console.log('✅ Clientes cargados:', clientes.length)

@@ -1,5 +1,6 @@
 import dbManager from '../config/database.js'
 import ProductoCliente from './ProductoCliente.js'
+import ClienteNegocio from './ClienteNegocio.js'
 
 class SesionInventario {
   // Generar número único de sesión
@@ -76,6 +77,27 @@ class SesionInventario {
       // Alias para compatibilidad con frontend que espera _id
       sesion._id = sesion.id
 
+      // Obtener objeto clienteNegocio completo
+      if (sesion.clienteNegocioId) {
+        try {
+          const clienteNegocio = ClienteNegocio.buscarPorId(sesion.clienteNegocioId)
+          if (clienteNegocio) {
+            sesion.clienteNegocio = clienteNegocio
+            console.log('✅ ClienteNegocio agregado a sesión:', {
+              id: clienteNegocio.id,
+              _id: clienteNegocio._id,
+              nombre: clienteNegocio.nombre
+            })
+          } else {
+            console.warn('⚠️ ClienteNegocio no encontrado para ID:', sesion.clienteNegocioId)
+          }
+        } catch (error) {
+          console.error('❌ Error obteniendo ClienteNegocio:', error)
+          // Continuar sin clienteNegocio, pero mantener clienteNegocioId
+        }
+      } else {
+        console.warn('⚠️ Sesión no tiene clienteNegocioId')
+      }
 
       // Obtener colaboradores
       sesion.colaboradores = SesionInventario.obtenerColaboradores(id)
@@ -112,13 +134,15 @@ class SesionInventario {
       FROM productos_contados pc
       LEFT JOIN usuarios u ON pc.agregadoPorId = u.id
       WHERE pc.sesionInventarioId = ?
-      ORDER BY pc.createdAt DESC
+      ORDER BY COALESCE(pc.updatedAt, pc.createdAt) DESC, pc.createdAt DESC
     `)
 
     const productos = stmt.all(sesionId)
 
     return productos.map(producto => ({
       ...producto,
+      productoId: producto.id, // Alias para compatibilidad con frontend
+      _id: producto.id, // Alias para compatibilidad con frontend que espera _id
       discrepancia: JSON.parse(producto.discrepancia || '{}'),
       requiereAprobacion: Boolean(producto.requiereAprobacion),
       aprobado: Boolean(producto.aprobado),
@@ -252,6 +276,8 @@ class SesionInventario {
       cantidadContada,
       agregadoPorId,
       notas = null,
+      nombreProducto = null, // Permitir actualizar el nombre del producto
+      costoProducto = null, // Permitir actualizar el costo del producto
     } = datosProducto
 
     // Obtener datos del producto
@@ -260,7 +286,9 @@ class SesionInventario {
       throw new Error('Producto no encontrado')
     }
 
-    const valorTotal = cantidadContada * producto.costo
+    // Usar costoProducto si se proporciona, de lo contrario usar el costo del producto
+    const costoFinal = costoProducto !== null ? costoProducto : producto.costo
+    const valorTotal = cantidadContada * costoFinal
 
     // Verificar si ya existe en la sesión
     const existeStmt = db.prepare(`
@@ -270,13 +298,14 @@ class SesionInventario {
     const existe = existeStmt.get(sesionId, productoClienteId)
 
     if (existe) {
-      // Actualizar
+      // Actualizar - también permitir actualizar nombreProducto y costoProducto si vienen en datosProducto
+      const nombreFinal = nombreProducto !== null ? nombreProducto : producto.nombre
       const updateStmt = db.prepare(`
         UPDATE productos_contados
-        SET cantidadContada = ?, valorTotal = ?, notas = ?, agregadoPorId = ?
+        SET cantidadContada = ?, valorTotal = ?, notas = ?, agregadoPorId = ?, nombreProducto = ?, costoProducto = ?, updatedAt = CURRENT_TIMESTAMP
         WHERE id = ?
       `)
-      updateStmt.run(cantidadContada, valorTotal, notas, agregadoPorId, existe.id)
+      updateStmt.run(cantidadContada, valorTotal, notas, agregadoPorId, nombreFinal, costoFinal, existe.id)
 
       // Actualizar estadísticas
       ProductoCliente.actualizarEstadisticas(productoClienteId, cantidadContada)

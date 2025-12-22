@@ -87,7 +87,7 @@ const ProductosGeneralesModal = ({ isOpen, onClose, sesionId, clienteId }) => {
     }
   )
 
-  const productos = productosData?.productos || []
+  const productos = productosData?.datos || []
 
   const handleProductToggle = (productoId) => {
     setSelectedProducts(prev =>

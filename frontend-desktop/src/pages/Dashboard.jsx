@@ -78,8 +78,8 @@ const Dashboard = () => {
 
   // Calcular sesiones activas
   useEffect(() => {
-    if (sesionesData?.datos) {
-      const activas = sesionesData.datos.filter(
+    if (sesionesData?.sesiones) {
+      const activas = sesionesData.sesiones.filter(
         sesion => sesion.estado === 'iniciada' || sesion.estado === 'en_progreso'
       ).length
       setStats(prev => ({
@@ -237,9 +237,9 @@ const Dashboard = () => {
           </div>
 
           <div className="p-4">
-            {sesionesData?.datos?.length > 0 ? (
+            {sesionesData?.sesiones?.length > 0 ? (
               <div className="space-y-3">
-                {sesionesData.datos.map((sesion, index) => (
+                {sesionesData.sesiones.map((sesion, index) => (
                   <div key={sesion._id} className="flex items-center space-x-4">
                     <div className={`w-2 h-2 rounded-full ${sesion.estado === 'completada' ? 'bg-success-500' :
                       sesion.estado === 'en_progreso' ? 'bg-warning-500' :

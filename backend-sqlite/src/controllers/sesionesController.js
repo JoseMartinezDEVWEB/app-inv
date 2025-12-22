@@ -2,6 +2,7 @@ import SesionInventario from '../models/SesionInventario.js'
 import HistorialSesion from '../models/HistorialSesion.js'
 import { respuestaExito } from '../utils/helpers.js'
 import { AppError } from '../middlewares/errorHandler.js'
+import dbManager from '../config/database.js'
 
 // Listar sesiones
 export const listarSesiones = async (req, res) => {
@@ -113,9 +114,23 @@ export const actualizarProducto = async (req, res) => {
     throw new AppError('No se puede modificar una sesión completada o cancelada', 400)
   }
 
+  // El productoId en la URL es el ID del producto contado (productos_contados.id)
+  // Necesitamos obtener el productoClienteId desde el producto contado
+  const db = dbManager.getDatabase()
+  const productoContadoStmt = db.prepare(`
+    SELECT productoClienteId FROM productos_contados 
+    WHERE id = ? AND sesionInventarioId = ?
+  `)
+  const productoContado = productoContadoStmt.get(parseInt(productoId), parseInt(id))
+
+  if (!productoContado) {
+    throw new AppError('Producto no encontrado en la sesión', 404)
+  }
+
   // Agregar o actualizar (reutilizar la misma función)
   const datosProducto = {
     ...req.body,
+    productoClienteId: req.body.productoClienteId || productoContado.productoClienteId,
     agregadoPorId: req.usuario.id,
   }
 

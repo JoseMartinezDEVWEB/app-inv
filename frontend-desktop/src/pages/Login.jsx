@@ -155,7 +155,7 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div className="h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50 flex items-center justify-center overflow-hidden px-4 sm:px-6 lg:px-8">
       {/* Fondo decorativo */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-primary-100/30 rounded-full animate-pulse-slow"></div>

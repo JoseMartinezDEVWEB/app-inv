@@ -10,7 +10,8 @@ import {
   Package,
   DollarSign,
   Tag,
-  ShoppingCart
+  ShoppingCart,
+  Upload
 } from 'lucide-react'
 import Button from '../components/ui/Button'
 import Card from '../components/ui/Card'
@@ -20,16 +21,18 @@ import Table from '../components/ui/Table'
 import Pagination from '../components/ui/Pagination'
 import Modal from '../components/ui/Modal'
 import ProductoForm from '../components/ProductoForm'
+import ImportModal from '../components/ui/ImportModal'
 import { toast } from 'react-hot-toast'
 
 const ProductosGenerales = () => {
   const queryClient = useQueryClient()
   const [showModal, setShowModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage] = useState(10)
+  const [itemsPerPage] = useState(5)
 
   // Consulta de productos generales
   const { data: productosData, isLoading, error } = useQuery(
@@ -124,7 +127,7 @@ const ProductosGenerales = () => {
     }
   )
 
-  const productos = productosData?.productos || []
+  const productos = productosData?.datos || []
   const paginacion = productosData?.paginacion || {}
   const categorias = categoriasData?.categorias || []
 
@@ -155,6 +158,23 @@ const ProductosGenerales = () => {
       updateMutation.mutate({ id: editingProduct._id, productoData })
     } else {
       createMutation.mutate(productoData)
+    }
+  }
+
+  const handleImportProducts = async (products) => {
+    // Los productos ya vienen procesados del backend, solo necesitamos mostrarlos
+    // El backend ya los ha creado/actualizado en la base de datos
+    const toastId = toast.loading(`Procesando ${products.length} productos...`);
+    
+    try {
+      // Los productos ya están en la base de datos, solo invalidar la query
+      queryClient.invalidateQueries('productos-generales');
+      
+      toast.dismiss(toastId);
+      toast.success(`Se importaron ${products.length} productos correctamente`);
+    } catch (error) {
+      toast.dismiss(toastId);
+      toast.error(`Error al finalizar la importación: ${error.message}`);
     }
   }
 
@@ -286,13 +306,23 @@ const ProductosGenerales = () => {
           <h1 className="text-2xl font-bold text-gray-900">Productos Generales</h1>
           <p className="text-gray-600">Gestiona la lista maestra de productos disponibles</p>
         </div>
-        <Button
-          onClick={handleCreateProduct}
-          className="flex items-center space-x-2"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Agregar Producto</span>
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => setShowImportModal(true)}
+            variant="outline"
+            className="flex items-center space-x-2 bg-yellow-50 hover:bg-yellow-100 border-yellow-200 text-yellow-700"
+          >
+            <Upload className="w-4 h-4" />
+            <span>Importar Lista</span>
+          </Button>
+          <Button
+            onClick={handleCreateProduct}
+            className="flex items-center space-x-2"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Agregar Producto</span>
+          </Button>
+        </div>
       </div>
 
       {/* Filtros y búsqueda */}
@@ -380,21 +410,25 @@ const ProductosGenerales = () => {
       </div>
 
       {/* Tabla de productos */}
-      <Card className="p-0">
-        <Table
-          data={productos}
-          columns={columns}
-          loading={isLoading}
-          emptyMessage="No se encontraron productos generales"
-        />
-        {paginacion.totalPaginas > 1 && (
-          <Pagination
-            currentPage={currentPage}
-            totalPages={paginacion.totalPaginas || 1}
-            totalItems={paginacion.totalRegistros || 0}
-            itemsPerPage={itemsPerPage}
-            onPageChange={setCurrentPage}
+      <Card className="p-0 overflow-hidden">
+        <div className="max-h-96 overflow-y-auto">
+          <Table
+            data={productos}
+            columns={columns}
+            loading={isLoading}
+            emptyMessage="No se encontraron productos generales"
           />
+        </div>
+        {paginacion.totalPaginas > 1 && (
+          <div className="border-t border-gray-200 bg-gray-50 px-4 py-3">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={paginacion.totalPaginas || 1}
+              totalItems={paginacion.totalRegistros || 0}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setCurrentPage}
+            />
+          </div>
         )}
       </Card>
 
@@ -418,6 +452,13 @@ const ProductosGenerales = () => {
           isLoading={createMutation.isLoading || updateMutation.isLoading}
         />
       </Modal>
+
+      {/* Modal de Importación */}
+      <ImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImport={handleImportProducts}
+      />
     </div>
   )
 }

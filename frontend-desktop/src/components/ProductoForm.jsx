@@ -272,7 +272,7 @@ const ProductoForm = ({ producto, onSubmit, onCancel, isLoading = false }) => {
             name="nombre"
             value={formData.nombre}
             onChange={handleInputChange}
-            className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
+            className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-900 placeholder-gray-500 ${
               errors.nombre ? 'border-red-300' : 'border-gray-300'
             }`}
             placeholder="Ej: Arroz Blanco"
@@ -293,7 +293,7 @@ const ProductoForm = ({ producto, onSubmit, onCancel, isLoading = false }) => {
             value={formData.descripcion}
             onChange={handleInputChange}
             rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-900 placeholder-gray-500"
             placeholder="Descripción detallada del producto"
             maxLength={500}
           />
@@ -364,7 +364,7 @@ const ProductoForm = ({ producto, onSubmit, onCancel, isLoading = false }) => {
             onChange={handleCostoBaseChange}
             min="0"
             step="0.01"
-            className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
+            className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-900 placeholder-gray-500 ${
               errors.costoBase ? 'border-red-300' : 'border-gray-300'
             }`}
             placeholder="0.00"
@@ -385,7 +385,7 @@ const ProductoForm = ({ producto, onSubmit, onCancel, isLoading = false }) => {
             name="proveedor"
             value={formData.proveedor}
             onChange={handleInputChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-900 placeholder-gray-500"
             placeholder="Nombre del proveedor"
             maxLength={200}
           />
@@ -405,7 +405,7 @@ const ProductoForm = ({ producto, onSubmit, onCancel, isLoading = false }) => {
               value={formData.codigoBarras}
               onChange={handleInputChange}
               onKeyPress={(e) => handleCodigoBarrasKeyPress(e, 'contenedor')}
-              className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
+              className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-900 placeholder-gray-500 ${
                 errors.codigoBarras ? 'border-red-300' : 'border-gray-300'
               } ${isScanning && scanningField === 'contenedor' ? 'ring-2 ring-blue-500' : ''}`}
               placeholder="1234567890123"
@@ -521,7 +521,7 @@ const ProductoForm = ({ producto, onSubmit, onCancel, isLoading = false }) => {
                       value={formData.unidadesInternas.cantidad}
                       onChange={(e) => handleUnidadesInternasChange('cantidad', parseInt(e.target.value) || 0)}
                       min="1"
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-900 placeholder-gray-500 ${
                         errors.unidadesCantidad ? 'border-red-300' : 'border-gray-300'
                       }`}
                       placeholder="12"
@@ -543,7 +543,7 @@ const ProductoForm = ({ producto, onSubmit, onCancel, isLoading = false }) => {
                         value={formData.unidadesInternas.codigoBarras}
                         onChange={(e) => handleUnidadesInternasChange('codigoBarras', e.target.value)}
                         onKeyPress={(e) => handleCodigoBarrasKeyPress(e, 'unidad')}
-                        className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
+                        className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-900 placeholder-gray-500 ${
                           errors.unidadesCodigoBarras ? 'border-red-300' : 'border-gray-300'
                         } ${isScanning && scanningField === 'unidad' ? 'ring-2 ring-blue-500' : ''}`}
                         placeholder="7501234567890"
@@ -581,7 +581,7 @@ const ProductoForm = ({ producto, onSubmit, onCancel, isLoading = false }) => {
                       type="text"
                       value={formData.unidadesInternas.nombre}
                       onChange={(e) => handleUnidadesInternasChange('nombre', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-900 placeholder-gray-500"
                       placeholder="Ej: Botella Coca-Cola 12oz"
                       maxLength={200}
                     />
@@ -629,7 +629,7 @@ const ProductoForm = ({ producto, onSubmit, onCancel, isLoading = false }) => {
             value={formData.notas}
             onChange={handleInputChange}
             rows={2}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-900 placeholder-gray-500"
             placeholder="Información adicional sobre el producto"
             maxLength={1000}
           />

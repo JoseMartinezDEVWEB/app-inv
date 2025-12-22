@@ -7,6 +7,8 @@ import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import Table, { StatusBadge, TableActions } from '../components/ui/Table'
 import Modal, { ModalFooter } from '../components/ui/Modal'
+import Pagination from '../components/ui/Pagination'
+import Card from '../components/ui/Card'
 import ImportarPDFModal from '../components/ImportarPDFModal'
 import toast from 'react-hot-toast'
 
@@ -16,6 +18,8 @@ const Clientes = () => {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isImportarPDFModalOpen, setIsImportarPDFModalOpen] = useState(false)
   const [modalType, setModalType] = useState('create') // create, edit, view
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage] = useState(5)
   const [formData, setFormData] = useState({
     nombre: '',
     telefono: '',
@@ -27,10 +31,16 @@ const Clientes = () => {
 
   // Obtener clientes
   const { data: clientesData, isLoading } = useQuery(
-    ['clientes', searchTerm],
+    ['clientes', currentPage, itemsPerPage, searchTerm],
     async () => {
-      const response = await clientesApi.getAll({ buscar: searchTerm, limite: 50, pagina: 1 })
-      return handleApiResponse(response)
+      const response = await clientesApi.getAll({ 
+        buscar: searchTerm, 
+        limite: itemsPerPage, 
+        pagina: currentPage 
+      })
+      const data = handleApiResponse(response)
+      // El backend devuelve { datos: [...], paginacion: {...} }
+      return data
     }
   )
 
@@ -112,6 +122,12 @@ const Clientes = () => {
     if (window.confirm(`¿Estás seguro de eliminar a ${cliente.nombre}?`)) {
       deleteMutation.mutate(cliente._id)
     }
+  }
+
+  // Manejar búsqueda
+  const handleSearch = (e) => {
+    setSearchTerm(e.target.value)
+    setCurrentPage(1)
   }
 
   // Columnas de la tabla
@@ -214,7 +230,7 @@ const Clientes = () => {
             <Input
               placeholder="Buscar clientes..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={handleSearch}
               leftIcon={<Search className="w-4 h-4" />}
             />
           </div>
@@ -222,12 +238,27 @@ const Clientes = () => {
       </div>
 
       {/* Tabla */}
-      <Table
-        data={clientesData?.clientes || []}
-        columns={columns}
-        loading={isLoading}
-        emptyMessage="No hay clientes registrados"
-      />
+      <Card className="p-0 overflow-hidden">
+        <div className="max-h-96 overflow-y-auto">
+          <Table
+            data={clientesData?.datos || []}
+            columns={columns}
+            loading={isLoading}
+            emptyMessage="No hay clientes registrados"
+          />
+        </div>
+        {clientesData?.paginacion?.totalPaginas > 1 && (
+          <div className="border-t border-gray-200 bg-gray-50 px-4 py-3">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={clientesData.paginacion.totalPaginas || 1}
+              totalItems={clientesData.paginacion.totalRegistros || 0}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setCurrentPage}
+            />
+          </div>
+        )}
+      </Card>
 
       {/* Modal */}
       <Modal

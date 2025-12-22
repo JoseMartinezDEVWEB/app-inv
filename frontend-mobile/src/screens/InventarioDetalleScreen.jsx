@@ -365,7 +365,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
         const newProduct = data.data.datos?.producto || data.data.producto;
         // Agregar el producto recién creado al inventario
         addProductMutation.mutate({
-          producto: newProduct._id,
+          productoClienteId: newProduct._id,
           cantidadContada: 1,
           costoProducto: newProduct.costo || 0,
         });
@@ -465,7 +465,8 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
     try {
       // Primero buscar en productos generales por código de barras
       const response = await productosApi.getByBarcode(data);
-      const productoGeneral = response.data.datos?.producto || response.data.producto;
+      // Backend SQLite devuelve el objeto directamente en datos
+      const productoGeneral = response.data.datos;
 
       if (productoGeneral) {
         // Si encontramos el producto general, verificar si el cliente ya lo tiene
@@ -594,7 +595,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
     }
 
     addProductMutation.mutate({
-      producto: selectedProducto._id,
+      productoClienteId: selectedProducto._id,
       cantidadContada: parseFloat(cantidad),
       costoProducto: parseFloat(costo) || selectedProducto.costoBase || 0,
     });
@@ -619,8 +620,13 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
     setShowDeleteConfirm(true)
   }
   const confirmDelete = () => {
+    // Priorizar ID de fila (rowId) para compatibilidad backend
+    const rowId = deleteTarget?.id
     const productId = typeof deleteTarget?.producto === 'object' ? deleteTarget.producto?._id : deleteTarget?.producto
-    if (productId) {
+
+    if (rowId) {
+      deleteProductMutation.mutate(rowId)
+    } else if (productId) {
       deleteProductMutation.mutate(productId)
     }
     setShowDeleteConfirm(false)
@@ -1574,642 +1580,642 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
   )
 }
 
-        const styles = StyleSheet.create({
-          container: {
-          flex: 1,
-        backgroundColor: '#f8fafc',
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
   },
-        loadingContainer: {
-          flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#f8fafc',
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
   },
-        loadingText: {
-          marginTop: 10,
-        fontSize: 16,
-        color: '#64748b',
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#64748b',
   },
-        header: {
-          paddingTop: 50,
-        paddingBottom: 20,
-        paddingHorizontal: 20,
+  header: {
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
   },
-        headerContent: {
-          flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-        backButton: {
-          width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
-        justifyContent: 'center',
-        alignItems: 'center',
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-        headerInfo: {
-          flex: 1,
-        marginLeft: 15,
+  headerInfo: {
+    flex: 1,
+    marginLeft: 15,
   },
-        headerTitle: {
-          fontSize: 20,
-        fontWeight: 'bold',
-        color: '#ffffff',
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ffffff',
   },
-        headerSubtitle: {
-          fontSize: 14,
-        color: 'rgba(255, 255, 255, 0.9)',
-        marginTop: 2,
+  headerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.9)',
+    marginTop: 2,
   },
-        timerContainer: {
-          flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
-        paddingHorizontal: 10,
-        paddingVertical: 5,
-        borderRadius: 15,
+  timerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 15,
   },
-        timerText: {
-          color: '#ffffff',
-        fontSize: 12,
-        fontWeight: 'bold',
-        marginLeft: 5,
+  timerText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginLeft: 5,
   },
-        headerActions: {
-          flexDirection: 'row',
-        alignItems: 'center',
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-        menuButton: {
-          marginLeft: 15,
-        padding: 5,
+  menuButton: {
+    marginLeft: 15,
+    padding: 5,
   },
-        menuModalOverlay: {
-          flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.6)',
-        justifyContent: 'center',
-        alignItems: 'center',
+  menuModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-        menuModalContainer: {
-          backgroundColor: '#1e293b',
-        borderRadius: 15,
-        padding: 20,
-        width: width * 0.85,
-        maxHeight: height * 0.8,
-        shadowColor: '#000',
-        shadowOffset: {
-          width: 0,
-        height: 4,
+  menuModalContainer: {
+    backgroundColor: '#1e293b',
+    borderRadius: 15,
+    padding: 20,
+    width: width * 0.85,
+    maxHeight: height * 0.8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
     },
-        shadowOpacity: 0.3,
-        shadowRadius: 5,
-        elevation: 10,
-  },
-        menuTitle: {
-          fontSize: 18,
-        fontWeight: 'bold',
-        color: '#ffffff',
-        marginBottom: 15,
-        paddingBottom: 10,
-        borderBottomWidth: 1,
-        borderBottomColor: '#334155',
-        textAlign: 'center',
-  },
-        menuItem: {
-          flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 15,
-        paddingHorizontal: 20,
-        borderRadius: 10,
-        marginBottom: 10,
-  },
-        menuItemText: {
-          color: '#ffffff',
-        fontSize: 16,
-        fontWeight: '600',
-        marginLeft: 15,
-  },
-        menuSeparator: {
-          height: 1,
-        backgroundColor: '#334155',
-        marginVertical: 15,
-  },
-        actionButtonsContainer: {
-          flexDirection: 'row',
-        paddingHorizontal: 20,
-        paddingVertical: 15,
-        justifyContent: 'space-between',
-  },
-        actionButton: {
-          flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 15,
-        borderRadius: 12,
-        marginHorizontal: 5,
-  },
-        scanButton: {
-          backgroundColor: '#22c55e',
-  },
-        searchButton: {
-          backgroundColor: '#3b82f6',
-  },
-        addButton: {
-          backgroundColor: '#f59e0b',
-  },
-        actionButtonText: {
-          color: '#ffffff',
-        fontSize: 14,
-        fontWeight: '600',
-        marginLeft: 8,
-  },
-        configButtonsContainer: {
-          paddingHorizontal: 20,
-        marginBottom: 15,
-  },
-        configButton: {
-          flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 15,
-        paddingVertical: 10,
-        borderRadius: 20,
-        marginRight: 10,
-  },
-        addFormContainer: {
-          padding: 20,
-        backgroundColor: '#eef2ff',
-        margin: 20,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: '#c7d2fe',
-  },
-        selectedProductTitle: {
-          fontSize: 14,
-        color: '#4338ca',
-        marginBottom: 4,
-  },
-        selectedProductName: {
-          fontSize: 18,
-        fontWeight: 'bold',
-        color: '#312e81',
-        marginBottom: 15,
-  },
-        formRow: {
-          flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 15,
-  },
-        inputWrapper: {
-          flex: 1,
-        marginHorizontal: 5,
-  },
-        inputLabel: {
-          fontSize: 14,
-        color: '#475569',
-        marginBottom: 6,
-  },
-        input: {
-          backgroundColor: '#ffffff',
-        borderWidth: 1,
-        borderColor: '#e2e8f0',
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        fontSize: 16,
-        color: '#1e293b',
-  },
-        submitButton: {
-          flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#16a34a',
-        paddingVertical: 15,
-        borderRadius: 12,
-        marginTop: 10,
-  },
-        submitButtonText: {
-          color: '#ffffff',
-        fontSize: 16,
-        fontWeight: 'bold',
-        marginLeft: 10,
-  
-  },
-        financialButton: {
-          backgroundColor: '#8b5cf6',
-  },
-        distribucionButton: {
-          backgroundColor: '#22c55e',
-  },
-        contadorButton: {
-          backgroundColor: '#f59e0b',
-  },
-        exportButton: {
-          backgroundColor: '#06b6d4',
-  },
-        configButtonText: {
-          color: '#ffffff',
-        fontSize: 12,
-        fontWeight: '600',
-        marginLeft: 5,
-  },
-        statsContainer: {
-          flexDirection: 'row',
-        paddingHorizontal: 20,
-        marginBottom: 15,
-  },
-        statCard: {
-          flex: 1,
-        backgroundColor: '#ffffff',
-        borderRadius: 12,
-        padding: 15,
-        alignItems: 'center',
-        marginHorizontal: 5,
-        shadowColor: '#000',
-        shadowOffset: {width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
-  },
-        statValue: {
-          fontSize: 18,
-        fontWeight: 'bold',
-        color: '#1e293b',
-        marginBottom: 5,
-  },
-        statLabel: {
-          fontSize: 12,
-        color: '#64748b',
-  },
-        productsList: {
-          paddingHorizontal: 20,
-  },
-        productoItem: {
-          backgroundColor: '#ffffff',
-        borderRadius: 12,
-        padding: 15,
-        marginBottom: 10,
-        flexDirection: 'row',
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: {width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
-  },
-        productoInfo: {
-          flex: 1,
-  },
-        productoNombre: {
-          fontSize: 16,
-        fontWeight: '600',
-        color: '#1e293b',
-        marginBottom: 5,
-  },
-        productoSku: {
-          fontSize: 12,
-        color: '#64748b',
-        marginBottom: 8,
-  },
-        productoStats: {
-          flexDirection: 'row',
-        justifyContent: 'space-between',
-  },
-        productoCantidad: {
-          fontSize: 12,
-        color: '#22c55e',
-        fontWeight: '600',
-  },
-        productoCosto: {
-          fontSize: 12,
-        color: '#3b82f6',
-        fontWeight: '600',
-  },
-        productoTotal: {
-          fontSize: 12,
-        color: '#1e293b',
-        fontWeight: 'bold',
-  },
-        deleteButton: {
-          padding: 10,
-  },
-        emptyContainer: {
-          alignItems: 'center',
-        paddingVertical: 60,
-  },
-        emptyText: {
-          fontSize: 18,
-        color: '#64748b',
-        marginTop: 15,
-        fontWeight: '600',
-  },
-        emptySubtext: {
-          fontSize: 14,
-        color: '#94a3b8',
-        marginTop: 5,
-        textAlign: 'center',
-  },
-        scannerContainer: {
-          flex: 1,
-  },
-        scannerOverlay: {
-          position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        justifyContent: 'space-between',
-        alignItems: 'center',
-  },
-        scannerHeader: {
-          flexDirection: 'row',
-        alignItems: 'center',
-        paddingTop: 50,
-        paddingHorizontal: 20,
-        width: '100%',
-  },
-        scannerCloseButton: {
-          width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        justifyContent: 'center',
-        alignItems: 'center',
-  },
-        scannerTitle: {
-          flex: 1,
-        textAlign: 'center',
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#ffffff',
-        marginRight: 40,
-  },
-        scannerFrame: {
-          width: 250,
-        height: 250,
-        borderWidth: 2,
-        borderColor: '#ffffff',
-        borderRadius: 12,
-  },
-        scannerInstructions: {
-          fontSize: 16,
-        color: '#ffffff',
-        textAlign: 'center',
-        paddingHorizontal: 40,
-        paddingBottom: 100,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        paddingVertical: 20,
-        width: '100%',
-  },
-        // Estilos para modales adicionales
-        searchModalOverlay: {
-          flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        justifyContent: 'center',
-        alignItems: 'center',
-  },
-        searchModalContainer: {
-          width: width * 0.9,
-        maxHeight: height * 0.7,
-        backgroundColor: '#ffffff',
-        borderRadius: 15,
-        padding: 20,
-  },
-        searchModalHeader: {
-          flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 15,
-  },
-        searchModalTitle: {
-          fontSize: 18,
-        fontWeight: 'bold',
-        color: '#1e293b',
-  },
-        searchModalInput: {
-          borderWidth: 1,
-        borderColor: '#d1d5db',
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        fontSize: 16,
-        marginBottom: 15,
-  },
-        searchResultItem: {
-          padding: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f1f5f9',
-  },
-        searchResultName: {
-          fontSize: 16,
-        fontWeight: '600',
-        color: '#1e293b',
-        marginBottom: 4,
-  },
-        searchResultSku: {
-          fontSize: 12,
-        color: '#64748b',
-        marginBottom: 4,
-  },
-        searchResultPrice: {
-          fontSize: 14,
-        fontWeight: 'bold',
-        color: '#3b82f6',
-  },
-        searchEmptyText: {
-          textAlign: 'center',
-        color: '#64748b',
-        fontSize: 16,
-        paddingVertical: 40,
-  },
-        addProductModalOverlay: {
-          flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        justifyContent: 'center',
-        alignItems: 'center',
-  },
-        addProductModalWrapper: {
-          flex: 1,
-        width: '100%',
-        alignItems: 'center',
-        justifyContent: 'center',
-  },
-        addProductModalContainer: {
-          width: Math.min(width * 0.95, 720),
-        maxHeight: height * 0.85,
-        minHeight: Math.min(height * 0.5, 520),
-        backgroundColor: '#ffffff',
-        borderRadius: 15,
-  },
-        addProductModalHeader: {
-          flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: 20,
-        borderBottomWidth: 1,
-        borderBottomColor: '#e5e7eb',
-  },
-        addProductModalTitle: {
-          fontSize: 18,
-        fontWeight: 'bold',
-        color: '#1e293b',
-  },
-        addProductModalContent: {
-          flex: 1,
-        padding: 20,
-  },
-        inputGroup: {
-          marginBottom: 15,
-  },
-        inputLabel: {
-          fontSize: 14,
-        fontWeight: '600',
-        color: '#374151',
-        marginBottom: 5,
-  },
-        input: {
-          borderWidth: 1,
-        borderColor: '#d1d5db',
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        fontSize: 16,
-  },
-        addProductModalFooter: {
-          flexDirection: 'row',
-        padding: 20,
-        borderTopWidth: 1,
-        borderTopColor: '#e5e7eb',
-  },
-        cancelButton: {
-          flex: 1,
-        paddingVertical: 12,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: '#d1d5db',
-        alignItems: 'center',
-        marginRight: 10,
-  },
-        cancelButtonText: {
-          color: '#374151',
-        fontSize: 16,
-        fontWeight: '600',
-  },
-        createButton: {
-          flex: 1,
-        paddingVertical: 12,
-        borderRadius: 8,
-        backgroundColor: '#22c55e',
-        alignItems: 'center',
-  },
-        createButtonText: {
-          color: '#ffffff',
-        fontSize: 16,
-        fontWeight: '600',
-  },
-        // Estilos para botón de productos con valor 0
-        zeroCostButtonContainer: {
-          paddingHorizontal: 20,
-        paddingVertical: 10,
-  },
-        zeroCostButton: {
-          backgroundColor: '#f97316',
-        borderRadius: 12,
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        elevation: 3,
-        shadowColor: '#000',
-        shadowOffset: {width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-  },
-        zeroCostButtonContent: {
-          flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-  },
-        zeroCostButtonText: {
-          color: '#ffffff',
-        fontSize: 16,
-        fontWeight: 'bold',
-        marginLeft: 8,
-        marginRight: 8,
-  },
-        zeroCostBadge: {
-          backgroundColor: '#ea580c',
-        borderRadius: 12,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        minWidth: 24,
-        alignItems: 'center',
-  },
-        zeroCostBadgeText: {
-          color: '#ffffff',
-        fontSize: 12,
-        fontWeight: 'bold',
-  },
-        // Exit modal styles
-        exitModalOverlay: {
-          flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
-  },
-        exitModalContainer: {
-          width: Math.min(width * 0.95, 600),
-        backgroundColor: '#ffffff',
-        borderRadius: 16,
-        padding: 20,
-  },
-        exitModalHeader: {
-          flexDirection: 'row',
-        alignItems: 'center',
-  },
-        exitModalTitle: {
-          marginLeft: 8,
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#1f2937',
-  },
-        exitModalMessage: {
-          marginTop: 12,
-        fontSize: 14,
-        color: '#374151',
-  },
-        exitModalActions: {
-          flexDirection: 'row',
-        justifyContent: 'flex-end',
-        marginTop: 18,
-  },
-        exitButton: {
-          paddingVertical: 10,
-        paddingHorizontal: 12,
-        borderRadius: 8,
-        marginLeft: 8,
-  },
-        exitCancel: {
-          borderWidth: 1,
-        borderColor: '#d1d5db',
-  },
-        exitCancelText: {
-          color: '#374151',
-        fontWeight: '600',
-  },
-        exitWithoutSave: {
-          backgroundColor: '#f3f4f6',
-  },
-        exitWithoutSaveText: {
-          color: '#374151',
-        fontWeight: '600',
-  },
-        exitSave: {
-          backgroundColor: '#10b981',
-  },
-        exitSaveText: {
-          color: '#ffffff',
-        fontWeight: '700',
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 10,
+  },
+  menuTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 15,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+    textAlign: 'center',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  menuItemText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 15,
+  },
+  menuSeparator: {
+    height: 1,
+    backgroundColor: '#334155',
+    marginVertical: 15,
+  },
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    justifyContent: 'space-between',
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 15,
+    borderRadius: 12,
+    marginHorizontal: 5,
+  },
+  scanButton: {
+    backgroundColor: '#22c55e',
+  },
+  searchButton: {
+    backgroundColor: '#3b82f6',
+  },
+  addButton: {
+    backgroundColor: '#f59e0b',
+  },
+  actionButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  configButtonsContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 15,
+  },
+  configButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginRight: 10,
+  },
+  addFormContainer: {
+    padding: 20,
+    backgroundColor: '#eef2ff',
+    margin: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+  },
+  selectedProductTitle: {
+    fontSize: 14,
+    color: '#4338ca',
+    marginBottom: 4,
+  },
+  selectedProductName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#312e81',
+    marginBottom: 15,
+  },
+  formRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15,
+  },
+  inputWrapper: {
+    flex: 1,
+    marginHorizontal: 5,
+  },
+  inputLabel: {
+    fontSize: 14,
+    color: '#475569',
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: '#1e293b',
+  },
+  submitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#16a34a',
+    paddingVertical: 15,
+    borderRadius: 12,
+    marginTop: 10,
+  },
+  submitButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 10,
+
+  },
+  financialButton: {
+    backgroundColor: '#8b5cf6',
+  },
+  distribucionButton: {
+    backgroundColor: '#22c55e',
+  },
+  contadorButton: {
+    backgroundColor: '#f59e0b',
+  },
+  exportButton: {
+    backgroundColor: '#06b6d4',
+  },
+  configButtonText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 5,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    marginBottom: 15,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 15,
+    alignItems: 'center',
+    marginHorizontal: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1e293b',
+    marginBottom: 5,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  productsList: {
+    paddingHorizontal: 20,
+  },
+  productoItem: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  productoInfo: {
+    flex: 1,
+  },
+  productoNombre: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 5,
+  },
+  productoSku: {
+    fontSize: 12,
+    color: '#64748b',
+    marginBottom: 8,
+  },
+  productoStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  productoCantidad: {
+    fontSize: 12,
+    color: '#22c55e',
+    fontWeight: '600',
+  },
+  productoCosto: {
+    fontSize: 12,
+    color: '#3b82f6',
+    fontWeight: '600',
+  },
+  productoTotal: {
+    fontSize: 12,
+    color: '#1e293b',
+    fontWeight: 'bold',
+  },
+  deleteButton: {
+    padding: 10,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptyText: {
+    fontSize: 18,
+    color: '#64748b',
+    marginTop: 15,
+    fontWeight: '600',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#94a3b8',
+    marginTop: 5,
+    textAlign: 'center',
+  },
+  scannerContainer: {
+    flex: 1,
+  },
+  scannerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  scannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 50,
+    paddingHorizontal: 20,
+    width: '100%',
+  },
+  scannerCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scannerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginRight: 40,
+  },
+  scannerFrame: {
+    width: 250,
+    height: 250,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+    borderRadius: 12,
+  },
+  scannerInstructions: {
+    fontSize: 16,
+    color: '#ffffff',
+    textAlign: 'center',
+    paddingHorizontal: 40,
+    paddingBottom: 100,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingVertical: 20,
+    width: '100%',
+  },
+  // Estilos para modales adicionales
+  searchModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchModalContainer: {
+    width: width * 0.9,
+    maxHeight: height * 0.7,
+    backgroundColor: '#ffffff',
+    borderRadius: 15,
+    padding: 20,
+  },
+  searchModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  searchModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1e293b',
+  },
+  searchModalInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    marginBottom: 15,
+  },
+  searchResultItem: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  searchResultName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 4,
+  },
+  searchResultSku: {
+    fontSize: 12,
+    color: '#64748b',
+    marginBottom: 4,
+  },
+  searchResultPrice: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#3b82f6',
+  },
+  searchEmptyText: {
+    textAlign: 'center',
+    color: '#64748b',
+    fontSize: 16,
+    paddingVertical: 40,
+  },
+  addProductModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addProductModalWrapper: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addProductModalContainer: {
+    width: Math.min(width * 0.95, 720),
+    maxHeight: height * 0.85,
+    minHeight: Math.min(height * 0.5, 520),
+    backgroundColor: '#ffffff',
+    borderRadius: 15,
+  },
+  addProductModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  addProductModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1e293b',
+  },
+  addProductModalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  inputGroup: {
+    marginBottom: 15,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 5,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+  },
+  addProductModalFooter: {
+    flexDirection: 'row',
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  cancelButtonText: {
+    color: '#374151',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  createButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#22c55e',
+    alignItems: 'center',
+  },
+  createButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // Estilos para botón de productos con valor 0
+  zeroCostButtonContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  zeroCostButton: {
+    backgroundColor: '#f97316',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  zeroCostButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zeroCostButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8,
+    marginRight: 8,
+  },
+  zeroCostBadge: {
+    backgroundColor: '#ea580c',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    minWidth: 24,
+    alignItems: 'center',
+  },
+  zeroCostBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  // Exit modal styles
+  exitModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  exitModalContainer: {
+    width: Math.min(width * 0.95, 600),
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 20,
+  },
+  exitModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  exitModalTitle: {
+    marginLeft: 8,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1f2937',
+  },
+  exitModalMessage: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#374151',
+  },
+  exitModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 18,
+  },
+  exitButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  exitCancel: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+  },
+  exitCancelText: {
+    color: '#374151',
+    fontWeight: '600',
+  },
+  exitWithoutSave: {
+    backgroundColor: '#f3f4f6',
+  },
+  exitWithoutSaveText: {
+    color: '#374151',
+    fontWeight: '600',
+  },
+  exitSave: {
+    backgroundColor: '#10b981',
+  },
+  exitSaveText: {
+    color: '#ffffff',
+    fontWeight: '700',
   },
 })
 
-        export default InventarioDetalleScreen
+export default InventarioDetalleScreen

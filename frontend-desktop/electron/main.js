@@ -25,7 +25,9 @@ function createWindow() {
       enableRemoteModule: false,
       preload: path.join(__dirname, 'preload.js')
     },
-    icon: path.join(__dirname, '../src/img/logo_transparent.png'),
+    icon: isDev 
+      ? path.join(__dirname, '../../logo_transparent-1UMhnOlZ.png')
+      : path.join(process.resourcesPath, 'logo_transparent-1UMhnOlZ.png'),
     show: false,
     title: 'Gestor de Inventario J4 Pro - Desktop',
     frame: false,
@@ -36,6 +38,8 @@ function createWindow() {
   if (isDev) {
     // Vite usa puerto 3000 (configurado en vite.config.js)
     mainWindow.loadURL('http://localhost:3000')
+    // Abrir DevTools automáticamente en modo desarrollo
+    mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
@@ -44,6 +48,24 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.maximize()
     mainWindow.show()
+  })
+
+  // Atajos de teclado para abrir/cerrar DevTools (Ctrl+Shift+I o F12)
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.control && input.shift && input.key.toLowerCase() === 'i') {
+      if (mainWindow.webContents.isDevToolsOpened()) {
+        mainWindow.webContents.closeDevTools()
+      } else {
+        mainWindow.webContents.openDevTools()
+      }
+    }
+    if (input.key === 'F12') {
+      if (mainWindow.webContents.isDevToolsOpened()) {
+        mainWindow.webContents.closeDevTools()
+      } else {
+        mainWindow.webContents.openDevTools()
+      }
+    }
   })
 
   // Manejar el cierre de la ventana

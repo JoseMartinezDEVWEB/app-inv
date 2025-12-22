@@ -53,16 +53,17 @@ api.interceptors.response.use(
         const refreshToken = localStorage.getItem('refreshToken')
         if (refreshToken) {
           const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-            refresh_token: refreshToken,
+            refreshToken: refreshToken,
           })
 
-          const { access_token, refresh_token: newRefreshToken } = response.data
+          const { datos } = response.data
+          const { accessToken, refreshToken: newRefreshToken } = datos
 
-          localStorage.setItem('accessToken', access_token)
+          localStorage.setItem('accessToken', accessToken)
           localStorage.setItem('refreshToken', newRefreshToken)
           
           // Reintentar la petición original
-          originalRequest.headers.Authorization = `Bearer ${access_token}`
+          originalRequest.headers.Authorization = `Bearer ${accessToken}`
           return api(originalRequest)
         }
       } catch (refreshError) {
@@ -103,7 +104,7 @@ export const handleApiResponse = (response) => {
 
   const { data } = response
 
-  // Si tiene estructura de respuesta específica del backend Node.js
+  // Si tiene estructura de respuesta específica del backend SQLite
   if (data.exito !== undefined) {
     if (!data.exito) {
       throw new Error(data.mensaje || 'Error en la operación')
@@ -184,6 +185,19 @@ export const productosApi = {
   deleteGeneral: (id) => api.delete(`/productos/generales/${id}`),
   getCategorias: () => api.get('/productos/generales/categorias'),
   buscarPorCodigoBarras: (codigo) => api.get(`/productos/generales/buscar/codigo-barras/${codigo}`),
+  importarDesdeArchivo: (archivo, apiKey = null) => {
+    const formData = new FormData()
+    formData.append('archivo', archivo)
+    if (apiKey) {
+      formData.append('apiKey', apiKey)
+    }
+    return api.post('/productos/generales/importar', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 120000, // 2 minutos para archivos grandes
+    })
+  },
   
   // Productos de clientes
   getByCliente: (clienteId, params = {}) => api.get(`/productos/cliente/${clienteId}`, { params }),

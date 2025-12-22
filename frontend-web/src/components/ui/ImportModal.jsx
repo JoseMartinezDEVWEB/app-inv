@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, FileText, Check, AlertCircle, Loader, Key } from 'lucide-react';
-import Modal, { ModalBody, ModalFooter } from './Modal';
+import { Upload, FileText, Key } from 'lucide-react';
+import Modal from './Modal';
 import Button from './Button';
 import { importarProductosDesdeArchivo } from '../../services/importService';
 import { toast } from 'react-hot-toast';
@@ -94,10 +94,9 @@ const ImportModal = ({ isOpen, onClose, onImport }) => {
             title="Importar Productos (Excel / PDF AI)"
             size="xl"
         >
-            <ModalBody className="space-y-6">
+            <div className="space-y-6">
                 {step === 1 && (
                     <div className="space-y-4">
-
                         {/* Input de API Key */}
                         <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                             <div className="flex items-start gap-3">
@@ -166,7 +165,7 @@ const ImportModal = ({ isOpen, onClose, onImport }) => {
                 {step === 2 && (
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                            <h4 className="font-semibold text-lg text-gray-800">Vista Previa ({previewData.length} productos found)</h4>
+                            <h4 className="font-semibold text-lg text-gray-800">Vista Previa ({previewData.length} productos encontrados)</h4>
                             <button
                                 onClick={() => setStep(1)}
                                 className="text-sm text-gray-500 hover:text-gray-700 underline"
@@ -198,13 +197,13 @@ const ImportModal = ({ isOpen, onClose, onImport }) => {
                         </div>
                     </div>
                 )}
-            </ModalBody>
+            </div>
 
-            <ModalFooter>
+            <div className="flex justify-end gap-2 mt-6">
                 <Button variant="outline" onClick={onClose}>Cancelar</Button>
                 {step === 1 && (
-                    <Button onClick={handleProcess} isLoading={loading} disabled={!file || !apiKey}>
-                        Analizar Archivo
+                    <Button onClick={handleProcess} disabled={!file || !apiKey || loading}>
+                        {loading ? 'Procesando...' : 'Analizar Archivo'}
                     </Button>
                 )}
                 {step === 2 && (
@@ -212,9 +211,13 @@ const ImportModal = ({ isOpen, onClose, onImport }) => {
                         Importar Productos
                     </Button>
                 )}
-            </ModalFooter>
+            </div>
         </Modal>
     );
 };
 
 export default ImportModal;
+
+
+
+

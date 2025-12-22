@@ -46,6 +46,12 @@ api.interceptors.request.use(
       }
     }
 
+    // Si es FormData, eliminar Content-Type para que axios lo establezca automáticamente
+    // Esto es importante en React Native para que el boundary se establezca correctamente
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type']
+    }
+
     // Agregar timestamp para evitar cache
     config.params = {
       ...config.params,
@@ -134,11 +140,27 @@ api.interceptors.response.use(
 
 // Funciones de utilidad para manejo de respuestas
 export const handleApiResponse = (response) => {
-  if (response.data.exito) {
-    return response.data.datos
-  } else {
-    throw new Error(response.data.mensaje || 'Error en la respuesta del servidor')
+  if (!response || !response.data) {
+    throw new Error('Respuesta inválida del servidor')
   }
+
+  const { data } = response
+
+  // Si tiene estructura de respuesta específica del backend SQLite
+  if (data.exito !== undefined) {
+    if (!data.exito) {
+      throw new Error(data.mensaje || 'Error en la operación')
+    }
+    return data.datos || data
+  }
+
+  // Si la respuesta tiene datos, devolverlos directamente
+  if (Array.isArray(data) || typeof data === 'object') {
+    return data
+  }
+
+  // Respuesta simple
+  return data
 }
 
 export const handleApiError = (error) => {
@@ -211,6 +233,15 @@ export const productosApi = {
 
   // Búsqueda y código de barras (mantener compatibilidad)
   search: (params = {}) => api.get('/productos/buscar', { params }),
+  
+  // Importación de productos desde archivo
+  importarDesdeArchivo: (formData, apiKey = null) => {
+    // No establecer Content-Type manualmente - axios lo hará automáticamente con el boundary correcto
+    // Esto es especialmente importante en React Native
+    return api.post('/productos/generales/importar', formData, {
+      timeout: 120000, // 2 minutos para archivos grandes
+    })
+  },
   buscarPorNombre: (nombre) => api.get('/productos/generales', { params: { buscar: nombre, limite: 20 } }),
   getByBarcode: (barcode) => api.get(`/productos/generales/buscar/codigo-barras/${barcode}`),
   // Asignar productos generales a un cliente (paridad con web)

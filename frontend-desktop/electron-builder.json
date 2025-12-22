@@ -17,6 +17,10 @@
       "from": "resources/backend",
       "to": "backend",
       "filter": ["**/*"]
+    },
+    {
+      "from": "../logo_transparent-1UMhnOlZ.png",
+      "to": "logo_transparent-1UMhnOlZ.png"
     }
   ],
   "win": {
@@ -26,7 +30,7 @@
         "arch": ["x64"]
       }
     ],
-    "icon": "src/img/logo_transparent.png",
+    "icon": "../logo_transparent-1UMhnOlZ.png",
     "artifactName": "${productName}-Setup-${version}.${ext}"
   },
   "nsis": {
@@ -37,22 +41,22 @@
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
     "shortcutName": "Gestor Inventario J4 Pro",
-    "installerIcon": "src/img/logo_transparent.png",
-    "uninstallerIcon": "src/img/logo_transparent.png",
-    "installerHeaderIcon": "src/img/logo_transparent.png",
+    "installerIcon": "../logo_transparent-1UMhnOlZ.png",
+    "uninstallerIcon": "../logo_transparent-1UMhnOlZ.png",
+    "installerHeaderIcon": "../logo_transparent-1UMhnOlZ.png",
     "language": "1034",
     "warningsAsErrors": false
   },
   "mac": {
     "target": ["dmg", "zip"],
     "category": "public.app-category.business",
-    "icon": "src/img/logo_transparent.png",
+    "icon": "../logo_transparent-1UMhnOlZ.png",
     "artifactName": "${productName}-${version}.${ext}"
   },
   "linux": {
     "target": ["AppImage", "deb"],
     "category": "Office",
-    "icon": "src/img/logo_transparent.png",
+    "icon": "../logo_transparent-1UMhnOlZ.png",
     "artifactName": "${productName}-${version}.${ext}"
   }
 }

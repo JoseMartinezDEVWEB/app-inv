@@ -115,17 +115,21 @@ const ProductosGeneralesScreen = () => {
   };
 
   const handleImportProducts = async (products) => {
-    let count = 0;
-    for (const p of products) {
-      try {
-        await createMutation.mutateAsync(p);
-        count++;
-      } catch (e) {
-        console.log("Error importando", p.nombre);
-      }
+    // Los productos ya vienen procesados del backend, solo necesitamos mostrarlos
+    // El backend ya los ha creado/actualizado en la base de datos
+    try {
+      // Los productos ya están en la base de datos, solo invalidar la query
+      queryClient.invalidateQueries('productos');
+      showMessage({ 
+        message: `Se importaron ${products.length} productos correctamente`, 
+        type: 'success' 
+      });
+    } catch (error) {
+      showMessage({ 
+        message: `Error al finalizar la importación: ${error.message}`, 
+        type: 'danger' 
+      });
     }
-    showMessage({ message: `Se importaron ${count} productos`, type: 'success' });
-    queryClient.invalidateQueries('productos');
   };
 
   const renderContent = () => {

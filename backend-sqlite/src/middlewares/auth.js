@@ -48,7 +48,11 @@ export const validarJWT = async (req, res, next) => {
     // Continuar al siguiente middleware
     next()
   } catch (error) {
-    console.error('Error en validarJWT:', error)
+    // No mostrar error en consola si es simplemente que no hay token (evitar spam)
+    if (error.message !== 'Token no proporcionado o formato inválido' && 
+        error.message !== 'Token no proporcionado') {
+      console.error('Error en validarJWT:', error)
+    }
     
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({

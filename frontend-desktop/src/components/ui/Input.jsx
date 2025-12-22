@@ -16,10 +16,35 @@ const Input = forwardRef(({
   required = false,
   className = '',
   containerClassName = '',
+  highlightCoca = false,
   ...props
 }, ref) => {
   const [showPassword, setShowPassword] = React.useState(false)
   const [isFocused, setIsFocused] = React.useState(false)
+
+  // Función para resaltar la palabra 'coca' en el texto
+  const highlightCocaInText = (text) => {
+    if (!highlightCoca || !text) return text
+    const regex = /coca/gi
+    const parts = text.split(regex)
+    const matches = text.match(regex)
+    
+    if (!matches) return text
+    
+    const result = []
+    parts.forEach((part, index) => {
+      result.push(part)
+      if (index < matches.length) {
+        result.push(
+          <span key={index} className="bg-red-500 text-white font-bold px-0.5 rounded">
+            {matches[index]}
+          </span>
+        )
+      }
+    })
+    
+    return result
+  }
 
   // Tamaños
   const sizes = {
@@ -44,7 +69,7 @@ const Input = forwardRef(({
     transition-all duration-200 ease-in-out
     focus:outline-none focus:ring-2 focus:ring-offset-0
     disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed
-    placeholder-gray-400
+    placeholder-gray-400 text-gray-900
   `
 
   // Clases del input
@@ -145,7 +170,7 @@ const Input = forwardRef(({
         )}
       </div>
 
-      {/* Mensaje de error o helper text */}
+      {/* Mensaje de error o helper text con resaltado de 'coca' */}
       {(error || helperText) && (
         <motion.div
           initial={{ opacity: 0, y: -5 }}
@@ -156,10 +181,12 @@ const Input = forwardRef(({
           {error ? (
             <p className="text-sm text-danger-600 flex items-center">
               <AlertCircle className="w-4 h-4 mr-1" />
-              {error}
+              {highlightCocaInText(error)}
             </p>
           ) : (
-            <p className="text-sm text-gray-500">{helperText}</p>
+            <p className="text-sm text-gray-500">
+              {highlightCocaInText(helperText)}
+            </p>
           )}
         </motion.div>
       )}

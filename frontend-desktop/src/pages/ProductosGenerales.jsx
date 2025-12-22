@@ -34,7 +34,7 @@ const ProductosGenerales = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage] = useState(10)
+  const [itemsPerPage] = useState(5)
 
   // Consulta de productos generales
   const { data: productosData, isLoading, error } = useQuery(
@@ -164,28 +164,20 @@ const ProductosGenerales = () => {
   }
 
   const handleImportProducts = async (products) => {
-    const toastId = toast.loading(`Importando ${products.length} productos...`);
-    let successCount = 0;
-    let errorCount = 0;
-
-    for (const product of products) {
-      try {
-        await createMutation.mutateAsync(product);
-        successCount++;
-      } catch (error) {
-        console.error("Error importando producto:", product, error);
-        errorCount++;
-      }
+    // Los productos ya vienen procesados del backend, solo necesitamos mostrarlos
+    // El backend ya los ha creado/actualizado en la base de datos
+    const toastId = toast.loading(`Procesando ${products.length} productos...`);
+    
+    try {
+      // Los productos ya están en la base de datos, solo invalidar la query
+      queryClient.invalidateQueries('productos-generales');
+      
+      toast.dismiss(toastId);
+      toast.success(`Se importaron ${products.length} productos correctamente`);
+    } catch (error) {
+      toast.dismiss(toastId);
+      toast.error(`Error al finalizar la importación: ${error.message}`);
     }
-
-    toast.dismiss(toastId);
-    if (errorCount === 0) {
-      toast.success(`Se importaron ${successCount} productos correctamente`);
-    } else {
-      toast.error(`Importación completada. Éxito: ${successCount}, Errores: ${errorCount}`);
-    }
-
-    queryClient.invalidateQueries('productos-generales');
   }
 
   const handleSearch = (e) => {
@@ -348,7 +340,7 @@ const ProductosGenerales = () => {
                 placeholder="Buscar productos..."
                 value={searchTerm}
                 onChange={handleSearch}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-900 placeholder-gray-500"
               />
             </div>
           </div>
@@ -420,21 +412,25 @@ const ProductosGenerales = () => {
       </div>
 
       {/* Tabla de productos */}
-      <Card className="p-0">
-        <Table
-          data={productos}
-          columns={columns}
-          loading={isLoading}
-          emptyMessage="No se encontraron productos generales"
-        />
-        {paginacion.totalPaginas > 1 && (
-          <Pagination
-            currentPage={currentPage}
-            totalPages={paginacion.totalPaginas || 1}
-            totalItems={paginacion.totalRegistros || 0}
-            itemsPerPage={itemsPerPage}
-            onPageChange={setCurrentPage}
+      <Card className="p-0 overflow-hidden">
+        <div className="max-h-96 overflow-y-auto">
+          <Table
+            data={productos}
+            columns={columns}
+            loading={isLoading}
+            emptyMessage="No se encontraron productos generales"
           />
+        </div>
+        {paginacion.totalPaginas > 1 && (
+          <div className="border-t border-gray-200 bg-gray-50 px-4 py-3">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={paginacion.totalPaginas || 1}
+              totalItems={paginacion.totalRegistros || 0}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setCurrentPage}
+            />
+          </div>
         )}
       </Card>
 

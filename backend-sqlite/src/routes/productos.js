@@ -1,9 +1,50 @@
 import express from 'express'
+import multer from 'multer'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import fs from 'fs'
 import productosController from '../controllers/productosController.js'
+import importController from '../controllers/importController.js'
 import { validarJWT, validarRol } from '../middlewares/auth.js'
 import { validar, schemaCrearProductoGeneral, schemaCrearProductoCliente } from '../middlewares/validation.js'
 
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
 const router = express.Router()
+
+// Configurar multer para archivos temporales
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    // Crear directorio temporal si no existe
+    const uploadPath = path.join(__dirname, '../../temp')
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true })
+    }
+    cb(null, uploadPath)
+  },
+  filename: (req, file, cb) => {
+    // Generar nombre único
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+    cb(null, `import-${uniqueSuffix}${path.extname(file.originalname)}`)
+  }
+})
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['.xlsx', '.xls', '.pdf']
+    const ext = path.extname(file.originalname).toLowerCase()
+    if (allowedTypes.includes(ext)) {
+      cb(null, true)
+    } else {
+      cb(new Error('Tipo de archivo no permitido. Use XLSX, XLS o PDF'))
+    }
+  }
+})
 
 // Todas las rutas requieren autenticación
 router.use(validarJWT)
@@ -28,6 +69,14 @@ router.delete(
   '/generales/:id',
   validarRol('contable', 'contador', 'administrador'),
   productosController.desactivarProductoGeneral
+)
+
+// ===== IMPORTACIÓN DE PRODUCTOS =====
+router.post(
+  '/generales/importar',
+  validarRol('contable', 'contador', 'administrador'),
+  upload.single('archivo'),
+  importController.importarProductosDesdeArchivo
 )
 
 // ===== PRODUCTOS DE CLIENTE =====

@@ -1,75 +1,74 @@
+import { productosApi, handleApiResponse, handleApiError } from './api';
 import * as FileSystem from 'expo-file-system';
-import { read, utils } from 'xlsx';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
 /**
- * Parsea un archivo Excel desde una URI local
+ * Importa productos desde un archivo XLSX o PDF usando el backend Python
+ * Esta función envía el archivo al backend que lo procesa con Python e IA
+ * 
+ * @param {Object} file - Objeto de archivo de expo-document-picker con { uri, name, mimeType }
+ * @param {string} apiKey - API Key de Google Gemini (opcional, solo para PDFs complejos)
+ * @returns {Promise<Array>} Array de productos procesados
  */
-export const parseExcelMobile = async (uri) => {
+export const importarProductosDesdeArchivo = async (file, apiKey = null) => {
     try {
-        const b64 = await FileSystem.readAsStringAsync(uri, {
-            encoding: FileSystem.EncodingType.Base64,
-        });
+        // Convertir el archivo a FormData para enviarlo al backend
+        const formData = new FormData();
+        
+        // Leer el archivo como blob/base64 y convertirlo a formato que el backend pueda procesar
+        const fileUri = file.uri;
+        const fileName = file.name || 'archivo.xlsx';
+        
+        // Determinar el tipo MIME basado en la extensión del archivo
+        let fileType = file.mimeType;
+        if (!fileType) {
+            const ext = fileName.split('.').pop()?.toLowerCase();
+            if (ext === 'xlsx') {
+                fileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            } else if (ext === 'xls') {
+                fileType = 'application/vnd.ms-excel';
+            } else if (ext === 'pdf') {
+                fileType = 'application/pdf';
+            } else {
+                fileType = 'application/octet-stream';
+            }
+        }
+        
+        // Crear objeto de archivo para FormData (formato React Native)
+        formData.append('archivo', {
+            uri: fileUri,
+            type: fileType,
+            name: fileName,
+        } as any);
+        
+        if (apiKey) {
+            formData.append('apiKey', apiKey);
+        }
 
-        const workbook = read(b64, { type: 'base64' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-
-        // Convert to JSON
-        const jsonData = utils.sheet_to_json(worksheet, { header: 1 });
-        return jsonData;
+        // Llamar al endpoint del backend
+        const response = await productosApi.importarDesdeArchivo(formData, apiKey);
+        const resultado = handleApiResponse(response);
+        
+        // El backend devuelve los productos ya procesados
+        return resultado.productos || [];
     } catch (error) {
-        console.error("Error parsing Excel on mobile:", error);
-        throw new Error("No se pudo leer el archivo Excel.");
+        handleApiError(error);
+        throw error;
     }
 };
 
+// Funciones legacy para compatibilidad (ahora se usa el backend)
+export const parseExcelMobile = async (uri) => {
+    // Esta función ya no se usa, pero se mantiene por compatibilidad
+    console.warn('parseExcelMobile está deprecado. Use importarProductosDesdeArchivo');
+    return [];
+};
+
 /**
- * Procesa datos con IA (reutilizando lógica similar a web)
+ * Procesa datos crudos (texto o array) usando Gemini para estructurarlos
+ * DEPRECADO: Ahora se usa el backend Python que procesa todo
  */
 export const processWithAIMobile = async (rawData, apiKey) => {
-    // 1. Fallback simple
-    if (Array.isArray(rawData) && rawData.length > 0) {
-        const headers = rawData[0].map(h => String(h).toLowerCase());
-        const hasName = headers.some(h => h.includes('nombre'));
-
-        // Si no hay key, o falla, intentaremos mapeo simple en la UI o aquí
-    }
-
-    if (!apiKey) throw new Error("Se requiere API Key de Gemini.");
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-    try {
-        // Tomamos muestra
-        const sample = rawData.slice(0, 15);
-
-        const prompt = `
-      Analiza esta muestra de Excel (JSON array) desde una app móvil:
-      ${JSON.stringify(sample)}
-      
-      Identifica índices de columnas para: Nombre, Costo, Código de Barras.
-      Responde JSON: {"nombreIndex": number, "costoIndex": number, "codigoIndex": number}
-    `;
-
-        const resultStructure = await model.generateContent(prompt);
-        const structureText = resultStructure.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-        const structure = JSON.parse(structureText);
-
-        if (structure && typeof structure.nombreIndex === 'number') {
-            return rawData.slice(1).map(row => ({
-                nombre: row[structure.nombreIndex],
-                costoBase: parseFloat(String(row[structure.costoIndex]).replace(/[^0-9.]/g, '')) || 0,
-                codigoBarras: row[structure.codigoIndex] ? String(row[structure.codigoIndex]) : null,
-                categoria: 'Productos Generales'
-            })).filter(p => p.nombre);
-        }
-
-        throw new Error("No se pudo detectar la estructura del archivo.");
-
-    } catch (error) {
-        console.log("Error IA Mobile:", error);
-        throw new Error("Error en procesamiento inteligente. Verifica tu API Key o el formato del archivo.");
-    }
+    // Esta función ya no se usa, pero se mantiene por compatibilidad
+    console.warn('processWithAIMobile está deprecado. Use importarProductosDesdeArchivo');
+    return [];
 };

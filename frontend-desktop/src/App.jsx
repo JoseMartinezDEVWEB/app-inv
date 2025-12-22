@@ -30,7 +30,7 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="h-screen flex items-center justify-center overflow-hidden">
         <div className="loading-spinner w-8 h-8"></div>
       </div>
     )
@@ -239,7 +239,7 @@ const AppContent = () => {
       <Route
         path="*"
         element={
-          <div className="min-h-screen flex items-center justify-center">
+          <div className="h-screen flex items-center justify-center overflow-hidden">
             <div className="text-center">
               <h1 className="text-4xl font-bold text-gray-900 mb-4">404</h1>
               <p className="text-gray-600 mb-8">Página no encontrada</p>
