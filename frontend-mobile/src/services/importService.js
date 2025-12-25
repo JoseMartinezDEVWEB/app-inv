@@ -21,7 +21,8 @@ export const importarProductosDesdeArchivo = async (file, apiKey = null) => {
         // Determinar el tipo MIME basado en la extensión del archivo
         let fileType = file.mimeType;
         if (!fileType) {
-            const ext = fileName.split('.').pop()?.toLowerCase();
+            const parts = fileName.split('.');
+            const ext = parts.length > 0 ? parts[parts.length - 1].toLowerCase() : '';
             if (ext === 'xlsx') {
                 fileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
             } else if (ext === 'xls') {
@@ -38,7 +39,7 @@ export const importarProductosDesdeArchivo = async (file, apiKey = null) => {
             uri: fileUri,
             type: fileType,
             name: fileName,
-        } as any);
+        });
         
         if (apiKey) {
             formData.append('apiKey', apiKey);
