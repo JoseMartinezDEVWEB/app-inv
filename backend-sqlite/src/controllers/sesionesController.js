@@ -312,16 +312,35 @@ export const obtenerSesionesPorCliente = async (req, res) => {
 // Obtener resumen de agenda
 export const obtenerAgendaResumen = async (req, res) => {
   const contadorId = req.usuario.id
-  const { fechaDesde, fechaHasta } = req.query
+  const { mes } = req.query // Formato: "YYYY-MM"
 
-  const resultado = SesionInventario.buscar({
-    contadorId,
-    fechaDesde,
-    fechaHasta,
-    limite: 100,
-  })
+  if (!mes) {
+    throw new AppError('El parámetro "mes" es requerido (formato: YYYY-MM)', 400)
+  }
 
-  res.json(respuestaExito(resultado))
+  const [year, month] = mes.split('-').map(Number)
+  const fechaDesde = `${year}-${String(month).padStart(2, '0')}-01`
+  const lastDay = new Date(year, month, 0).getDate()
+  const fechaHasta = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+
+  const db = dbManager.getDatabase()
+  
+  // Obtener conteo de sesiones por día del mes
+  const query = `
+    SELECT 
+      DATE(fecha) as fecha,
+      COUNT(*) as total
+    FROM sesiones_inventario
+    WHERE contadorId = ? 
+      AND DATE(fecha) >= ? 
+      AND DATE(fecha) <= ?
+    GROUP BY DATE(fecha)
+    ORDER BY fecha ASC
+  `
+
+  const resumen = db.prepare(query).all(contadorId, fechaDesde, fechaHasta)
+
+  res.json(respuestaExito({ resumen }))
 }
 
 // Obtener sesiones del día
@@ -329,14 +348,50 @@ export const obtenerAgendaDia = async (req, res) => {
   const contadorId = req.usuario.id
   const { fecha = new Date().toISOString().split('T')[0] } = req.query
 
-  const resultado = SesionInventario.buscar({
-    contadorId,
-    fechaDesde: fecha,
-    fechaHasta: fecha,
-    limite: 50,
-  })
+  const db = dbManager.getDatabase()
+  
+  // Obtener sesiones del día específico con información del cliente
+  const query = `
+    SELECT 
+      s.*,
+      c.id as cliente_id,
+      c.nombre as cliente_nombre,
+      c.tipo as cliente_tipo
+    FROM sesiones_inventario s
+    LEFT JOIN clientes_negocios c ON s.clienteId = c.id
+    WHERE s.contadorId = ? 
+      AND DATE(s.fecha) = ?
+    ORDER BY s.createdAt DESC
+  `
 
-  res.json(respuestaExito(resultado))
+  const sesionesRaw = db.prepare(query).all(contadorId, fecha)
+  
+  // Formatear las sesiones
+  const sesiones = sesionesRaw.map(s => ({
+    _id: s.id,
+    id: s.id,
+    numeroSesion: s.numeroSesion,
+    nombre: s.nombre,
+    descripcion: s.descripcion,
+    fecha: s.fecha,
+    estado: s.estado,
+    contadorId: s.contadorId,
+    clienteId: s.clienteId,
+    clienteNegocio: s.cliente_id ? {
+      _id: s.cliente_id,
+      id: s.cliente_id,
+      nombre: s.cliente_nombre,
+      tipo: s.cliente_tipo,
+    } : null,
+    totales: JSON.parse(s.totales || '{}'),
+    configuracion: JSON.parse(s.configuracion || '{}'),
+    duracionSegundos: s.duracionSegundos,
+    pausas: JSON.parse(s.pausas || '[]'),
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  }))
+
+  res.json(respuestaExito({ sesiones }))
 }
 
 export default {
