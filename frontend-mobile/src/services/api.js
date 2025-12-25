@@ -102,36 +102,69 @@ api.interceptors.response.use(
       }
     }
 
-    // Manejar otros errores
-    if (error.response?.status >= 500) {
+    // Manejar otros errores con logging detallado
+    const statusCode = error.response?.status
+    const endpoint = originalRequest?.url || 'desconocido'
+    const method = originalRequest?.method?.toUpperCase() || 'GET'
+    
+    // Determinar si debe mostrar toast (no mostrar en peticiones silenciosas)
+    const shouldShowToast = !originalRequest?._silent
+
+    if (statusCode >= 500) {
+      // Errores del servidor
+      console.error(`💥 Error ${statusCode} en ${method} ${endpoint}:`, error.response?.data?.mensaje || error.message)
+      
+      // Solo mostrar toast si no es petición silenciosa
+      if (shouldShowToast && !originalRequest?._serverErrorShown) {
+        originalRequest._serverErrorShown = true
+        showMessage({
+          message: 'Error del servidor',
+          description: 'Por favor, intente más tarde',
+          type: 'danger',
+          duration: 2000,
+          hideOnPress: true,
+        })
+      }
+    } else if (statusCode === 404) {
+      console.warn(`🔍 404 en ${method} ${endpoint}`)
+      // No mostrar toast para 404, dejar que el componente lo maneje
+    } else if (statusCode === 403) {
+      console.warn(`🚫 403 en ${method} ${endpoint}`)
+      if (shouldShowToast) {
+        showMessage({
+          message: 'Sin permisos',
+          description: 'No tienes acceso a este recurso',
+          type: 'warning',
+          duration: 2000,
+        })
+      }
+    } else if (statusCode === 429) {
+      console.warn(`⚠️ 429 (Rate limit) en ${method} ${endpoint}`)
       showMessage({
-        message: 'Error del servidor',
-        description: 'Por favor, intente más tarde.',
-        type: 'danger',
-      })
-    } else if (error.response?.status === 404) {
-      showMessage({
-        message: 'Recurso no encontrado',
+        message: 'Demasiadas solicitudes',
+        description: 'Espera un momento e intenta de nuevo',
         type: 'warning',
-      })
-    } else if (error.response?.status === 403) {
-      showMessage({
-        message: 'Sin permisos',
-        description: 'No tiene permisos para realizar esta acción.',
-        type: 'danger',
+        duration: 2000,
       })
     } else if (error.code === 'ECONNABORTED') {
-      showMessage({
-        message: 'Tiempo agotado',
-        description: 'Verifique su conexión.',
-        type: 'warning',
-      })
+      console.error(`⏱️ Timeout en ${method} ${endpoint}`)
+      // No mostrar toast para timeouts, dejar que el componente decida
     } else if (!error.response) {
-      showMessage({
-        message: 'Sin conexión',
-        description: `No se puede conectar a ${API_BASE_URL}. Verifique su internet y que el backend esté funcionando.`,
-        type: 'danger',
-      })
+      // Sin respuesta del servidor (red caída, backend apagado, etc)
+      console.error(`🌐 Sin respuesta en ${method} ${endpoint}:`, error.message)
+      // Solo mostrar una vez por sesión
+      if (shouldShowToast && !global._networkErrorShown) {
+        global._networkErrorShown = true
+        showMessage({
+          message: 'Sin conexión',
+          description: 'Verifica tu conexión a internet',
+          type: 'danger',
+          duration: 3000,
+          hideOnPress: true,
+        })
+        // Resetear después de 10 segundos
+        setTimeout(() => { global._networkErrorShown = false }, 10000)
+      }
     }
 
     return Promise.reject(error)

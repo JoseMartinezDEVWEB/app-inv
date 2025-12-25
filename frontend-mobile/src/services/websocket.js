@@ -10,33 +10,47 @@ class WebSocketService {
     this.socket = null
     this.isConnected = false
     this.reconnectAttempts = 0
-    this.maxReconnectAttempts = 5
-    this.reconnectInterval = 5000
+    this.maxReconnectAttempts = 10
+    this.baseReconnectDelay = 1000 // 1 segundo
+    this.maxReconnectDelay = 30000 // 30 segundos
     this.listeners = new Map()
     this.currentToken = null
     this.lastErrorMessage = null
+    this.isConnecting = false
+    this.reconnectTimeout = null
+    this.lastConnectionTime = null
+    this.shouldShowMessages = true
   }
 
   // Conectar al servidor WebSocket
   connect(token) {
     if (!token || typeof token !== 'string' || !token.trim()) {
-      console.warn('[WebSocket-Mobile] Token inexistente; se omite la conexión.')
+      console.warn('[WebSocket] Token inexistente; se omite la conexión.')
       return null
     }
 
     const sanitizedToken = token.trim()
 
+    // Si ya está conectado con el mismo token, no hacer nada
     if (this.socket && this.isConnected && this.currentToken === sanitizedToken) {
       console.log('✓ WebSocket ya está conectado')
       return this.socket
     }
 
-    this.currentToken = sanitizedToken
+    // Si ya está intentando conectar, esperar
+    if (this.isConnecting) {
+      console.log('⏳ Ya hay una conexión en proceso...')
+      return this.socket
+    }
 
-    console.log(`🔌 Intentando conectar a: ${BACKEND_URL}`)
+    this.currentToken = sanitizedToken
+    this.isConnecting = true
+
+    console.log(`🔌 Conectando WebSocket: ${BACKEND_URL}`)
     
+    // Desconectar socket anterior si existe
     if (this.socket) {
-      this.disconnect()
+      this.disconnect(false)
     }
 
     this.socket = io(BACKEND_URL, {
@@ -45,12 +59,9 @@ class WebSocketService {
         clientType: 'mobile',
       },
       transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5,
+      reconnection: false, // Manejamos reconexión manualmente
       timeout: 20000,
-      forceNew: false,
+      forceNew: true,
     })
 
     this.setupEventListeners()
@@ -62,155 +73,174 @@ class WebSocketService {
     if (!this.socket) return
 
     this.socket.on('connect', () => {
-      console.log('✅ Conectado al servidor WebSocket')
+      console.log('✅ WebSocket conectado')
       this.isConnected = true
+      this.isConnecting = false
       this.reconnectAttempts = 0
-      showMessage({
-        message: 'Conectado en tiempo real',
-        type: 'success',
-      })
+      this.lastConnectionTime = Date.now()
+      
+      // Solo mostrar mensaje si es la primera conexión o después de desconexión prolongada
+      if (this.shouldShowMessages) {
+        showMessage({
+          message: '✓ Conectado',
+          type: 'success',
+          duration: 2000,
+          hideOnPress: true,
+        })
+      }
+      
       // Emitir evento local
       this.emitLocal('connected', { socketId: this.socket.id })
     })
 
     this.socket.on('disconnect', (reason) => {
-      console.log('❌ Desconectado del servidor WebSocket:', reason)
+      console.log(`❌ WebSocket desconectado: ${reason}`)
       this.isConnected = false
+      this.isConnecting = false
       this.emitLocal('disconnected', { reason })
       
-      if (reason === 'io server disconnect') {
-        // El servidor desconectó, intentar reconectar
-        this.handleReconnect()
+      // Solo reconectar si no fue desconexión manual
+      if (reason !== 'io client disconnect') {
+        this.scheduleReconnect()
       }
     })
 
     this.socket.on('connect_error', (error) => {
-      console.error('⚠️ Error de conexión WebSocket:', error)
+      console.error('⚠️ Error de conexión WebSocket:', error.message || error)
       this.isConnected = false
+      this.isConnecting = false
       const message = this.extractErrorMessage(error)
       this.lastErrorMessage = message
 
+      // Si es error de autenticación, no reintentar
       if (this.isAuthError(message)) {
-        showMessage({
-          message: 'Sesión inválida',
-          description: message || 'Tu token no es válido. Inicia sesión nuevamente.',
-          type: 'danger',
-        })
+        console.error('❌ Error de autenticación, no se reintentará')
         this.emitLocal('auth_error', { message: message || 'Token inválido o expirado' })
-        this.disconnect()
+        this.disconnect(false)
         return
       }
 
-      this.handleReconnect()
+      // Programar reconexión con backoff exponencial
+      this.scheduleReconnect()
+    })
+
+    this.socket.on('error', (error) => {
+      console.error('❌ Error WebSocket:', error.message || error)
+      // No mostrar toast para errores menores
     })
 
     // Eventos específicos de la aplicación
     this.socket.on('sesion_actualizada', (data) => {
-      console.log('📊 Sesión actualizada:', data)
+      console.log('📊 Sesión actualizada:', data?.sesionId || 'N/A')
       this.emitLocal('sesion_actualizada', data)
     })
 
     this.socket.on('producto_agregado', (data) => {
-      console.log('📦 Producto agregado:', data)
-      showMessage({
-        message: `Producto agregado: ${data.producto.nombre}`,
-        type: 'success',
-      })
+      console.log('📦 Producto agregado:', data?.producto?.nombre || 'N/A')
       this.emitLocal('producto_agregado', data)
     })
 
     this.socket.on('producto_removido', (data) => {
-      console.log('🗑️ Producto removido:', data)
-      showMessage({
-        message: `Producto removido: ${data.producto.nombre}`,
-        type: 'info',
-      })
+      console.log('🗑️ Producto removido:', data?.producto?.nombre || 'N/A')
       this.emitLocal('producto_removido', data)
     })
 
     this.socket.on('sesion_completada', (data) => {
-      console.log('✅ Sesión completada:', data)
+      console.log('✅ Sesión completada:', data?.sesion?.numeroSesion || 'N/A')
       showMessage({
-        message: `Sesión completada: ${data.sesion.numeroSesion}`,
+        message: 'Sesión completada',
+        description: data?.sesion?.numeroSesion,
         type: 'success',
       })
       this.emitLocal('sesion_completada', data)
     })
 
     this.socket.on('usuario_conectado', (data) => {
-      console.log('👤 Usuario conectado:', data)
-      showMessage({
-        message: `${data.usuario.nombre} se conectó`,
-        type: 'info',
-      })
+      console.log('👤 Usuario conectado:', data?.usuario?.nombre || 'N/A')
       this.emitLocal('usuario_conectado', data)
     })
 
     this.socket.on('usuario_desconectado', (data) => {
-      console.log('👤 Usuario desconectado:', data)
-      showMessage({
-        message: `${data.usuario.nombre} se desconectó`,
-        type: 'warning',
-      })
+      console.log('👤 Usuario desconectado:', data?.usuario?.nombre || 'N/A')
       this.emitLocal('usuario_desconectado', data)
     })
 
     this.socket.on('colaborador_conectado', (data) => {
-      console.log('👥 Colaborador conectado:', data)
+      console.log('👥 Colaborador conectado')
       showMessage({
-        message: `¡Colaborador conectado!`,
-        description: 'Un nuevo dispositivo se unió a la sesión',
+        message: '¡Colaborador conectado!',
+        description: 'Un nuevo dispositivo se unió',
         type: 'success',
-        icon: 'success',
-        duration: 4000,
+        duration: 3000,
       })
       this.emitLocal('colaborador_conectado', data)
     })
 
     this.socket.on('colaborador_desconectado', (data) => {
-      console.log('👥 Colaborador desconectado:', data)
+      console.log('👥 Colaborador desconectado')
       this.emitLocal('colaborador_desconectado', data)
-    })
-
-    this.socket.on('error', (error) => {
-      console.error('❌ Error WebSocket:', error)
-      showMessage({
-        message: `Error de conexión: ${error.message || 'Error desconocido'}`,
-        type: 'danger',
-      })
     })
   }
 
-  // Manejar reconexión automática
-  handleReconnect() {
+  // Programar reconexión con backoff exponencial
+  scheduleReconnect() {
+    // Limpiar timeout anterior si existe
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout)
+      this.reconnectTimeout = null
+    }
+
+    // Si se alcanzó el máximo de intentos, no reconectar
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('❌ Máximo de intentos de reconexión alcanzado')
+      console.error(`❌ Máximo de intentos de reconexión alcanzado (${this.maxReconnectAttempts})`)
+      this.shouldShowMessages = true
       showMessage({
-        message: 'No se pudo reconectar. Verifique su conexión.',
-        type: 'danger',
+        message: 'Sin conexión en tiempo real',
+        description: 'No se pudo conectar al servidor',
+        type: 'warning',
+        duration: 3000,
       })
       return
     }
 
     this.reconnectAttempts++
-    console.log(`🔄 Intentando reconectar... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
     
-    setTimeout(() => {
-      if (this.socket && this.currentToken) {
-        this.socket.auth = {
-          ...(this.socket.auth || {}),
-          token: this.currentToken,
-        }
-        this.socket.connect()
+    // Calcular delay con backoff exponencial
+    const delay = Math.min(
+      this.baseReconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
+      this.maxReconnectDelay
+    )
+
+    console.log(`🔄 Reintento ${this.reconnectAttempts}/${this.maxReconnectAttempts} en ${delay}ms`)
+
+    this.reconnectTimeout = setTimeout(() => {
+      if (this.currentToken && !this.isConnected && !this.isConnecting) {
+        this.shouldShowMessages = false // No mostrar mensajes en reconexiones automáticas
+        this.connect(this.currentToken)
       }
-    }, this.reconnectInterval)
+    }, delay)
+  }
+
+  // Resetear intentos de reconexión (útil cuando el usuario vuelve a la app)
+  resetReconnectAttempts() {
+    this.reconnectAttempts = 0
+    this.shouldShowMessages = true
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout)
+      this.reconnectTimeout = null
+    }
   }
 
   // Unirse a una sala (sesión de inventario)
   joinSession(sessionId) {
+    if (!sessionId) {
+      console.warn('⚠️ sessionId es requerido para unirse a una sesión')
+      return
+    }
+
     if (this.socket && this.isConnected) {
       this.socket.emit('join_session', { sessionId })
-      console.log(`📊 Unido a la sesión: ${sessionId}`)
+      console.log(`📊 Unido a sesión: ${sessionId}`)
     } else {
       console.warn('⚠️ WebSocket no está conectado, no se puede unir a la sesión')
     }
@@ -218,9 +248,11 @@ class WebSocketService {
 
   // Salir de una sala
   leaveSession(sessionId) {
+    if (!sessionId) return
+
     if (this.socket && this.isConnected) {
       this.socket.emit('leave_session', { sessionId })
-      console.log(`📊 Salió de la sesión: ${sessionId}`)
+      console.log(`📊 Salió de sesión: ${sessionId}`)
     }
   }
 
@@ -229,7 +261,7 @@ class WebSocketService {
     if (this.socket && this.isConnected) {
       this.socket.emit(event, data)
     } else {
-      console.warn(`⚠️ WebSocket no está conectado, no se puede emitir evento: ${event}`)
+      console.warn(`⚠️ WebSocket no está conectado, no se puede emitir: ${event}`)
     }
   }
 
@@ -239,6 +271,9 @@ class WebSocketService {
       this.listeners.set(event, [])
     }
     this.listeners.get(event).push(callback)
+    
+    // Retornar función para desuscribirse
+    return () => this.off(event, callback)
   }
 
   // Desuscribirse de eventos locales
@@ -267,42 +302,66 @@ class WebSocketService {
 
   // Desconectar
   disconnect(clearListeners = false) {
+    console.log('🔌 Desconectando WebSocket...')
+    
+    // Limpiar timeout de reconexión
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout)
+      this.reconnectTimeout = null
+    }
+
     if (this.socket) {
+      this.socket.removeAllListeners()
       this.socket.disconnect()
       this.socket = null
-      this.isConnected = false
-      if (clearListeners) {
-        this.listeners.clear()
-      }
-      console.log('🔌 Desconectado del servidor WebSocket')
     }
+
+    this.isConnected = false
+    this.isConnecting = false
     this.currentToken = null
+    this.reconnectAttempts = 0
+    
+    if (clearListeners) {
+      this.listeners.clear()
+    }
   }
 
   // Obtener estado de conexión
   getConnectionStatus() {
     return {
       isConnected: this.isConnected,
+      isConnecting: this.isConnecting,
       reconnectAttempts: this.reconnectAttempts,
       socketId: this.socket?.id || null,
       url: BACKEND_URL,
       lastError: this.lastErrorMessage,
+      lastConnectionTime: this.lastConnectionTime,
     }
   }
 
+  // Extraer mensaje de error
   extractErrorMessage(error) {
     if (!error) return ''
     if (typeof error === 'string') return error
-    return error.message || error?.data?.message || ''
+    if (error.message) return error.message
+    if (error.data?.message) return error.data.message
+    return 'Error desconocido'
   }
 
+  // Verificar si es error de autenticación
   isAuthError(message) {
     if (!message) return false
     const normalized = message.toLowerCase()
     return (
       normalized.includes('token') ||
       normalized.includes('autenticación') ||
-      normalized.includes('auth')
+      normalized.includes('autenticacion') ||
+      normalized.includes('auth') ||
+      normalized.includes('invalid') ||
+      normalized.includes('inválido') ||
+      normalized.includes('expired') ||
+      normalized.includes('expirado') ||
+      normalized.includes('unauthorized')
     )
   }
 }
@@ -311,6 +370,3 @@ class WebSocketService {
 const webSocketService = new WebSocketService()
 
 export default webSocketService
-
-
-

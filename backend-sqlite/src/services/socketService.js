@@ -6,7 +6,7 @@ import logger from '../utils/logger.js'
 
 let io = null
 
-// Inicializar Socket.IO
+// Inicializar Socket.IO con configuración mejorada
 export const initializeSocket = (server) => {
   io = new Server(server, {
     cors: {
@@ -14,40 +14,75 @@ export const initializeSocket = (server) => {
       methods: ['GET', 'POST'],
       credentials: true,
     },
+    pingTimeout: 60000, // 60 segundos
+    pingInterval: 25000, // 25 segundos
+    upgradeTimeout: 30000, // 30 segundos
+    maxHttpBufferSize: 1e6, // 1MB
+    transports: ['websocket', 'polling'],
+    allowUpgrades: true,
   })
 
-  // Middleware de autenticación
+  // Middleware de autenticación con logging mejorado
   io.use((socket, next) => {
     const token = socket.handshake.auth.token
+    const clientType = socket.handshake.auth.clientType || 'unknown'
 
     if (!token) {
+      logger.warn(`Intento de conexión sin token desde ${clientType}`)
       return next(new Error('Token requerido'))
     }
 
     try {
       const decoded = jwt.verify(token, config.jwt.secret)
+      
+      // Verificar si el token ha expirado
+      if (decoded.exp && decoded.exp * 1000 < Date.now()) {
+        logger.warn(`Token expirado para usuario ID: ${decoded.id}`)
+        return next(new Error('Token expirado'))
+      }
+
       const usuario = Usuario.buscarPorId(decoded.id)
 
-      if (!usuario || !usuario.activo) {
-        return next(new Error('Usuario no válido'))
+      if (!usuario) {
+        logger.warn(`Usuario no encontrado con ID: ${decoded.id}`)
+        return next(new Error('Usuario no encontrado'))
+      }
+
+      if (!usuario.activo) {
+        logger.warn(`Usuario inactivo intentó conectar: ${usuario.nombre} (${usuario.id})`)
+        return next(new Error('Usuario inactivo'))
       }
 
       socket.usuario = usuario
+      socket.clientType = clientType
       next()
     } catch (error) {
-      return next(new Error('Token inválido'))
+      if (error.name === 'TokenExpiredError') {
+        logger.warn('Token expirado en WebSocket')
+        return next(new Error('Token expirado'))
+      } else if (error.name === 'JsonWebTokenError') {
+        logger.warn('Token JWT inválido en WebSocket')
+        return next(new Error('Token inválido'))
+      } else {
+        logger.error('Error verificando token en WebSocket:', error)
+        return next(new Error('Error de autenticación'))
+      }
     }
   })
 
   // Manejo de conexiones
   io.on('connection', (socket) => {
-    logger.info(`Usuario conectado: ${socket.usuario.nombre} (${socket.usuario.id})`)
+    logger.info(`✅ WebSocket conectado: ${socket.usuario.nombre} (${socket.usuario.id}) [${socket.clientType}]`)
 
-    // Unirse a sala del contable
-    if (socket.usuario.contablePrincipalId) {
-      socket.join(`contable_${socket.usuario.contablePrincipalId}`)
-    } else {
-      socket.join(`contable_${socket.usuario.id}`)
+    // Unirse a sala del contable con manejo de errores
+    try {
+      if (socket.usuario.contablePrincipalId) {
+        socket.join(`contable_${socket.usuario.contablePrincipalId}`)
+      } else {
+        socket.join(`contable_${socket.usuario.id}`)
+      }
+    } catch (error) {
+      logger.error('Error al unirse a sala de contable:', error)
     }
 
     // Unirse a sesión de inventario
@@ -129,13 +164,18 @@ export const initializeSocket = (server) => {
     })
 
     // Desconexión
-    socket.on('disconnect', () => {
-      logger.info(`Usuario desconectado: ${socket.usuario.nombre} (${socket.usuario.id})`)
+    socket.on('disconnect', (reason) => {
+      logger.info(`❌ WebSocket desconectado: ${socket.usuario.nombre} (${socket.usuario.id}) - Razón: ${reason}`)
     })
 
     // Manejo de errores
     socket.on('error', (error) => {
-      logger.error(`Error en socket ${socket.usuario.nombre}:`, error)
+      logger.error(`💥 Error en socket ${socket.usuario.nombre}:`, error.message || error)
+    })
+
+    // Timeout de ping/pong para detectar conexiones muertas
+    socket.on('ping', () => {
+      socket.emit('pong')
     })
   })
 
