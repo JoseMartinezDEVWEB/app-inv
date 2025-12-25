@@ -10,6 +10,7 @@ import { gestureHandlerRootHOC } from 'react-native-gesture-handler'
 import FlashMessage from 'react-native-flash-message'
 import { QueryClient, QueryClientProvider } from 'react-query'
 import LoaderPortal from './src/components/LoaderPortal'
+import { initializeOfflineMode } from './src/services/api'
 
 // Pantallas
 import LoginScreen from './src/screens/LoginScreen'
@@ -123,6 +124,34 @@ function AppContent() {
 }
 
 export default gestureHandlerRootHOC(function App() {
+  const [dbInitialized, setDbInitialized] = React.useState(false)
+
+  React.useEffect(() => {
+    // Inicializar base de datos local al iniciar la app
+    const initDb = async () => {
+      try {
+        console.log('🔧 Inicializando base de datos local...')
+        await initializeOfflineMode()
+        console.log('✅ Base de datos local inicializada correctamente')
+        setDbInitialized(true)
+      } catch (error) {
+        console.error('❌ Error inicializando base de datos:', error)
+        // Continuar aunque falle (modo degradado)
+        setDbInitialized(true)
+      }
+    }
+
+    initDb()
+  }, [])
+
+  if (!dbInitialized) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#3b82f6" />
+      </View>
+    )
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <LoaderProvider>
