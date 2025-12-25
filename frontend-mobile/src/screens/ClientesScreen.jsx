@@ -165,7 +165,7 @@ const ClientesScreen = ({ navigation }) => {
             onView={handleViewCliente}
           />
         )}
-        keyExtractor={(item) => item._id}
+        keyExtractor={(item, index) => item._id || item.id || `cliente-${index}`}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
         onRefresh={refetch}

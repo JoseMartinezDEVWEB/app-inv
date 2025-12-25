@@ -179,7 +179,7 @@ const AgendaScreen = ({ navigation }) => {
               <FlatList
                 data={diaData.sesiones}
                 renderItem={renderSesionItem}
-                keyExtractor={(item) => item._id}
+                keyExtractor={(item, index) => item._id || item.id || `agenda-${index}`}
                 contentContainerStyle={{ paddingVertical: 8 }}
               />
             ) : (

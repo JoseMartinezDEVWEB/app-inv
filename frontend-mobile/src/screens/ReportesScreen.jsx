@@ -196,7 +196,7 @@ const ReportesScreen = ({ navigation }) => {
         <FlatList
           data={sesionesData || []}
           renderItem={renderSesion}
-          keyExtractor={(item) => item._id}
+          keyExtractor={(item, index) => item._id || item.id || `reporte-${index}`}
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
           refreshing={sesionesLoading}

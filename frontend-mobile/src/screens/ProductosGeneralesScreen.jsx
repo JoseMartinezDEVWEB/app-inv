@@ -157,7 +157,7 @@ const ProductosGeneralesScreen = () => {
       <FlatList
         data={data?.productos || []}
         renderItem={({ item }) => <ProductCard item={item} onEdit={handleOpenModal} />}
-        keyExtractor={(item) => item._id}
+        keyExtractor={(item, index) => item._id || item.id || `producto-${index}`}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
         onRefresh={refetch}

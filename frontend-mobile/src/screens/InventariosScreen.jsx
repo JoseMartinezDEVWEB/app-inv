@@ -169,7 +169,7 @@ const InventariosScreen = ({ navigation }) => {
       <FlatList
         data={sesionesData?.sesiones || []}
         renderItem={({ item }) => <SesionCard item={item} onSelect={handleSelectSesion} />}
-        keyExtractor={(item) => item._id}
+        keyExtractor={(item, index) => item._id || item.id || `inventario-${index}`}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
         onRefresh={() => { showLoader(800); refetch(); }}

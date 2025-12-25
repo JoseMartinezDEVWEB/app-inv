@@ -1159,7 +1159,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
       <FlatList
         data={productosOrdenados}
         renderItem={renderProductoItem}
-        keyExtractor={(item) => item._id}
+        keyExtractor={(item, index) => item._id || item.id || `detalle-${index}`}
         contentContainerStyle={styles.productsList}
         showsVerticalScrollIndicator={false}
         refreshing={isFetching}

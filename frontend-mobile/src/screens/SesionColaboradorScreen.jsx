@@ -661,8 +661,9 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
       <View style={styles.content}>
         <FlatList
           data={productos}
-          keyExtractor={(item) => item.temporalId}
+          keyExtractor={(item, index) => item.temporalId || `producto-${index}-${Date.now()}`}
           renderItem={renderProductoItem}
+          extraData={productos}
           contentContainerStyle={
             productos.length === 0 ? styles.emptyContainer : styles.listContent
           }
@@ -717,7 +718,7 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
 
             <FlatList
               data={resultadosBusqueda}
-              keyExtractor={(item) => item._id}
+              keyExtractor={(item, index) => item._id || item.id || `busqueda-${index}`}
               style={{ marginTop: 12, maxHeight: 260 }}
               renderItem={({ item }) => (
                 <TouchableOpacity

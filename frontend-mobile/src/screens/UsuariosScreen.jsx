@@ -125,10 +125,11 @@ const UsuariosScreen = () => {
       ) : (
         <FlatList
           data={data || []}
-          keyExtractor={(item) => item._id}
+          keyExtractor={(item, index) => item._id || item.id || `usuario-${index}`}
           renderItem={renderItem}
           contentContainerStyle={{ padding: 16 }}
           ListEmptyComponent={<Text style={styles.info}>No hay usuarios subordinados</Text>}
+          extraData={data}
         />
       )}
 
