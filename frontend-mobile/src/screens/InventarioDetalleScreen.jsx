@@ -737,12 +737,14 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
   // Eliminado return condicional de carga para no romper el orden de hooks.
 
-  // Procesar productos - ordenar y filtrar productos con costo cero
-  const productosContados = sesionData?.productosContados || []
-  const productosOrdenados = [...productosContados].sort((a, b) => {
-    // Ordenar por fecha de agregado (más recientes primero)
-    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
-  })
+  // Procesar productos - el backend ya los ordena DESC (últimos primero)
+  const productosContados = (sesionData?.productosContados || []).map(p => ({
+    ...p,
+    // El productoId ya viene del backend como el ID del producto contado
+    productoId: p?.productoId || p?.id || p?._id || ''
+  }))
+  // NO hacer sort manual porque el backend ya ordena por updatedAt DESC
+  const productosOrdenados = productosContados
 
   // Productos con costo 0
   const productosConCostoCero = productosContados.filter(p => (Number(p.costoProducto) || 0) === 0)

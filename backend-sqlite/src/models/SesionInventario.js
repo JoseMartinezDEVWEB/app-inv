@@ -298,24 +298,34 @@ class SesionInventario {
     const existe = existeStmt.get(sesionId, productoClienteId)
 
     if (existe) {
-      // Actualizar - también permitir actualizar nombreProducto y costoProducto si vienen en datosProducto
+      // Actualizar - SUMAR la cantidad al producto existente y actualizar costo
       const nombreFinal = nombreProducto !== null ? nombreProducto : producto.nombre
+      
+      // Obtener la cantidad actual
+      const selectStmt = db.prepare(`
+        SELECT cantidadContada FROM productos_contados WHERE id = ?
+      `)
+      const productoActual = selectStmt.get(existe.id)
+      const cantidadNueva = (productoActual.cantidadContada || 0) + cantidadContada
+      const valorTotalNuevo = cantidadNueva * costoFinal
+      
       const updateStmt = db.prepare(`
         UPDATE productos_contados
         SET cantidadContada = ?, valorTotal = ?, notas = ?, agregadoPorId = ?, nombreProducto = ?, costoProducto = ?, updatedAt = CURRENT_TIMESTAMP
         WHERE id = ?
       `)
-      updateStmt.run(cantidadContada, valorTotal, notas, agregadoPorId, nombreFinal, costoFinal, existe.id)
+      updateStmt.run(cantidadNueva, valorTotalNuevo, notas, agregadoPorId, nombreFinal, costoFinal, existe.id)
 
       // Actualizar estadísticas
-      ProductoCliente.actualizarEstadisticas(productoClienteId, cantidadContada)
+      ProductoCliente.actualizarEstadisticas(productoClienteId, cantidadNueva)
 
       // Recalcular totales
       SesionInventario.calcularTotales(sesionId)
 
       return existe.id
-    } else {
+    }     else {
       // Insertar nuevo
+      const nombreFinal = nombreProducto !== null ? nombreProducto : producto.nombre
       const insertStmt = db.prepare(`
         INSERT INTO productos_contados (
           sesionInventarioId, productoClienteId, nombreProducto, unidadProducto,
@@ -326,9 +336,9 @@ class SesionInventario {
       const info = insertStmt.run(
         sesionId,
         productoClienteId,
-        producto.nombre,
+        nombreFinal,
         producto.unidad,
-        producto.costo,
+        costoFinal,
         producto.sku,
         cantidadContada,
         valorTotal,

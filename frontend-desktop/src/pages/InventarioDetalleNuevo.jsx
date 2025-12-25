@@ -11,6 +11,7 @@ import logoInfocolmados from '../img/logo_transparent.png'
 import { ArrowLeft, Search, Trash2, Clock, TrendingUp, Users, CreditCard, Briefcase, PiggyBank, DollarSign, ShoppingCart, Barcode, X, Printer, FileText, Settings, TrendingDown, Wallet, Calculator, Calendar, Download, Share2, FileSpreadsheet, FileImage, UserMinus, Menu, Smartphone, QrCode, RefreshCw, Wifi, WifiOff, PieChart } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
+import ProductoForm from '../components/ProductoForm'
 
 const PRODUCTOS_POR_PAGINA = 45
 
@@ -212,13 +213,22 @@ const InventarioDetalleNuevo = () => {
   // Estado para datos de nuevos productos
   const [newProductData, setNewProductData] = useState({
     nombre: '',
-    sku: '',
     codigoBarras: '',
-    categoria: '',
+    categoria: 'General',
     unidad: 'unidad',
-    costo: '',
+    costoBase: 0,
     descripcion: '',
-    proveedor: ''
+    proveedor: '',
+    notas: '',
+    tipoContenedor: 'ninguno',
+    tieneUnidadesInternas: false,
+    unidadesInternas: {
+      cantidad: 0,
+      codigoBarras: '',
+      nombre: '',
+      costoPorUnidad: 0
+    },
+    tipoPeso: 'ninguno'
   })
 
   // Estados para datos financieros
@@ -2284,7 +2294,24 @@ const InventarioDetalleNuevo = () => {
 
   // Mutación para crear producto general
   const createProductMutation = useMutation(
-    (productData) => productosApi.createGeneral(productData),
+    (productData) => {
+      // Transformar los datos del formulario al formato que espera el backend
+      const dataParaBackend = {
+        nombre: productData.nombre,
+        descripcion: productData.descripcion || '',
+        categoria: productData.categoria,
+        unidad: productData.unidad,
+        costoBase: parseFloat(productData.costoBase) || 0,
+        proveedor: productData.proveedor || '',
+        codigoBarras: productData.codigoBarras || '',
+        notas: productData.notas || '',
+        tipoContenedor: productData.tipoContenedor || 'ninguno',
+        tieneUnidadesInternas: productData.tieneUnidadesInternas || false,
+        unidadesInternas: productData.unidadesInternas || null,
+        tipoPeso: productData.tipoPeso || 'ninguno'
+      }
+      return productosApi.createGeneral(dataParaBackend)
+    },
     {
       onSuccess: (response) => {
         toast.success('Producto creado exitosamente')
@@ -2313,31 +2340,10 @@ const InventarioDetalleNuevo = () => {
     }
   )
 
-  const handleCreateProduct = () => {
-    if (!newProductData.nombre) {
-      toast.error('El nombre es obligatorio')
-      return
-    }
-
-    if (!newProductData.categoria) {
-      toast.error('La categoría es obligatoria')
-      return
-    }
-
-    // Validar que la categoría sea válida
-    const categoriasValidas = ['General', 'Alimentos General', 'Enlatados', 'Mercado', 'Embutidos', 'Carnes', 'Bebidas', 'Desechables', 'Electricidad', 'Dulce']
-    const categoriaFinal = categoriasValidas.includes(newProductData.categoria) ? newProductData.categoria : 'General'
-    
-    createProductMutation.mutate({
-      nombre: newProductData.nombre.trim(),
-      descripcion: newProductData.descripcion?.trim() || null,
-      categoria: categoriaFinal,
-      unidad: newProductData.unidad || 'unidad',
-      costoBase: parseFloat(newProductData.costo || '0') || 0,
-      proveedor: newProductData.proveedor?.trim() || null,
-      codigoBarras: (newProductData.codigoBarras || productNotFoundCode)?.trim() || null,
-      notas: newProductData.descripcion?.trim() || null
-    })
+  // Manejar el envío del formulario desde ProductoForm
+  const handleCreateProduct = (formData) => {
+    // El formulario ya viene validado desde ProductoForm
+    createProductMutation.mutate(formData)
   }
 
   // Funciones helper para manejar valores seguros
@@ -2359,10 +2365,11 @@ const InventarioDetalleNuevo = () => {
         costoProducto: safeNumber(p?.costoProducto, 2),
         valorTotal: safeNumber(p?.valorTotal, 2),
         nombreProducto: p?.nombreProducto || 'Sin nombre',
-        productoId: typeof p?.producto === 'object' ? (p?.producto?._id || '') : (p?.producto || ''),
+        // El productoId ya viene del backend como el ID del producto contado
+        productoId: p?.productoId || p?.id || p?._id || '',
         producto: p?.producto // mantener referencia original por si se necesita mostrar
       }))
-      .reverse()
+      // NO hacer reverse() porque el backend ya ordena DESC (últimos primero)
     : []
 
   const valorTotal = safeNumber(sesion?.totales?.valorTotalInventario, 2)
@@ -3841,7 +3848,7 @@ const InventarioDetalleNuevo = () => {
       {/* Modal - Agregar Producto */}
       {showAddProductModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 my-8 shadow-2xl">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 my-8 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-2xl font-bold text-gray-800">Agregar Nuevo Producto</h3>
               <button
@@ -3849,13 +3856,15 @@ const InventarioDetalleNuevo = () => {
                   setShowAddProductModal(false)
                   setNewProductData({
                     nombre: '',
-                    sku: '',
                     codigoBarras: '',
-                    categoria: '',
+                    categoria: 'General',
                     unidad: 'unidad',
-                    costo: '',
+                    costoBase: 0,
                     descripcion: '',
-                    proveedor: ''
+                    proveedor: '',
+                    tipoContenedor: 'ninguno',
+                    tieneUnidadesInternas: false,
+                    tipoPeso: 'ninguno'
                   })
                 }}
                 className="text-gray-500 hover:text-gray-700 transition-colors"
@@ -3864,158 +3873,44 @@ const InventarioDetalleNuevo = () => {
               </button>
             </div>
 
-            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-              {/* Código de Barras */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Código de Barras <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={newProductData.codigoBarras}
-                  onChange={(e) => setNewProductData({ ...newProductData, codigoBarras: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ingresa el código de barras"
-                />
-              </div>
-
-              {/* Nombre */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nombre del Producto <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={newProductData.nombre}
-                  onChange={(e) => setNewProductData({ ...newProductData, nombre: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ej: Coca Cola 600ml"
-                  required
-                />
-              </div>
-
-              {/* SKU */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">SKU</label>
-                <input
-                  type="text"
-                  value={newProductData.sku}
-                  onChange={(e) => setNewProductData({ ...newProductData, sku: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Código interno del producto"
-                />
-              </div>
-
-              {/* Categoría */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Categoría <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={newProductData.categoria}
-                  onChange={(e) => setNewProductData({ ...newProductData, categoria: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ej: Bebidas, Alimentos, Limpieza"
-                  required
-                />
-              </div>
-
-              {/* Proveedor y Unidad */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor</label>
-                  <input
-                    type="text"
-                    value={newProductData.proveedor}
-                    onChange={(e) => setNewProductData({ ...newProductData, proveedor: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Nombre del proveedor"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Unidad</label>
-                  <select
-                    value={newProductData.unidad}
-                    onChange={(e) => setNewProductData({ ...newProductData, unidad: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="unidad">Unidad</option>
-                    <option value="kg">Kilogramo</option>
-                    <option value="lb">Libra</option>
-                    <option value="gr">Gramo</option>
-                    <option value="litro">Litro</option>
-                    <option value="ml">Mililitro</option>
-                    <option value="metro">Metro</option>
-                    <option value="cm">Centímetro</option>
-                    <option value="caja">Caja</option>
-                    <option value="paquete">Paquete</option>
-                    <option value="docena">Docena</option>
-                    <option value="par">Par</option>
-                    <option value="otro">Otro</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Costo */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Costo <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  value={newProductData.costo}
-                  onChange={(e) => setNewProductData({ ...newProductData, costo: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="0.00"
-                  step="0.01"
-                  min="0"
-                  required
-                />
-              </div>
-
-              {/* Descripción */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
-                <textarea
-                  value={newProductData.descripcion}
-                  onChange={(e) => setNewProductData({ ...newProductData, descripcion: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Descripción opcional del producto"
-                  rows="3"
-                />
-              </div>
-            </div>
-
-            <div className="flex space-x-3 mt-6">
-              <button
-                onClick={handleCreateProduct}
-                disabled={createProductMutation.isLoading}
-                className="flex-1 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {createProductMutation.isLoading ? 'Guardando...' : 'Guardar Producto'}
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowAddProductModal(false)
-                  setNewProductData({
-                    nombre: '',
-                    sku: '',
-                    codigoBarras: '',
-                    categoria: '',
-                    unidad: 'unidad',
-                    costo: '',
-                    descripcion: '',
-                    proveedor: ''
-                  })
-                }}
-                className="flex-1 px-4 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded font-medium transition-colors"
-              >
-                Cancelar
-              </button>
-            </div>
+            <ProductoForm
+              producto={{
+                nombre: newProductData.nombre || '',
+                codigoBarras: newProductData.codigoBarras || productNotFoundCode || '',
+                categoria: newProductData.categoria || 'General',
+                unidad: newProductData.unidad || 'unidad',
+                costoBase: newProductData.costoBase || 0,
+                descripcion: newProductData.descripcion || '',
+                proveedor: newProductData.proveedor || '',
+                tipoContenedor: newProductData.tipoContenedor || 'ninguno',
+                tieneUnidadesInternas: newProductData.tieneUnidadesInternas || false,
+                unidadesInternas: newProductData.unidadesInternas || {
+                  cantidad: 0,
+                  codigoBarras: '',
+                  nombre: '',
+                  costoPorUnidad: 0
+                },
+                tipoPeso: newProductData.tipoPeso || 'ninguno',
+                notas: newProductData.notas || ''
+              }}
+              onSubmit={handleCreateProduct}
+              onCancel={() => {
+                setShowAddProductModal(false)
+                setNewProductData({
+                  nombre: '',
+                  codigoBarras: '',
+                  categoria: 'General',
+                  unidad: 'unidad',
+                  costoBase: 0,
+                  descripcion: '',
+                  proveedor: '',
+                  tipoContenedor: 'ninguno',
+                  tieneUnidadesInternas: false,
+                  tipoPeso: 'ninguno'
+                })
+              }}
+              isLoading={createProductMutation.isLoading}
+            />
           </div>
         </div>
       )}
