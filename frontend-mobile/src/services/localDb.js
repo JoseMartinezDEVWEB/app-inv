@@ -86,6 +86,21 @@ const localDb = {
             );
             `);
 
+      // Tabla de Cola de Sincronización (Outbox Pattern)
+      await executeSql(`
+        CREATE TABLE IF NOT EXISTS cola_sincronizacion(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tipo TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                estado TEXT DEFAULT 'pending',
+                intentos INTEGER DEFAULT 0,
+                ultimoIntento TEXT,
+                error TEXT,
+                createdAt TEXT,
+                updatedAt TEXT
+            );
+            `);
+
             console.log('✅ Base de datos local inicializada');
             return true;
         } catch (error) {
@@ -230,6 +245,74 @@ const localDb = {
   // Limpiar productos colaborador (después de sync)
   limpiarProductosColaborador: async (solicitudId) => {
     await executeSql('DELETE FROM productos_colaborador WHERE solicitudId = ?', [solicitudId]);
+  },
+
+  // --- COLA DE SINCRONIZACIÓN (Outbox Pattern) ---
+
+  // Agregar tarea a la cola
+  agregarAColaSincronizacion: async (tipo, payload) => {
+    const result = await executeSql(`
+      INSERT INTO cola_sincronizacion(tipo, payload, estado, intentos, createdAt, updatedAt)
+      VALUES(?, ?, 'pending', 0, ?, ?);
+    `, [tipo, JSON.stringify(payload), new Date().toISOString(), new Date().toISOString()]);
+    return result.insertId;
+  },
+
+  // Obtener tareas pendientes
+  obtenerTareasPendientes: async () => {
+    const result = await executeSql(
+      'SELECT * FROM cola_sincronizacion WHERE estado = ? ORDER BY createdAt ASC',
+      ['pending']
+    );
+    return result.rows._array.map(row => ({
+      ...row,
+      payload: JSON.parse(row.payload)
+    }));
+  },
+
+  // Marcar tarea como completada
+  marcarTareaCompletada: async (id) => {
+    await executeSql(`
+      UPDATE cola_sincronizacion
+      SET estado = 'completado', updatedAt = ?
+      WHERE id = ?;
+    `, [new Date().toISOString(), id]);
+  },
+
+  // Marcar tarea como fallida
+  marcarTareaFallida: async (id, error) => {
+    await executeSql(`
+      UPDATE cola_sincronizacion
+      SET estado = 'error', intentos = intentos + 1, error = ?, ultimoIntento = ?, updatedAt = ?
+      WHERE id = ?;
+    `, [error, new Date().toISOString(), new Date().toISOString(), id]);
+  },
+
+  // Reintentar tarea
+  reintentarTarea: async (id) => {
+    await executeSql(`
+      UPDATE cola_sincronizacion
+      SET estado = 'pending', updatedAt = ?
+      WHERE id = ?;
+    `, [new Date().toISOString(), id]);
+  },
+
+  // Limpiar tareas completadas
+  limpiarTareasCompletadas: async () => {
+    await executeSql('DELETE FROM cola_sincronizacion WHERE estado = ?', ['completado']);
+  },
+
+  // Obtener estadísticas de sincronización
+  obtenerEstadisticasSincronizacion: async () => {
+    const result = await executeSql(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN estado = 'pending' THEN 1 ELSE 0 END) as pendientes,
+        SUM(CASE WHEN estado = 'completado' THEN 1 ELSE 0 END) as completadas,
+        SUM(CASE WHEN estado = 'error' THEN 1 ELSE 0 END) as errores
+      FROM cola_sincronizacion
+    `);
+    return result.rows.item(0);
   }
 };
 

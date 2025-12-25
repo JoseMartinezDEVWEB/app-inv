@@ -18,6 +18,9 @@ import NetInfo from '@react-native-community/netinfo'
 import { showMessage } from 'react-native-flash-message'
 import ModalSincronizacionBLE from '../components/ModalSincronizacionBLE'
 import BLEService from '../services/BLEService'
+import SincronizacionRedModal from '../components/modals/SincronizacionRedModal'
+import ImportarConGeminiModal from '../components/modals/ImportarConGeminiModal'
+import syncService from '../services/syncService'
 
 const SesionColaboradorScreen = ({ route, navigation }) => {
   const { solicitudId, sesionInventario } = route.params || {}
@@ -32,6 +35,9 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
   const [modalManual, setModalManual] = useState(false)
   const [modalEditar, setModalEditar] = useState(false)
   const [modalBLE, setModalBLE] = useState(false)
+  const [modalRedLocal, setModalRedLocal] = useState(false)
+  const [modalImportarIA, setModalImportarIA] = useState(false)
+  const [estadisticasSync, setEstadisticasSync] = useState({ pendientes: 0, completadas: 0, errores: 0 })
 
   const [barcode, setBarcode] = useState('')
   const [busqueda, setBusqueda] = useState('')
@@ -46,11 +52,27 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
   useEffect(() => {
     cargarProductosOffline()
 
+    // Iniciar servicio de sincronización automática
+    syncService.start()
+
+    // Listener para eventos de sincronización
+    const unsubscribeSync = syncService.addListener((evento) => {
+      if (evento.tipo === 'tarea_completada') {
+        cargarProductosOffline()
+        actualizarEstadisticasSync()
+      }
+    })
+
+    // Actualizar estadísticas iniciales
+    actualizarEstadisticasSync()
+
     const unsubscribe = NetInfo.addEventListener((state) => {
       setIsConnected(Boolean(state.isConnected))
 
       if (state.isConnected) {
-        showMessage({ message: '✅ Conectado - Puedes sincronizar', type: 'success' })
+        showMessage({ message: '✅ Conectado - Sincronizando...', type: 'success' })
+        // Forzar sincronización cuando se detecta conexión
+        syncService.forzarSincronizacion()
       } else {
         showMessage({ message: '⚠️ Sin conexión - Modo offline activado', type: 'warning' })
       }
@@ -65,6 +87,9 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
     // Cleanup al desmontar
     return () => {
       unsubscribe()
+      unsubscribeSync()
+      syncService.stop()
+      
       // Limpiar recursos de BLE si estaban en uso
       if (BLEService.isInitialized && !BLEService.isDestroyed) {
         try {
@@ -83,6 +108,15 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
       setProductos(lista)
     } catch (error) {
       console.error('Error al cargar productos offline:', error)
+    }
+  }
+
+  const actualizarEstadisticasSync = async () => {
+    try {
+      const stats = await syncService.obtenerEstadisticas()
+      setEstadisticasSync(stats)
+    } catch (error) {
+      console.error('Error actualizando estadísticas:', error)
     }
   }
 
@@ -120,21 +154,35 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
       cantidad: item.cantidad,
       costo: item.costo,
       timestamp: item.timestamp,
+      origen: 'colaborador',
     }
 
-    try {
-      await solicitudesConexionApi.agregarProductoOffline(solicitudId, payload)
-      showMessage({ message: '✅ Producto enviado al principal', type: 'success' })
-      // Si se envió correctamente, asegurarnos de que no esté en local (si estaba)
-      await localDb.eliminarProductoColaborador(item.temporalId)
-      cargarProductosOffline()
-    } catch (error) {
-      console.error('Error al enviar producto:', error)
-      showMessage({ message: 'Error al enviar, se guardará offline', type: 'warning' })
-
-      // Guardar localmente si falla
+    if (isConnected) {
+      // Si hay conexión, intentar enviar directamente
+      try {
+        await solicitudesConexionApi.agregarProductoOffline(solicitudId, payload)
+        showMessage({ message: '✅ Producto enviado', type: 'success' })
+        await localDb.eliminarProductoColaborador(item.temporalId)
+        cargarProductosOffline()
+      } catch (error) {
+        console.error('Error al enviar producto:', error)
+        // Si falla, agregar a cola de sincronización
+        await syncService.agregarTarea('enviar_producto', { solicitudId, producto: payload })
+        showMessage({ message: '📦 Guardado en cola de sincronización', type: 'info' })
+        await guardarItemOffline({ ...item, offline: true })
+      }
+    } else {
+      // Sin conexión: agregar directamente a cola
+      await syncService.agregarTarea('enviar_producto', { solicitudId, producto: payload })
+      showMessage({
+        message: '📦 Guardado offline',
+        description: 'Se sincronizará automáticamente cuando haya conexión',
+        type: 'info',
+      })
       await guardarItemOffline({ ...item, offline: true })
     }
+    
+    await actualizarEstadisticasSync()
   }
 
   const agregarOActualizarEnListas = async (item) => {
@@ -337,7 +385,11 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
           onPress: () => setModalBLE(true),
         },
         {
-          text: '🌐 Internet',
+          text: '🌐 Red Local (WiFi)',
+          onPress: () => setModalRedLocal(true),
+        },
+        {
+          text: '☁️ Internet',
           onPress: () => sincronizarViaInternet(),
           style: isConnected ? 'default' : 'destructive',
         },
@@ -374,6 +426,50 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
     await localDb.limpiarProductosColaborador(solicitudId)
     cargarProductosOffline()
     setModalBLE(false)
+    await actualizarEstadisticasSync()
+  }
+
+  const handleRedLocalSuccess = async () => {
+    await localDb.limpiarProductosColaborador(solicitudId)
+    cargarProductosOffline()
+    setModalRedLocal(false)
+    await actualizarEstadisticasSync()
+  }
+
+  const handleProductosImportados = async (productosImportados) => {
+    try {
+      for (const producto of productosImportados) {
+        const item = crearItemColaborador({
+          nombre: producto.nombre,
+          sku: producto.sku || producto.codigo || '',
+          codigoBarras: producto.codigoBarras || producto.codigo || '',
+          cantidad: producto.cantidad || 1,
+          costo: producto.costo || producto.costoBase || 0,
+        })
+
+        await agregarOActualizarEnListas(item)
+
+        if (isConnected) {
+          await enviarProductoServidor(item)
+        } else {
+          showMessage({
+            message: '📦 Productos guardados offline',
+            description: 'Se sincronizarán automáticamente cuando haya conexión',
+            type: 'success',
+          })
+        }
+      }
+
+      showMessage({
+        message: '✅ Importación completada',
+        description: `${productosImportados.length} producto(s) importado(s)`,
+        type: 'success',
+        duration: 4000,
+      })
+    } catch (error) {
+      console.error('Error importando productos:', error)
+      Alert.alert('Error', 'No se pudieron importar todos los productos')
+    }
   }
 
   const handleSalir = () => {
@@ -394,8 +490,31 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
   const renderProductoItem = ({ item }) => {
     const total = (Number(item.cantidad) || 0) * (Number(item.costo) || 0)
 
+    // Determinar estado de sincronización
+    let estadoSync = 'sincronizado' // por defecto
+    let colorEstado = '#22c55e' // Verde
+    let iconoEstado = 'checkmark-circle'
+    let textoEstado = 'Sincronizado'
+
+    if (item.offline) {
+      estadoSync = 'pendiente'
+      colorEstado = '#f59e0b' // Naranja
+      iconoEstado = 'cloud-upload-outline'
+      textoEstado = 'Pendiente'
+    }
+
+    if (item.error) {
+      estadoSync = 'error'
+      colorEstado = '#ef4444' // Rojo
+      iconoEstado = 'alert-circle'
+      textoEstado = 'Error'
+    }
+
     return (
       <View style={styles.productoCard}>
+        {/* Indicador de estado visual en el borde izquierdo */}
+        <View style={[styles.estadoBorde, { backgroundColor: colorEstado }]} />
+        
         <View style={styles.productoInfo}>
           <Text style={styles.productoNombre}>{item.nombre}</Text>
           <Text style={styles.productoSku}>
@@ -409,12 +528,11 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
           <Text style={styles.productoTimestamp}>{new Date(item.timestamp).toLocaleString()}</Text>
         </View>
         <View style={styles.productoActions}>
-          {item.offline && (
-            <View style={styles.offlineBadge}>
-              <Ionicons name="cloud-offline" size={14} color="#f59e0b" />
-              <Text style={styles.offlineBadgeText}>Offline</Text>
-            </View>
-          )}
+          {/* Badge de estado con colores */}
+          <View style={[styles.estadoBadge, { backgroundColor: `${colorEstado}20` }]}>
+            <Ionicons name={iconoEstado} size={14} color={colorEstado} />
+            <Text style={[styles.estadoBadgeText, { color: colorEstado }]}>{textoEstado}</Text>
+          </View>
           <View style={styles.actionButtons}>
             <TouchableOpacity
               style={styles.iconButton}
@@ -512,6 +630,16 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
         >
           <Ionicons name="add-circle-outline" size={24} color="#fff" />
           <Text style={styles.actionButtonText}>Nuevo</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.actionsRow2}>
+        <TouchableOpacity
+          style={[styles.actionButton2, { backgroundColor: '#8b5cf6' }]}
+          onPress={() => setModalImportarIA(true)}
+        >
+          <Ionicons name="sparkles" size={20} color="#fff" />
+          <Text style={styles.actionButtonText}>Importar con IA</Text>
         </TouchableOpacity>
       </View>
 
@@ -730,6 +858,23 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
         onSuccess={handleBLESuccess}
         mode="send"
       />
+
+      {/* Modal Sincronización Red Local */}
+      <SincronizacionRedModal
+        visible={modalRedLocal}
+        onClose={() => setModalRedLocal(false)}
+        productos={productosOffline}
+        onSuccess={handleRedLocalSuccess}
+        solicitudId={solicitudId}
+      />
+
+      {/* Modal Importar con IA */}
+      <ImportarConGeminiModal
+        visible={modalImportarIA}
+        onClose={() => setModalImportarIA(false)}
+        onProductosImportados={handleProductosImportados}
+        solicitudId={solicitudId}
+      />
     </View>
   )
 }
@@ -810,6 +955,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginTop: 12,
   },
+  actionsRow2: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginTop: 8,
+  },
   actionButton: {
     flex: 1,
     flexDirection: 'row',
@@ -818,6 +968,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 10,
     marginHorizontal: 4,
+    gap: 6,
+  },
+  actionButton2: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    paddingVertical: 10,
     gap: 6,
   },
   actionButtonText: {
@@ -892,10 +1051,32 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: '#e5e7eb',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  estadoBorde: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+  },
+  estadoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    gap: 4,
+  },
+  estadoBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   productoInfo: {
     flex: 1,
     paddingRight: 8,
+    paddingLeft: 8,
   },
   productoNombre: {
     fontSize: 15,

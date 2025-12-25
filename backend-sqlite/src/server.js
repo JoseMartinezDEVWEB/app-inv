@@ -24,6 +24,7 @@ import invitacionesRoutes from './routes/invitaciones.js'
 import solicitudesRoutes from './routes/solicitudes.js'
 import usuariosRoutes from './routes/usuarios.js'
 import saludRoutes from './routes/salud.js'
+import integracionRoutes from './routes/integracion.js'
 
 // Services
 import { initializeSocket } from './services/socketService.js'
@@ -130,6 +131,7 @@ app.use('/api/invitaciones', invitacionesRoutes)
 app.use('/api/solicitudes-conexion', solicitudesRoutes)
 app.use('/api/usuarios', usuariosRoutes)
 app.use('/api/salud', saludRoutes)
+app.use('/api/inventario', integracionRoutes)
 
 // ===== MANEJO DE ERRORES =====
 
