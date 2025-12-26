@@ -4,6 +4,9 @@ import webSocketService from '../services/websocket'
 import { showMessage } from 'react-native-flash-message'
 import { getInternetCredentials, setInternetCredentials, resetInternetCredentials } from '../services/secureStorage'
 import { useLoader } from './LoaderContext'
+import { isTokenExpired, getTokenInfo } from '../utils/jwtHelper'
+import axios from 'axios'
+import { config } from '../config/env'
 
 // Estado inicial
 const initialState = {
@@ -119,9 +122,9 @@ export const AuthProvider = ({ children }) => {
           getInternetCredentials('user_data'),
         ])
 
-        const access = tokenCredentials?.password
+        let access = tokenCredentials?.password
         const userJson = userCredentials?.password
-        const refresh = refreshCredentials?.password
+        let refresh = refreshCredentials?.password
 
         if (access && userJson) {
           const userData = JSON.parse(userJson)
@@ -129,7 +132,102 @@ export const AuthProvider = ({ children }) => {
           // Permitir sesión temporal de colaborador sin refresh token
           const isTempCollaborator = userData?.tipo === 'colaborador_temporal' || userData?.rol === 'colaborador'
 
+          // Verificar si el token está expirado
+          const tokenExpired = isTokenExpired(access)
+          
+          if (tokenExpired) {
+            console.log('⚠️ Token expirado detectado al iniciar app')
+            
+            // Si es colaborador temporal, no tiene refresh token - hacer logout silencioso
+            if (isTempCollaborator) {
+              console.log('🔐 Colaborador temporal con token expirado - cerrando sesión')
+              await Promise.all([
+                resetInternetCredentials('auth_token'),
+                resetInternetCredentials('user_data'),
+              ])
+              dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
+              return
+            }
+
+            // Si tiene refresh token, intentar refrescar
+            if (refresh) {
+              console.log('🔄 Intentando refrescar token automáticamente...')
+              try {
+                const response = await axios.post(`${config.apiUrl}/auth/refresh`, {
+                  refreshToken: refresh,
+                })
+
+                const newAccessToken = response.data.datos?.accessToken
+                const newRefreshToken = response.data.datos?.refreshToken
+
+                if (newAccessToken) {
+                  console.log('✅ Token refrescado exitosamente')
+                  
+                  // Guardar nuevos tokens
+                  await Promise.all([
+                    setInternetCredentials('auth_token', 'token', newAccessToken),
+                    setInternetCredentials('refresh_token', 'refresh', newRefreshToken || refresh),
+                  ])
+
+                  // Usar el nuevo token
+                  access = newAccessToken
+                  refresh = newRefreshToken || refresh
+
+                  // Actualizar estado
+                  dispatch({
+                    type: AUTH_ACTIONS.LOGIN_SUCCESS,
+                    payload: {
+                      user: userData,
+                      accessToken: access,
+                      refreshToken: refresh,
+                    },
+                  })
+
+                  // Conectar WebSocket con token fresco
+                  webSocketService.connect(access)
+                  return
+                } else {
+                  throw new Error('No se recibió token de acceso')
+                }
+              } catch (refreshError) {
+                console.error('❌ Error refrescando token:', refreshError.message)
+                
+                // Si falla el refresh, limpiar todo y hacer logout silencioso
+                await Promise.all([
+                  resetInternetCredentials('auth_token'),
+                  resetInternetCredentials('refresh_token'),
+                  resetInternetCredentials('user_data'),
+                ])
+                
+                dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
+                
+                showMessage({
+                  message: 'Sesión expirada',
+                  description: 'Por favor, inicia sesión nuevamente',
+                  type: 'warning',
+                  duration: 3000,
+                })
+                return
+              }
+            } else {
+              // Token expirado y no hay refresh token - logout silencioso
+              console.log('❌ Token expirado sin refresh token disponible')
+              await Promise.all([
+                resetInternetCredentials('auth_token'),
+                resetInternetCredentials('user_data'),
+              ])
+              dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
+              return
+            }
+          }
+
+          // Token válido - continuar normalmente
           if (isTempCollaborator || (access && refresh)) {
+            const tokenInfo = getTokenInfo(access)
+            if (tokenInfo) {
+              console.log(`✅ Token válido - expira en ${Math.floor(tokenInfo.timeToExpire / 60)} minutos`)
+            }
+
             dispatch({
               type: AUTH_ACTIONS.LOGIN_SUCCESS,
               payload: {
@@ -139,7 +237,7 @@ export const AuthProvider = ({ children }) => {
               },
             })
 
-            // Conectar WebSocket
+            // Conectar WebSocket solo si el token es válido
             webSocketService.connect(access)
           } else {
             dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
@@ -283,19 +381,74 @@ export const AuthProvider = ({ children }) => {
     }
   }, [])
 
+  // Escuchar eventos de error de autenticación del WebSocket
   useEffect(() => {
-    const handleWsAuthError = ({ message }) => {
+    const handleWsAuthError = async ({ message }) => {
+      console.error('🔐 Error de autenticación en WebSocket:', message)
+      
+      // Verificar si hay un refresh token disponible
+      const refreshCredentials = await getInternetCredentials('refresh_token')
+      const refresh = refreshCredentials?.password
+
+      if (refresh && state.token) {
+        // Intentar refrescar el token una vez
+        console.log('🔄 Intentando refrescar token después de error WS...')
+        try {
+          const response = await axios.post(`${config.apiUrl}/auth/refresh`, {
+            refreshToken: refresh,
+          })
+
+          const newAccessToken = response.data.datos?.accessToken
+          const newRefreshToken = response.data.datos?.refreshToken
+
+          if (newAccessToken) {
+            console.log('✅ Token refrescado después de error WS')
+            
+            // Guardar nuevos tokens
+            await Promise.all([
+              setInternetCredentials('auth_token', 'token', newAccessToken),
+              setInternetCredentials('refresh_token', 'refresh', newRefreshToken || refresh),
+            ])
+
+            // Actualizar estado
+            dispatch({
+              type: AUTH_ACTIONS.LOGIN_SUCCESS,
+              payload: {
+                user: state.user,
+                accessToken: newAccessToken,
+                refreshToken: newRefreshToken || refresh,
+              },
+            })
+
+            // Reconectar WebSocket con nuevo token
+            webSocketService.connect(newAccessToken)
+            
+            showMessage({
+              message: 'Sesión renovada',
+              description: 'Tu sesión fue actualizada automáticamente',
+              type: 'success',
+              duration: 2000,
+            })
+            return
+          }
+        } catch (error) {
+          console.error('❌ No se pudo refrescar token después de error WS:', error.message)
+        }
+      }
+
+      // Si no se pudo refrescar o no hay refresh token, hacer logout
       showMessage({
         message: 'Sesión expirada',
-        description: message || 'Vuelve a iniciar sesión para continuar.',
+        description: message || 'Por favor, inicia sesión nuevamente',
         type: 'danger',
+        duration: 3000,
       })
       logout()
     }
 
     webSocketService.on('auth_error', handleWsAuthError)
     return () => webSocketService.off('auth_error', handleWsAuthError)
-  }, [logout])
+  }, [logout, state.token, state.user])
 
   // Función para actualizar datos del usuario
   const updateUser = async (userData) => {
