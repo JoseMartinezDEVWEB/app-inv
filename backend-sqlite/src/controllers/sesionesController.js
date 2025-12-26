@@ -318,29 +318,34 @@ export const obtenerAgendaResumen = async (req, res) => {
     throw new AppError('El parámetro "mes" es requerido (formato: YYYY-MM)', 400)
   }
 
-  const [year, month] = mes.split('-').map(Number)
-  const fechaDesde = `${year}-${String(month).padStart(2, '0')}-01`
-  const lastDay = new Date(year, month, 0).getDate()
-  const fechaHasta = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  try {
+    const [year, month] = mes.split('-').map(Number)
+    const fechaDesde = `${year}-${String(month).padStart(2, '0')}-01`
+    const lastDay = new Date(year, month, 0).getDate()
+    const fechaHasta = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
-  const db = dbManager.getDatabase()
-  
-  // Obtener conteo de sesiones por día del mes
-  const query = `
-    SELECT 
-      DATE(fecha) as fecha,
-      COUNT(*) as total
-    FROM sesiones_inventario
-    WHERE contadorId = ? 
-      AND DATE(fecha) >= ? 
-      AND DATE(fecha) <= ?
-    GROUP BY DATE(fecha)
-    ORDER BY fecha ASC
-  `
+    const db = dbManager.getDatabase()
+    
+    // Obtener conteo de sesiones por día del mes
+    const query = `
+      SELECT 
+        DATE(fecha) as fecha,
+        COUNT(*) as total
+      FROM sesiones_inventario
+      WHERE contadorId = ? 
+        AND DATE(fecha) >= ? 
+        AND DATE(fecha) <= ?
+      GROUP BY DATE(fecha)
+      ORDER BY fecha ASC
+    `
 
-  const resumen = db.prepare(query).all(contadorId, fechaDesde, fechaHasta)
+    const resumen = db.prepare(query).all(contadorId, fechaDesde, fechaHasta)
 
-  res.json(respuestaExito({ resumen }))
+    res.json(respuestaExito({ resumen }))
+  } catch (error) {
+    console.error('❌ Error en obtenerAgendaResumen:', error.message)
+    throw new AppError('Error al obtener resumen de agenda', 500)
+  }
 }
 
 // Obtener sesiones del día
@@ -358,40 +363,45 @@ export const obtenerAgendaDia = async (req, res) => {
       c.nombre as cliente_nombre,
       c.tipo as cliente_tipo
     FROM sesiones_inventario s
-    LEFT JOIN clientes_negocios c ON s.clienteId = c.id
+    LEFT JOIN clientes_negocios c ON s.clienteNegocioId = c.id
     WHERE s.contadorId = ? 
       AND DATE(s.fecha) = ?
     ORDER BY s.createdAt DESC
   `
 
-  const sesionesRaw = db.prepare(query).all(contadorId, fecha)
-  
-  // Formatear las sesiones
-  const sesiones = sesionesRaw.map(s => ({
-    _id: s.id,
-    id: s.id,
-    numeroSesion: s.numeroSesion,
-    nombre: s.nombre,
-    descripcion: s.descripcion,
-    fecha: s.fecha,
-    estado: s.estado,
-    contadorId: s.contadorId,
-    clienteId: s.clienteId,
-    clienteNegocio: s.cliente_id ? {
-      _id: s.cliente_id,
-      id: s.cliente_id,
-      nombre: s.cliente_nombre,
-      tipo: s.cliente_tipo,
-    } : null,
-    totales: JSON.parse(s.totales || '{}'),
-    configuracion: JSON.parse(s.configuracion || '{}'),
-    duracionSegundos: s.duracionSegundos,
-    pausas: JSON.parse(s.pausas || '[]'),
-    createdAt: s.createdAt,
-    updatedAt: s.updatedAt,
-  }))
+  try {
+    const sesionesRaw = db.prepare(query).all(contadorId, fecha)
+    
+    // Formatear las sesiones
+    const sesiones = sesionesRaw.map(s => ({
+      _id: s.id,
+      id: s.id,
+      numeroSesion: s.numeroSesion,
+      nombre: s.nombre,
+      descripcion: s.descripcion,
+      fecha: s.fecha,
+      estado: s.estado,
+      contadorId: s.contadorId,
+      clienteNegocioId: s.clienteNegocioId,
+      clienteNegocio: s.cliente_id ? {
+        _id: s.cliente_id,
+        id: s.cliente_id,
+        nombre: s.cliente_nombre,
+        tipo: s.cliente_tipo,
+      } : null,
+      totales: JSON.parse(s.totales || '{}'),
+      configuracion: JSON.parse(s.configuracion || '{}'),
+      duracionSegundos: s.duracionSegundos,
+      pausas: JSON.parse(s.pausas || '[]'),
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+    }))
 
-  res.json(respuestaExito({ sesiones }))
+    res.json(respuestaExito({ sesiones }))
+  } catch (error) {
+    console.error('❌ Error en obtenerAgendaDia:', error.message)
+    throw new AppError('Error al obtener sesiones del día', 500)
+  }
 }
 
 export default {
