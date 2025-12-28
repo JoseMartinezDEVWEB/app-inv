@@ -124,22 +124,27 @@ const LoginScreen = ({ navigation }) => {
         },
       })
 
-      // Guardar solicitudId para verificar estado después
-      await AsyncStorage.setItem('solicitudId', response.data.datos.solicitudId)
+      // Obtener el ID de la solicitud de la respuesta
+      const nuevaSolicitudId = response.data.datos.id || response.data.datos._id || response.data.datos.solicitudId
 
+      // Guardar solicitudId para verificar estado después
+      if (nuevaSolicitudId) {
+        await AsyncStorage.setItem('solicitudId', String(nuevaSolicitudId))
+      }
+      
       setShowCodigoInput(false)
       setCodigo('')
       setNombreColaborador('')
 
       Alert.alert(
         'Solicitud Enviada',
-        `Tu solicitud ha sido enviada a ${response.data.datos.contable.nombre}.\n\nEspera a que autorice tu conexión.`,
+        `Tu solicitud ha sido enviada correctamente.\n\nEspera a que autorice tu conexión.`,
         [
           {
             text: 'Verificar Estado',
             onPress: () =>
               navigation.navigate('EsperaAutorizacion', {
-                solicitudId: response.data.datos.solicitudId,
+                solicitudId: String(nuevaSolicitudId),
               }),
           },
         ]

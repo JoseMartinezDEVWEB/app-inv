@@ -16,6 +16,7 @@ import { productosApi, solicitudesConexionApi } from '../services/api'
 import localDb from '../services/localDb'
 import NetInfo from '@react-native-community/netinfo'
 import { showMessage } from 'react-native-flash-message'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import ModalSincronizacionBLE from '../components/ModalSincronizacionBLE'
 import BLEService from '../services/BLEService'
 import SincronizacionRedModal from '../components/modals/SincronizacionRedModal'
@@ -49,10 +50,38 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
   const [costo, setCosto] = useState('')
   const [editandoProducto, setEditandoProducto] = useState(null)
 
+  const [modalHistorial, setModalHistorial] = useState(false)
+  const [historialEnvios, setHistorialEnvios] = useState([])
+  const [clienteNombre, setClienteNombre] = useState('')
+
+  const cargarHistorialLocal = async () => {
+    try {
+      const historial = await AsyncStorage.getItem('historial_envios_colaborador')
+      if (historial) {
+        setHistorialEnvios(JSON.parse(historial))
+      }
+    } catch (e) {
+      console.error('Error cargando historial', e)
+    }
+  }
+
+  const guardarEnHistorial = async (conteoProductos) => {
+    const nuevoEnvio = {
+      id: Date.now().toString(),
+      fecha: new Date().toISOString(),
+      cliente: clienteNombre || 'Cliente General',
+      cantidadProductos: conteoProductos,
+      status: 'Enviado'
+    }
+    const nuevoHistorial = [nuevoEnvio, ...historialEnvios]
+    setHistorialEnvios(nuevoHistorial)
+    await AsyncStorage.setItem('historial_envios_colaborador', JSON.stringify(nuevoHistorial))
+  }
+
   useEffect(() => {
     cargarProductosOffline()
+    cargarHistorialLocal()
 
-    // Iniciar servicio de sincronización automática
     syncService.start()
 
     // Listener para eventos de sincronización
@@ -286,9 +315,21 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
   const handleBarCodeScanned = async ({ data }) => {
     setShowScanner(false)
     try {
-      const response = await productosApi.getByBarcode(data)
-      const producto = response.data.datos?.producto || response.data.producto
-
+      // Intentar buscar primero en el servidor si hay conexión
+      let producto = null
+      
+      if (isConnected) {
+        try {
+          const response = await productosApi.getByBarcode(data)
+          producto = response.data.datos?.producto || response.data.producto
+        } catch (e) {
+          console.log('No encontrado en servidor, buscando localmente...')
+        }
+      }
+      
+      // Si no se encontró o no hay conexión, intentar buscar en caché local (si implementado)
+      // TODO: Implementar búsqueda local robusta
+      
       if (!producto) {
         Alert.alert(
           'Producto no encontrado',
@@ -341,6 +382,8 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
 
       // 2. Buscar en catálogo general (accesible para todos)
       try {
+        // En modo colaborador, intentamos obtener productos generales desde el servidor
+        // si hay conexión, o usamos la caché local si no
         const response = await productosApi.buscarPorNombre(busqueda.trim())
         const lista = response.data.datos?.productos || []
 
@@ -404,13 +447,16 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
     }
 
     try {
+      const cantidadTotal = productosOffline.length
+      
       for (const item of productosOffline) {
         await enviarProductoServidor(item)
       }
 
-      // La función enviarProductoServidor ya se encarga de limpiar si es exitoso
-      // Pero podemos forzar una recarga final
+      // Limpiar y guardar historial
+      await localDb.limpiarProductosColaborador(solicitudId)
       await cargarProductosOffline()
+      await guardarEnHistorial(cantidadTotal)
 
       showMessage({
         message: '✅ Sincronización completada',
@@ -578,10 +624,20 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={styles.sesionLabel}>Sesión</Text>
-            <Text style={styles.sesionNumero}>{sesionInventario?.nombre || 'INV-COLABORADOR'}</Text>
-            <Text style={styles.sesionSubtitulo}>Colaborador</Text>
+            {/* Input para nombre de cliente */}
+            <TextInput
+              style={styles.clienteInput}
+              placeholder="Nombre Cliente / Ref"
+              placeholderTextColor="rgba(255,255,255,0.6)"
+              value={clienteNombre}
+              onChangeText={setClienteNombre}
+            />
           </View>
           <View style={styles.headerRight}>
+            <TouchableOpacity onPress={() => setModalHistorial(true)} style={{ marginRight: 8 }}>
+               <Ionicons name="calendar-outline" size={22} color="#fff" />
+            </TouchableOpacity>
+            
             <View style={styles.estadoPill}>
               <View
                 style={[styles.estadoDot, { backgroundColor: isConnected ? '#22c55e' : '#f59e0b' }]}
@@ -876,6 +932,54 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
         onProductosImportados={handleProductosImportados}
         solicitudId={solicitudId}
       />
+      {/* Modal Historial / Agenda */}
+      <Modal visible={modalHistorial} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Historial de Envíos</Text>
+            
+            {historialEnvios.length === 0 ? (
+              <View style={{ padding: 20, alignItems: 'center' }}>
+                <Text style={{ color: '#64748b' }}>No hay historial de envíos aún</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={historialEnvios}
+                keyExtractor={item => item.id}
+                style={{ maxHeight: 400 }}
+                renderItem={({ item }) => (
+                  <View style={{ 
+                    padding: 12, 
+                    borderBottomWidth: 1, 
+                    borderBottomColor: '#e2e8f0',
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <View>
+                      <Text style={{ fontWeight: '600', color: '#1e293b' }}>{item.cliente}</Text>
+                      <Text style={{ fontSize: 12, color: '#64748b' }}>
+                        {new Date(item.fecha).toLocaleDateString()} {new Date(item.fecha).toLocaleTimeString()}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ fontWeight: 'bold', color: '#3b82f6' }}>{item.cantidadProductos}</Text>
+                      <Text style={{ fontSize: 10, color: '#64748b' }}>prods</Text>
+                    </View>
+                  </View>
+                )}
+              />
+            )}
+
+            <TouchableOpacity
+              style={[styles.modalButton, styles.cancelButton, { marginTop: 16 }]}
+              onPress={() => setModalHistorial(false)}
+            >
+              <Text style={styles.cancelButtonText}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -898,6 +1002,16 @@ const styles = StyleSheet.create({
   headerCenter: {
     flex: 1,
     marginLeft: 12,
+  },
+  clienteInput: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.3)',
+    paddingBottom: 2,
+    width: '100%',
+    zIndex: 10,
   },
   headerRight: {
     alignItems: 'flex-end',

@@ -12,7 +12,12 @@ class BLEService {
       this.manager = new BleManager();
       this.isInitialized = true;
     } catch (error) {
-      console.warn('⚠️ BleManager no disponible:', error.message);
+      // Si el error es por falta de módulo nativo (común en desarrollo), solo loguear info
+      if (error.message && error.message.includes('createClient')) {
+        console.log('ℹ️ BLE no disponible: Ejecutando sin módulo nativo Bluetooth (funcionalidad limitada)');
+      } else {
+        console.warn('⚠️ Error al inicializar BleManager:', error.message);
+      }
       this.manager = null;
       this.isInitialized = false;
     }
@@ -56,7 +61,7 @@ class BLEService {
   // Verificar estado de Bluetooth
   async checkBluetoothState() {
     if (!this.manager || this.isDestroyed) {
-      console.warn('⚠️ BLE no disponible');
+      console.log('ℹ️ BLE no disponible para verificar estado');
       return false;
     }
     
@@ -80,7 +85,7 @@ class BLEService {
   // Escanear dispositivos cercanos
   async startScan(onDeviceFound) {
     if (!this.manager || this.isDestroyed) {
-      console.warn('⚠️ BLE no disponible para escaneo');
+      console.log('ℹ️ BLE no disponible para escaneo');
       return;
     }
 
@@ -133,6 +138,10 @@ class BLEService {
 
   // Conectar a un dispositivo
   async connectToDevice(deviceId, onDataReceived) {
+    if (!this.manager) {
+      throw new Error('El servicio Bluetooth no está disponible en este dispositivo');
+    }
+
     try {
       this.stopScan();
       console.log('🔗 Conectando a dispositivo:', deviceId);

@@ -10,7 +10,7 @@ const EsperaAutorizacionScreen = ({ route }) => {
   const navigation = useNavigation()
   const { solicitudId: propSolicitudId } = route.params || {}
   
-  const [solicitudId, setSolicitudId] = useState(propSolicitudId)
+  const [solicitudId, setSolicitudId] = useState(propSolicitudId ? String(propSolicitudId) : null)
   const [estado, setEstado] = useState('pendiente')
   const [estadoConexion, setEstadoConexion] = useState('desconectado')
   const [sesionInventario, setSesionInventario] = useState(null)
@@ -38,7 +38,7 @@ const EsperaAutorizacionScreen = ({ route }) => {
   const cargarSolicitudId = async () => {
     try {
       if (propSolicitudId) {
-        setSolicitudId(propSolicitudId)
+        setSolicitudId(String(propSolicitudId))
         return
       }
 
@@ -227,7 +227,7 @@ const EsperaAutorizacionScreen = ({ route }) => {
         {/* Info adicional */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            ID de Solicitud: {solicitudId?.slice(-8)}
+            ID de Solicitud: {solicitudId ? String(solicitudId).slice(-8) : '...'}
           </Text>
         </View>
       </View>
