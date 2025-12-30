@@ -319,6 +319,10 @@ const Invitaciones = () => {
                       <div className="text-sm text-gray-500">
                         {invitacion.email || '-'}
                       </div>
+                      {/* Mostrar código asignado para que el admin lo comparta */}
+                      <div className="mt-1 text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded inline-block font-mono tracking-wider">
+                        Código: {invitacion.codigo ? String(Array.from(invitacion.codigo).reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % 1000000).padStart(6, '0') : invitacion.codigoNumerico || 'N/A'}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {getEstadoBadge(invitacion.estado)}
@@ -410,20 +414,20 @@ const Invitaciones = () => {
                     <tr key={solicitud._id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
-                          {solicitud.colaborador.nombre}
+                          {solicitud.nombreColaborador || solicitud.colaborador?.nombre || 'Desconocido'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm font-mono font-bold text-violet-600">
-                          {solicitud.colaborador.invitacionId?.codigoNumerico || 'N/A'}
+                           {solicitud.metadata?.invitacionId ? 'Vía QR' : 'Manual'}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {solicitud.colaborador.dispositivoInfo?.modelo || 'Desconocido'}
+                          {solicitud.metadata?.dispositivoInfo?.modelo || 'Desconocido'}
                         </div>
                         <div className="text-xs text-gray-500">
-                          {solicitud.colaborador.dispositivoInfo?.sistemaOperativo || 'N/A'}
+                          {solicitud.metadata?.dispositivoInfo?.sistemaOperativo || 'N/A'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -503,10 +507,10 @@ const Invitaciones = () => {
                     <tr key={colab._id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
-                          {colab.colaborador.nombre}
+                          {colab.nombreColaborador || colab.colaborador?.nombre || 'Desconocido'}
                         </div>
                         <div className="text-xs text-gray-500">
-                          {colab.colaborador.dispositivoInfo?.modelo || 'Desconocido'}
+                          {colab.metadata?.dispositivoInfo?.modelo || 'Desconocido'}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -617,11 +621,14 @@ const Invitaciones = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
               required
             >
-              <option value="10">10 minutos</option>
-              <option value="30">30 minutos</option>
               <option value="60">1 hora</option>
-              <option value="120">2 horas</option>
               <option value="1440">24 horas</option>
+              <option value="10080">7 días</option>
+              <option value="21600">15 días</option>
+              <option value="43200">1 mes</option>
+              <option value="129600">3 meses</option>
+              <option value="259200">6 meses</option>
+              <option value="518400">12 meses</option>
             </select>
             <p className="mt-1 text-xs text-gray-500">
               Tiempo antes de que expire la invitación
@@ -688,7 +695,7 @@ const Invitaciones = () => {
                   <li><strong>Nombre:</strong> {qrData.nombre || 'Sin especificar'}</li>
                   <li><strong>Rol:</strong> {qrData.rol === 'contador' ? 'Contador' : 'Colaborador'}</li>
                   <li><strong>Expira:</strong> {new Date(qrData.expiraEn).toLocaleString('es-MX')}</li>
-                  {qrData.duracionMinutos && <li><strong>Duración:</strong> {qrData.duracionMinutos} minutos</li>}
+                  {qrData.duracionTexto && <li><strong>Duración:</strong> {qrData.duracionTexto}</li>}
                 </ul>
               </div>
 

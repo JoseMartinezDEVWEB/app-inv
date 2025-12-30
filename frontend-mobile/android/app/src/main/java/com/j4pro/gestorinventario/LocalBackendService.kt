@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import io.ktor.serialization.kotlinx.json.*
@@ -19,6 +20,8 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.coroutines.*
 
+import io.ktor.server.request.*
+
 class LocalBackendService : Service() {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private var server: ApplicationEngine? = null
@@ -26,7 +29,12 @@ class LocalBackendService : Service() {
   override fun onCreate() {
     super.onCreate()
     createNotificationChannel()
-    startForeground(NOTIFICATION_ID, buildNotification())
+    
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+    } else {
+      startForeground(NOTIFICATION_ID, buildNotification())
+    }
 
     scope.launch {
       startServer()
@@ -60,6 +68,25 @@ class LocalBackendService : Service() {
         }
         get("/api/salud") {
           call.respond(mapOf("ok" to true, "servicio" to "backend-local", "puerto" to PORT))
+        }
+        
+        // Mock Login for Offline Mode
+        post("/api/auth/login") {
+           val response = mapOf(
+            "exito" to true,
+            "mensaje" to "Login local exitoso",
+            "datos" to mapOf(
+              "usuario" to mapOf(
+                "nombre" to "Usuario Local",
+                "email" to "local@j4pro.com",
+                "rol" to "administrador",
+                "_id" to "local-user-id"
+              ),
+              "accessToken" to "local-fake-token",
+              "refreshToken" to "local-fake-refresh-token"
+            )
+          )
+          call.respond(response)
         }
       }
     }.start(wait = false)

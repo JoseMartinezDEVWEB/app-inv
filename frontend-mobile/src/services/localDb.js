@@ -103,6 +103,44 @@ const localDb = {
                 );
             `);
 
+            // Tabla de Usuarios Locales
+            await database.execAsync(`
+                CREATE TABLE IF NOT EXISTS usuarios(
+                    _id TEXT PRIMARY KEY,
+                    nombre TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL,
+                    rol TEXT DEFAULT 'administrador',
+                    activo INTEGER DEFAULT 1,
+                    createdAt TEXT,
+                    updatedAt TEXT
+                );
+            `);
+
+            // Crear usuario administrador por defecto si no existe
+            const checkAdmin = await database.getFirstAsync(
+                'SELECT * FROM usuarios WHERE email = ?',
+                ['admin@j4pro.com']
+            );
+
+            if (!checkAdmin) {
+                await database.runAsync(
+                    `INSERT INTO usuarios (_id, nombre, email, password, rol, activo, createdAt, updatedAt)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        'admin-local-id',
+                        'Administrador',
+                        'admin@j4pro.com',
+                        'Jose.1919', // Contraseña en texto plano para simplicidad
+                        'administrador',
+                        1,
+                        new Date().toISOString(),
+                        new Date().toISOString()
+                    ]
+                );
+                console.log('✅ Usuario administrador creado: admin@j4pro.com / Jose.1919');
+            }
+
             console.log('✅ Base de datos local inicializada');
             return true;
         } catch (error) {

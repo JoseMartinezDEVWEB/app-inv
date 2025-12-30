@@ -60,6 +60,37 @@ class Invitacion {
     return invitacion
   }
 
+  // Calcular código numérico (determinista)
+  static calcularCodigoNumerico(codigoQR) {
+    const base = codigoQR || ''
+    const hash = Array.from(base).reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+    return String(hash % 1000000).padStart(6, '0')
+  }
+
+  // Buscar por código numérico
+  static buscarPorCodigoNumerico(codigoNumerico) {
+    const db = dbManager.getDatabase()
+    
+    // Obtener todas las invitaciones activas
+    const stmt = db.prepare(`
+      SELECT * FROM invitaciones
+      WHERE estado = 'activa' AND expiraEn > datetime('now')
+    `)
+    const invitaciones = stmt.all()
+    
+    // Buscar la coincidencia
+    const invitacion = invitaciones.find(inv => 
+      Invitacion.calcularCodigoNumerico(inv.codigoQR) === codigoNumerico
+    )
+    
+    if (invitacion) {
+      invitacion.metadata = JSON.parse(invitacion.metadata || '{}')
+      invitacion._id = invitacion.id
+    }
+    
+    return invitacion
+  }
+
   // Buscar invitaciones activas de un contable
   static buscarActivas(contableId) {
     const db = dbManager.getDatabase()

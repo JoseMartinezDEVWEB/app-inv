@@ -56,16 +56,14 @@ const LoginScreen = ({ navigation }) => {
     const newErrors = {}
     
     if (!formData.email) {
-      newErrors.email = 'El email es requerido'
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'El email no es válido'
+      newErrors.email = 'El email o usuario es requerido'
     }
+    // NO validar formato de email, puede ser nombre de usuario
     
     if (!formData.password) {
       newErrors.password = 'La contraseña es requerida'
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'La contraseña debe tener al menos 6 caracteres'
     }
+    // NO validar longitud mínima, permitir cualquier contraseña
     
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -192,11 +190,10 @@ const LoginScreen = ({ navigation }) => {
                 <Ionicons name="mail" size={20} color="#64748b" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Correo electrónico"
+                  placeholder="Email o Usuario"
                   placeholderTextColor="#94a3b8"
                   value={formData.email}
                   onChangeText={(value) => handleChange('email', value)}
-                  keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
                 />

@@ -24,68 +24,42 @@ echo.
 :: Menú de opciones
 echo Selecciona el tipo de build:
 echo.
-echo 1. Preview (RECOMENDADO) - Backend en la nube
-echo 2. Local Test - Backend local (requiere configuracion)
-echo 3. Production - Version de produccion
-echo 4. Verificar estado de builds
-echo 5. Salir
+echo 1. SQLite Local - Base de Datos Local (Funciona con/sin Internet)
+echo 2. Verificar estado de builds
+echo 3. Salir
 echo.
 
-set /p choice="Ingresa tu opcion (1-5): "
+set /p choice="Ingresa tu opcion (1-3): "
 
-if "%choice%"=="1" goto preview
-if "%choice%"=="2" goto local
-if "%choice%"=="3" goto production
-if "%choice%"=="4" goto status
-if "%choice%"=="5" goto end
+if "%choice%"=="1" goto sqlite
+if "%choice%"=="2" goto status
+if "%choice%"=="3" goto end
 
 echo Opcion invalida
 pause
 exit /b 1
 
-:preview
+:sqlite
 echo.
 echo ========================================
-echo   Generando APK Preview
+echo   Generando APK MODO LOCAL
 echo ========================================
 echo.
-echo - Backend: https://appj4-hlqj.onrender.com/api
-echo - Perfil: preview
-echo - Tiempo estimado: 10-20 minutos
+echo - Modo: BASE DE DATOS LOCAL (SQLite)
+echo - Backend: Base de datos en el dispositivo
+echo - Login: admin@j4pro.com / Jose.1919
+echo - Perfil: production-local
+echo.
+echo CARACTERISTICAS:
+echo   * Funciona CON o SIN internet
+echo   * Login local con validacion de credenciales
+echo   * Datos guardados en SQLite local
+echo   * Usuario admin predeterminado incluido
 echo.
 echo Iniciando build...
-call npm run build:preview
+call npm run build:production-local
 goto end
 
-:local
-echo.
-echo ========================================
-echo   Generando APK Local Test
-echo ========================================
-echo.
-echo IMPORTANTE: Antes de continuar, asegurate de:
-echo 1. Tener Docker instalado y corriendo
-echo 2. Configurar la IP correcta en eas.json
-echo.
-pause
-echo.
-echo Iniciando build local...
-call npm run build:local
-goto end
-
-:production
-echo.
-echo ========================================
-echo   Generando APK Production
-echo ========================================
-echo.
-echo - Backend: https://appj4-hlqj.onrender.com/api
-echo - Perfil: production
-echo - Version optimizada
-echo.
-echo Iniciando build...
-call npm run build:production
-goto end
 
 :status
 echo.
@@ -104,8 +78,6 @@ echo ========================================
 echo   Proceso completado
 echo ========================================
 echo.
-
-:: Si hay builds en progreso, mostrar link
 echo Para ver el estado de tus builds:
 echo https://expo.dev/accounts/jose_alberto19/projects/gestor-inventario-j4-pro/builds
 echo.

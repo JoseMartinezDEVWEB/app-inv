@@ -360,8 +360,7 @@ export const obtenerAgendaDia = async (req, res) => {
     SELECT 
       s.*,
       c.id as cliente_id,
-      c.nombre as cliente_nombre,
-      c.tipo as cliente_tipo
+      c.nombre as cliente_nombre
     FROM sesiones_inventario s
     LEFT JOIN clientes_negocios c ON s.clienteNegocioId = c.id
     WHERE s.contadorId = ? 
@@ -387,7 +386,6 @@ export const obtenerAgendaDia = async (req, res) => {
         _id: s.cliente_id,
         id: s.cliente_id,
         nombre: s.cliente_nombre,
-        tipo: s.cliente_tipo,
       } : null,
       totales: JSON.parse(s.totales || '{}'),
       configuracion: JSON.parse(s.configuracion || '{}'),

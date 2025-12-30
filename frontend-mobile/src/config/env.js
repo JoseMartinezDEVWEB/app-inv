@@ -30,12 +30,24 @@ const isProductionBuild = () => {
   return !__DEV__;
 };
 
+// Función para detectar si estamos en modo local
+export const isOfflineMode = () => {
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+  return apiUrl === 'local-mode' || apiUrl === 'offline-mode' || apiUrl === 'local-only';
+};
+
 // Función para resolver la URL de la API con prioridad inteligente
 export const resolveApiBaseUrl = () => {
   const extra = Constants.expoConfig?.extra ?? {};
   const endpoints = extra.API_ENDPOINTS ?? {};
   const deviceType = detectDeviceType();
   const isProduction = isProductionBuild();
+  
+  // Detectar modo offline
+  if (isOfflineMode()) {
+    console.log('📴 MODO OFFLINE ACTIVADO - Sin conexión a API');
+    return 'offline-mode';
+  }
   
   // URL por defecto en la nube (siempre accesible)
   const fallbackCloudUrl = 'https://appj4-hlqj.onrender.com/api';
@@ -138,6 +150,7 @@ export const checkBackendConnectivity = async () => {
 export const config = {
   apiUrl: resolveApiBaseUrl(),
   wsUrl: resolveWebSocketUrl(),
+  isOffline: isOfflineMode(),
   deviceType: detectDeviceType(),
   appName: Constants.expoConfig?.name || 'Gestor de Inventario J4 Pro',
   appVersion: Constants.expoConfig?.version || '2.0.0',
@@ -146,5 +159,8 @@ export const config = {
 
 // Log de configuración
 console.log('📋 Configuración cargada (Móvil):', config);
+if (config.isOffline) {
+  console.log('📴 APP EN MODO OFFLINE - Solo base de datos local');
+}
 
 export default config;

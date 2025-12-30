@@ -7,6 +7,7 @@ import { useLoader } from './LoaderContext'
 import { isTokenExpired, getTokenInfo } from '../utils/jwtHelper'
 import axios from 'axios'
 import { config } from '../config/env'
+import localDb from '../services/localDb'
 
 // Estado inicial
 const initialState = {
@@ -237,8 +238,10 @@ export const AuthProvider = ({ children }) => {
               },
             })
 
-            // Conectar WebSocket solo si el token es válido
-            webSocketService.connect(access)
+            // Conectar WebSocket solo si el token es válido y no estamos offline
+            if (!config.isOffline) {
+              webSocketService.connect(access)
+            }
           } else {
             dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
           }
@@ -259,38 +262,105 @@ export const AuthProvider = ({ children }) => {
     try {
       dispatch({ type: AUTH_ACTIONS.LOGIN_START })
       
-      const response = await authApi.login(credentials)
-      const { usuario, accessToken, refreshToken } = handleApiResponse(response)
-
-      // Guardar en Keychain
-      await Promise.all([
-        setInternetCredentials('auth_token', 'token', accessToken),
-        setInternetCredentials('refresh_token', 'refresh', refreshToken),
-        setInternetCredentials('user_data', 'user', JSON.stringify(usuario)),
-      ])
-
-      // Actualizar estado
-      dispatch({
-        type: AUTH_ACTIONS.LOGIN_SUCCESS,
-        payload: {
-          user: usuario,
-          accessToken,
-          refreshToken,
-        },
-      })
-
-      // Conectar WebSocket
-      webSocketService.connect(accessToken)
-
-      showMessage({
-        message: '¡Bienvenido!',
-        description: `Hola, ${usuario.nombre}`,
-        type: 'success',
-      })
+      // Detectar si estamos en modo offline o intentar login local primero
+      console.log('🔐 Intentando login local primero...')
       
-      return { success: true, user: usuario }
+      // Intentar login local (por email o nombre)
+      const loginResult = await localDb.loginLocal(
+        credentials.email,
+        credentials.password
+      )
+
+      if (loginResult.success) {
+        console.log('✅ Login local exitoso')
+        
+        const usuario = loginResult.usuario
+        const accessToken = 'local-token-' + Date.now()
+        const refreshToken = 'local-refresh-' + Date.now()
+
+        // Guardar en Keychain
+        await Promise.all([
+          setInternetCredentials('auth_token', 'token', accessToken),
+          setInternetCredentials('refresh_token', 'refresh', refreshToken),
+          setInternetCredentials('user_data', 'user', JSON.stringify(usuario)),
+        ])
+
+        // Actualizar estado
+        dispatch({
+          type: AUTH_ACTIONS.LOGIN_SUCCESS,
+          payload: {
+            user: usuario,
+            accessToken,
+            refreshToken,
+          },
+        })
+
+        showMessage({
+          message: '¡Bienvenido!',
+          description: `Hola, ${usuario.nombre}`,
+          type: 'success',
+        })
+        
+        return { success: true, user: usuario }
+      }
+
+      // Si el login local falla y NO estamos en modo offline puro, intentar con API
+      if (!config.isOffline) {
+        console.log('🌐 Intentando login con API remota...')
+        
+        try {
+          const response = await authApi.login(credentials)
+          const { usuario, accessToken, refreshToken } = handleApiResponse(response)
+
+          // Guardar en Keychain
+          await Promise.all([
+            setInternetCredentials('auth_token', 'token', accessToken),
+            setInternetCredentials('refresh_token', 'refresh', refreshToken),
+            setInternetCredentials('user_data', 'user', JSON.stringify(usuario)),
+          ])
+
+          // Actualizar estado
+          dispatch({
+            type: AUTH_ACTIONS.LOGIN_SUCCESS,
+            payload: {
+              user: usuario,
+              accessToken,
+              refreshToken,
+            },
+          })
+
+          // Conectar WebSocket
+          webSocketService.connect(accessToken)
+
+          showMessage({
+            message: '¡Bienvenido!',
+            description: `Hola, ${usuario.nombre}`,
+            type: 'success',
+          })
+          
+          return { success: true, user: usuario }
+        } catch (apiError) {
+          // Si falla la API, usar el error del login local
+          const errorMessage = loginResult.error || 'Credenciales incorrectas'
+          dispatch({
+            type: AUTH_ACTIONS.LOGIN_ERROR,
+            payload: errorMessage,
+          })
+          return { success: false, error: errorMessage }
+        }
+      }
+
+      // Si estamos en modo offline puro y el login local falló
+      const errorMessage = loginResult.error || 'Credenciales incorrectas'
+      dispatch({
+        type: AUTH_ACTIONS.LOGIN_ERROR,
+        payload: errorMessage,
+      })
+      return { success: false, error: errorMessage }
+      
     } catch (error) {
-      const errorMessage = handleApiError(error)
+      console.error('❌ Error en login:', error)
+      const errorMessage = error.message || 'Error al iniciar sesión'
       dispatch({
         type: AUTH_ACTIONS.LOGIN_ERROR,
         payload: errorMessage,

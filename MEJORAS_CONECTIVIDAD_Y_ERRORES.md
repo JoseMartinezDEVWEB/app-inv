@@ -366,3 +366,5 @@ console.log(status)
 
 **🎉 La app ahora es mucho más robusta y resiliente ante errores de red y servidor!**
 
+
+

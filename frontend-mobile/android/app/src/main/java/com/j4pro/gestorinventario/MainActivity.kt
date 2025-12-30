@@ -30,9 +30,8 @@ class MainActivity : ReactActivity() {
       }
     }
 
-    // Start local backend foreground service
-    val serviceIntent = Intent(this, LocalBackendService::class.java)
-    ContextCompat.startForegroundService(this, serviceIntent)
+    // Local backend service is NOT needed in offline mode
+    // The app uses Expo SQLite directly instead
   }
 
   /**
@@ -76,9 +75,7 @@ class MainActivity : ReactActivity() {
   }
 
   override fun onDestroy() {
-    // Stop local backend service when activity is destroyed
-    val serviceIntent = Intent(this, LocalBackendService::class.java)
-    stopService(serviceIntent)
+    // No service to stop in offline mode
     super.onDestroy()
   }
 }

@@ -20,6 +20,9 @@ export const generarInvitacion = async (req, res) => {
 // Crear invitación y devolver QR y código numérico (para compatibilidad con frontend)
 export const generarInvitacionQR = async (req, res) => {
   const expiraEnMinutos = Number(req.body?.expiraEnMinutos || 1440)
+  
+  // Calcular expiración en horas para el modelo (compatibilidad)
+  // Si son muchos minutos (días/meses), el cálculo en horas puede ser grande pero válido
   const expiraEnHoras = Math.max(1, Math.ceil(expiraEnMinutos / 60))
 
   const datosInvitacion = {
@@ -30,15 +33,16 @@ export const generarInvitacionQR = async (req, res) => {
       email: req.body?.email || null,
       nombre: req.body?.nombre || null,
       duracionMinutos: expiraEnMinutos,
+      // Guardar información legible sobre la duración
+      duracionTexto: obtenerTextoDuracion(expiraEnMinutos)
     },
   }
 
   const invitacion = Invitacion.crear(datosInvitacion)
 
   // Generar un código numérico de 6 dígitos a partir del token
+  const codigoNumerico = Invitacion.calcularCodigoNumerico(invitacion.codigoQR)
   const base = invitacion.codigoQR || ''
-  const hash = Array.from(base).reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
-  const codigoNumerico = String(hash % 1000000).padStart(6, '0')
 
   const qrDataUrl = await QRCode.toDataURL(base)
 
@@ -51,9 +55,23 @@ export const generarInvitacionQR = async (req, res) => {
     nombre: datosInvitacion.metadata.nombre,
     expiraEn: invitacion.expiraEn,
     duracionMinutos: expiraEnMinutos,
+    duracionTexto: datosInvitacion.metadata.duracionTexto
   }
 
   res.status(201).json(respuestaExito(payload, 'Invitación generada'))
+}
+
+// Función auxiliar para texto de duración
+const obtenerTextoDuracion = (minutos) => {
+  if (minutos < 60) return `${minutos} minutos`
+  if (minutos < 1440) return `${Math.floor(minutos / 60)} horas`
+  if (minutos === 1440) return '24 horas'
+  
+  const dias = Math.floor(minutos / 1440)
+  if (dias < 30) return `${dias} días`
+  
+  const meses = Math.floor(dias / 30)
+  return `${meses} mes(es)`
 }
 
 export const listarActivas = async (req, res) => {

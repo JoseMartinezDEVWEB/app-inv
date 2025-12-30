@@ -434,3 +434,5 @@ Mostrar estado de sesión en la UI:
 
 La app ahora maneja tokens expirados de forma inteligente, intentando renovarlos automáticamente y solo deslogueando cuando es absolutamente necesario.
 
+
+

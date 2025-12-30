@@ -456,3 +456,5 @@ La aplicación ahora es **resiliente a fallos de red**, **escalable para grandes
 
 **Desarrollado con ❤️ siguiendo las mejores prácticas de arquitectura de software**
 
+
+

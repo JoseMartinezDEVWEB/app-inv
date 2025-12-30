@@ -155,10 +155,13 @@ export const schemaCrearInvitacion = Joi.object({
 
 // Solicitudes de conexión
 export const schemaCrearSolicitud = Joi.object({
-  contableId: Joi.number().integer().positive().required(),
+  contableId: Joi.number().integer().positive(),
+  codigoNumerico: Joi.string(),
   nombreColaborador: Joi.string().min(2).max(100).required(),
   metadata: Joi.object(),
-})
+  dispositivoId: Joi.string(),
+  dispositivoInfo: Joi.object(),
+}).or('contableId', 'codigoNumerico')
 
 export default {
   validar,

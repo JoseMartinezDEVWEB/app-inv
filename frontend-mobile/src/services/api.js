@@ -9,13 +9,18 @@ const API_BASE_URL = config.apiUrl
 
 // Crear instancia de Axios
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: config.isOffline ? 'http://localhost' : API_BASE_URL,
   timeout: 30000, // 30 segundos
   headers: {
     'Content-Type': 'application/json',
     'X-Client-Type': 'mobile',
   },
 })
+
+// Si estamos en modo offline, interceptar todas las peticiones
+if (config.isOffline) {
+  console.log('📴 API en modo OFFLINE - Todas las peticiones usarán DB local')
+}
 
 // Rutas públicas que NO requieren token
 const PUBLIC_ROUTES = [

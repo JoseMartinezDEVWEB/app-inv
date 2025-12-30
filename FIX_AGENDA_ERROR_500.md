@@ -264,3 +264,5 @@ Los usuarios pueden ver:
 - ✅ Lista detallada de inventarios de un día específico
 - ✅ Información del cliente asociado a cada inventario
 
+
+

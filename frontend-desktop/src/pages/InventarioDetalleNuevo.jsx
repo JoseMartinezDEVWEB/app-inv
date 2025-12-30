@@ -2815,11 +2815,19 @@ const InventarioDetalleNuevo = () => {
                             <tr key={colab._id} className="hover:bg-gray-50">
                               <td className="px-4 py-4 whitespace-nowrap">
                                 <div className="text-sm font-medium text-gray-900">
-                                  {colab.colaborador.nombre}
+                                  {colab.nombreColaborador || colab.colaborador?.nombre || 'Desconocido'}
                                 </div>
                                 <div className="text-xs text-gray-500">
-                                  {colab.colaborador.dispositivoInfo?.modelo || 'Desconocido'}
+                                  {colab.metadata?.dispositivoInfo?.modelo || colab.colaborador?.dispositivoInfo?.modelo || 'Desconocido'}
                                 </div>
+                                {/* Mostrar código de invitación si existe */}
+                                {colab.metadata?.rolInvitacion && (
+                                  <div className="mt-1 text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded inline-block font-mono tracking-wider">
+                                    Código Inv: {colab.metadata.invitacionId ? '****' : 'Manual'} 
+                                    {/* Nota: No tenemos el código numérico original aquí fácilmente sin hacer join, 
+                                        pero podemos intentar inferirlo o mostrar un indicador */}
+                                  </div>
+                                )}
                               </td>
                               <td className="px-4 py-4 whitespace-nowrap">
                                 <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${colab.estadoConexion === 'conectado'
