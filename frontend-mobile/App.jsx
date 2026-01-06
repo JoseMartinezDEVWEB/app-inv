@@ -1,7 +1,7 @@
 import 'react-native-gesture-handler';
 import React from 'react'
 import { StatusBar } from 'expo-status-bar'
-import { StyleSheet, View, ActivityIndicator, Modal } from 'react-native'
+import { StyleSheet, View, ActivityIndicator, Modal, AppState } from 'react-native'
 import { NavigationContainer } from '@react-navigation/native'
 import { createStackNavigator } from '@react-navigation/stack'
 import { AuthProvider, useAuth } from './src/context/AuthContext'
@@ -125,6 +125,7 @@ function AppContent() {
 
 export default gestureHandlerRootHOC(function App() {
   const [dbInitialized, setDbInitialized] = React.useState(false)
+  const appState = React.useRef(AppState.currentState)
 
   React.useEffect(() => {
     // Inicializar base de datos local al iniciar la app
@@ -142,6 +143,27 @@ export default gestureHandlerRootHOC(function App() {
     }
 
     initDb()
+
+    // Mantener la app activa en background (prevenir cierre)
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        console.log('✅ App vuelve a foreground')
+      } else if (
+        appState.current === 'active' &&
+        nextAppState.match(/inactive|background/)
+      ) {
+        console.log('📴 App va a background (manteniendo sesión activa)')
+      }
+
+      appState.current = nextAppState
+    })
+
+    return () => {
+      subscription?.remove()
+    }
   }, [])
 
   if (!dbInitialized) {

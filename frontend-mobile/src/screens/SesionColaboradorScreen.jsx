@@ -255,6 +255,19 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
       costo,
     })
 
+    // Guardar también en el catálogo general local para que sea buscable después
+    try {
+      await localDb.crearProductoLocal({
+        nombre: nombreProducto,
+        sku: skuProducto,
+        codigoBarras: barcode,
+        costo: Number(costo) || 0,
+        precioVenta: (Number(costo) || 0) * 1.2 // Margen sugerido
+      });
+    } catch (e) {
+      console.log('El producto ya existe en el catálogo o hubo error al guardar');
+    }
+
     agregarOActualizarEnListas(item)
 
     if (isConnected) {
@@ -485,30 +498,67 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
   const handleProductosImportados = async (productosImportados) => {
     try {
       for (const producto of productosImportados) {
+        let productoGuardado = null;
+        
+        // 1. Guardar en el catálogo general local para futuras búsquedas
+        try {
+          productoGuardado = await localDb.crearProductoLocal({
+            nombre: producto.nombre,
+            sku: producto.sku || producto.codigo || '',
+            codigoBarras: producto.codigoBarras || producto.codigo || '',
+            costo: producto.costo || producto.costoBase || 0,
+            precioVenta: (producto.costo || producto.costoBase || 0) * 1.3
+          });
+        } catch (e) {
+          // El producto ya podría existir, intentar buscarlo
+          console.log('Producto ya existe, buscándolo...', e);
+          try {
+            const codigoBuscado = producto.codigoBarras || producto.codigo || '';
+            if (codigoBuscado) {
+              productoGuardado = await localDb.buscarProductoPorCodigo(codigoBuscado);
+            }
+          } catch (searchError) {
+            console.log('Error buscando producto existente:', searchError);
+          }
+          // Si no se encontró, usar los datos del producto importado
+          if (!productoGuardado) {
+            productoGuardado = {
+              _id: `temp_${Date.now()}`,
+              nombre: producto.nombre,
+              sku: producto.sku || producto.codigo || '',
+              codigoBarras: producto.codigoBarras || producto.codigo || '',
+              costo: producto.costo || producto.costoBase || 0,
+            };
+          }
+        }
+
+        // 2. Crear item para la sesión actual usando el producto guardado o los datos del importado
         const item = crearItemColaborador({
-          nombre: producto.nombre,
-          sku: producto.sku || producto.codigo || '',
-          codigoBarras: producto.codigoBarras || producto.codigo || '',
+          nombre: productoGuardado?.nombre || producto.nombre,
+          sku: productoGuardado?.sku || producto.sku || producto.codigo || '',
+          codigoBarras: productoGuardado?.codigoBarras || producto.codigoBarras || producto.codigo || '',
           cantidad: producto.cantidad || 1,
-          costo: producto.costo || producto.costoBase || 0,
+          costo: productoGuardado?.costo || producto.costo || producto.costoBase || 0,
         })
 
         await agregarOActualizarEnListas(item)
 
         if (isConnected) {
           await enviarProductoServidor(item)
-        } else {
-          showMessage({
-            message: '📦 Productos guardados offline',
-            description: 'Se sincronizarán automáticamente cuando haya conexión',
-            type: 'success',
-          })
         }
+      }
+
+      if (!isConnected) {
+        showMessage({
+          message: '📦 Productos guardados offline',
+          description: 'Se sincronizarán automáticamente cuando haya conexión',
+          type: 'success',
+        })
       }
 
       showMessage({
         message: '✅ Importación completada',
-        description: `${productosImportados.length} producto(s) importado(s)`,
+        description: `${productosImportados.length} producto(s) importado(s) y agregados al catálogo`,
         type: 'success',
         duration: 4000,
       })
@@ -760,14 +810,25 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Buscar Producto</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Nombre o código"
-              value={busqueda}
-              onChangeText={setBusqueda}
-              onSubmitEditing={buscarProductos}
-            />
-            <TouchableOpacity style={styles.buscarButton} onPress={buscarProductos}>
+            <View style={styles.searchBarContainer}>
+              <TextInput
+                style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                placeholder="Nombre o código"
+                value={busqueda}
+                onChangeText={setBusqueda}
+                onSubmitEditing={buscarProductos}
+              />
+              <TouchableOpacity 
+                style={styles.scannerInSearch} 
+                onPress={() => {
+                  setModalBuscar(false);
+                  setShowScanner(true);
+                }}
+              >
+                <Ionicons name="barcode-outline" size={24} color="#3b82f6" />
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={[styles.buscarButton, { marginTop: 10 }]} onPress={buscarProductos}>
               <Ionicons name="search-outline" size={18} color="#fff" />
               <Text style={styles.buscarButtonText}>Buscar</Text>
             </TouchableOpacity>
@@ -1299,6 +1360,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0f172a',
     marginBottom: 16,
+  },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  scannerInSearch: {
+    padding: 8,
+    backgroundColor: '#eff6ff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dbeafe',
   },
   input: {
     backgroundColor: '#f9fafb',

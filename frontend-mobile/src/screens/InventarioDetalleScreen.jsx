@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  Switch, // Import Switch
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { BarCodeScanner } from 'expo-barcode-scanner'
@@ -25,9 +26,13 @@ import { showMessage } from 'react-native-flash-message'
 import { LinearGradient } from 'expo-linear-gradient'
 import * as FileSystem from 'expo-file-system'
 import * as Sharing from 'expo-sharing'
+import NetInfo from '@react-native-community/netinfo' // Ensure NetInfo is imported
 import { getInternetCredentials } from '../services/secureStorage'
 import SplashScreen from '../components/SplashScreen'
 import { useLoader } from '../context/LoaderContext'
+import localDb from '../services/localDb'
+import syncService from '../services/syncService'
+import { config } from '../config/env'
 
 // Importar modales
 import DistribucionModal from '../components/modals/DistribucionModal'
@@ -44,9 +49,39 @@ import ProductosGeneralesModal from '../components/modals/ProductosGeneralesModa
 const { width, height } = Dimensions.get('window')
 
 const InventarioDetalleScreen = ({ route, navigation }) => {
-  const { sesionId } = route.params
+  const { sesionId } = route.params || {}
   const queryClient = useQueryClient()
   const { showAnimation, hideLoader, showLoader } = useLoader()
+
+  // Validar sesionId
+  if (!sesionId) {
+    return (
+      <View style={styles.container}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <Ionicons name="alert-circle" size={64} color="#ef4444" />
+          <Text style={{ fontSize: 20, fontWeight: 'bold', marginTop: 20, marginBottom: 10, color: '#1e293b' }}>
+            Sesión no válida
+          </Text>
+          <Text style={{ fontSize: 16, textAlign: 'center', color: '#64748b', marginBottom: 20 }}>
+            No se encontró el ID de la sesión. Por favor, vuelve a la lista de sesiones.
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: '#3b82f6', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 }}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={{ color: '#ffffff', fontWeight: 'bold' }}>Volver</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    )
+  }
+
+  // Estados de conectividad y sincronización
+  const [isConnected, setIsConnected] = useState(true)
+  const [autoSend, setAutoSend] = useState(true) // Switch Envío Automático
+  const [pendingSyncs, setPendingSyncs] = useState(0)
+  const [localProducts, setLocalProducts] = useState([]) // Productos guardados localmente
+  const [isSyncing, setIsSyncing] = useState(false)
 
   // Estados principales
   const [selectedProducto, setSelectedProducto] = useState(null)
@@ -148,8 +183,11 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
   const [invitaciones, setInvitaciones] = useState([])
   const [productosColaboradorPendientes, setProductosColaboradorPendientes] = useState({})
 
+  // Estado de error
+  const [errorSesion, setErrorSesion] = useState(null)
+
   // Obtener datos de la sesión
-  const { data: sesionData, isLoading: loadingSesion, isFetching, refetch } = useQuery(
+  const { data: sesionData, isLoading: loadingSesion, isFetching, refetch, isError: errorLoadingSesion } = useQuery(
     ['sesion', sesionId],
     () => sesionesApi.getById(sesionId),
     {
@@ -159,8 +197,93 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
       },
       enabled: !!sesionId,
       refetchInterval: 5000, // Actualizar cada 5 segundos como en la web
+      onError: (error) => {
+        console.error('Error cargando sesión:', error);
+        setErrorSesion(error);
+      },
+      onSuccess: () => {
+        setErrorSesion(null);
+      },
     }
   )
+
+  const loadLocalProducts = useCallback(async () => {
+    if (!sesionId) return
+    try {
+      const prods = await localDb.obtenerConteosSesion(sesionId)
+      setLocalProducts(prods)
+    } catch (e) {
+      console.log('Error loading local products', e)
+    }
+  }, [sesionId])
+
+  const checkPendingSyncs = useCallback(async () => {
+    if (!sesionId) return
+    try {
+      const pendientes = await localDb.obtenerConteosPendientes(sesionId)
+      setPendingSyncs(pendientes.length)
+      
+      // Recargar lista local para mantener UI actualizada
+      loadLocalProducts()
+    } catch (e) { }
+  }, [sesionId, loadLocalProducts])
+
+  const handleSyncNow = useCallback(async () => {
+    if (isSyncing || !sesionId) return
+    if (!isConnected) {
+      showMessage({ message: 'Sin conexión a internet', type: 'warning' })
+      return
+    }
+
+    setIsSyncing(true)
+    try {
+      // 1. Procesar cola general
+      await syncService.procesarColaPendiente()
+      
+      // 2. Procesar tabla específica de conteos (backup)
+      const count = await syncService.sincronizarDesdeTabla(sesionId)
+      
+      if (count > 0) {
+        showMessage({ message: `Sincronizados ${count} conteos`, type: 'success' })
+      }
+      
+      // Recargar datos
+      queryClient.invalidateQueries(['sesion', sesionId])
+      loadLocalProducts()
+      checkPendingSyncs()
+    } catch (error) {
+      console.log('Error syncing', error)
+    } finally {
+      setIsSyncing(false)
+    }
+  }, [isSyncing, sesionId, isConnected, queryClient, loadLocalProducts, checkPendingSyncs])
+
+  // Efecto para monitorear conexión y cargar datos locales
+  useEffect(() => {
+    if (!sesionId) return
+
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsConnected(!!state.isConnected)
+      
+      // Si recuperamos conexión y AutoSend está ON, sincronizar
+      if (state.isConnected && autoSend) {
+        handleSyncNow()
+      }
+    })
+
+    // Cargar productos locales iniciales
+    loadLocalProducts()
+
+    // Intervalo para actualizar conteo de pendientes
+    const interval = setInterval(() => {
+      checkPendingSyncs()
+    }, 5000)
+
+    return () => {
+      unsubscribe()
+      clearInterval(interval)
+    }
+  }, [sesionId, autoSend, handleSyncNow, loadLocalProducts, checkPendingSyncs])
 
   // Cargar datos de colaboradores e invitaciones
   useEffect(() => {
@@ -587,18 +710,72 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
     })
   }
 
-  // Agregar producto seleccionado
-  const handleAddProduct = () => {
+  // Agregar producto seleccionado (Lógica Offline-First)
+  const handleAddProduct = async () => {
     if (!selectedProducto || !cantidad || parseFloat(cantidad) <= 0) {
       showMessage({ message: 'Selecciona un producto e ingresa una cantidad válida.', type: 'warning' });
       return;
     }
 
-    addProductMutation.mutate({
-      productoClienteId: selectedProducto._id,
-      cantidadContada: parseFloat(cantidad),
-      costoProducto: parseFloat(costo) || selectedProducto.costoBase || 0,
-    });
+    const cantidadNum = parseFloat(cantidad)
+    const costoNum = parseFloat(costo) || selectedProducto.costoBase || selectedProducto.costo || 0
+
+    const productPayload = {
+      producto: selectedProducto._id || selectedProducto.id,
+      cantidadContada: cantidadNum,
+      costoProducto: costoNum,
+    }
+
+    // 1. Guardar siempre en local primero (UI instantánea + seguridad)
+    try {
+      const localId = await localDb.guardarConteoLocal({
+        sesionId,
+        productoId: productPayload.producto,
+        nombreProducto: selectedProducto.nombre,
+        skuProducto: selectedProducto.sku || '',
+        cantidad: cantidadNum,
+        costo: costoNum
+      })
+
+      showMessage({ message: 'Producto registrado', type: 'success' }); // Mensaje optimista
+      resetForm();
+      loadLocalProducts(); // Actualizar UI local
+
+      // 2. Decidir si enviar o encolar
+      if (autoSend && isConnected) {
+        // Intentar envío inmediato
+        try {
+          // Usar mutation existente o llamar api directo
+          // Preferimos llamar api directo para manejar el error nosotros y encolar
+          await sesionesApi.addProduct(sesionId, productPayload)
+          await localDb.marcarConteoSincronizado(localId)
+          queryClient.invalidateQueries(['sesion', sesionId])
+        } catch (error) {
+          console.log('Fallo envío inmediato, encolando...', error)
+          // Fallo red o server -> Encolar
+          await syncService.agregarTarea('agregar_producto_sesion', {
+            sesionId,
+            producto: productPayload,
+            localId
+          })
+        }
+      } else {
+        // Guardar para envío posterior (Outbox)
+        // Ya está en tabla productos_contados con sincronizado=0
+        // También agregamos a cola para consistencia con syncService
+        await syncService.agregarTarea('agregar_producto_sesion', {
+          sesionId,
+          producto: productPayload,
+          localId
+        })
+      }
+      
+      checkPendingSyncs()
+
+    } catch (error) {
+      console.error('Error en flujo agregar producto', error)
+      showMessage({ message: 'Error guardando producto localmente', type: 'danger' })
+    }
   };
 
   // Crear nuevo producto
@@ -737,14 +914,86 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
   // Eliminado return condicional de carga para no romper el orden de hooks.
 
-  // Procesar productos - el backend ya los ordena DESC (últimos primero)
-  const productosContados = (sesionData?.productosContados || []).map(p => ({
-    ...p,
-    // El productoId ya viene del backend como el ID del producto contado
-    productoId: p?.productoId || p?.id || p?._id || ''
+  // Procesar productos - Mezclar datos del backend con locales
+  // Priorizar la visualización local si es más reciente
+  
+  // Convertir locales a formato compatible
+  const localFormatted = localProducts.map(p => ({
+    _id: p._id || p.id.toString(),
+    productoId: p.productoId,
+    nombreProducto: p.nombreProducto,
+    skuProducto: p.skuProducto,
+    cantidadContada: p.cantidad,
+    costoProducto: p.costo,
+    valorTotal: p.cantidad * p.costo,
+    local: true,
+    sincronizado: p.sincronizado === 1,
+    fecha: p.fecha
   }))
-  // NO hacer sort manual porque el backend ya ordena por updatedAt DESC
-  const productosOrdenados = productosContados
+
+  // Obtener productos del backend
+  const backendProducts = (sesionData?.productosContados || []).map(p => ({
+    ...p,
+    productoId: p?.productoId || p?.id || p?._id || '',
+    local: false,
+    sincronizado: true
+  }))
+
+  // Unir listas (sin duplicar visualmente si ya está sincronizado)
+  // Estrategia: Mostrar lista local completa + productos backend que NO estén en local
+  // O más simple: Usar lista local como fuente de la verdad para lo que acabamos de contar,
+  // y backend para histórico.
+  // MEJOR: Si hay localProducts, usarlos. Si no, backend.
+  // Pero necesitamos ver lo histórico del backend también.
+  
+  // Vamos a mostrar TODOS los locales + TODOS los del backend que NO coincidan con un local (por productoId)
+  // Esto asume que si edito un producto, creo una entrada local nueva o update.
+  
+  const mergedProducts = [...localFormatted]
+  
+  // Añadir del backend si no está ya en local (por productoId)
+  backendProducts.forEach(bp => {
+    // Verificar si ya tenemos este producto en local (siendo editado/agregado recientemente)
+    // Nota: Esta lógica puede ser compleja si permitimos múltiples entradas del mismo producto.
+    // Si la lógica de negocio permite múltiples filas del mismo producto, simplemente concatenamos.
+    // Si agrupa por producto, filtramos.
+    // Asumiremos concatenación por seguridad de datos, ordenado por fecha.
+    
+    // Para evitar duplicados EXACTOS (mismo ID de conteo si viniera del backend con ID),
+    // pero aquí los locales tienen ID numérico temporal.
+    
+    // Simplemente concatenamos todo y ordenamos por fecha/creación.
+    // Pero si ya sincronicé un local, aparecerá en backend?
+    // Si sincronicé, `localDb` marca `sincronizado=1`.
+    // Podríamos filtrar los locales que ya están sincronizados SI ya vinieron en el `sesionData`.
+    // Pero `sesionData` puede tener delay.
+    
+    // Simplificación visual: Mostrar todo lo local (pendiente o sync) y todo lo backend.
+    // Riesgo: Duplicados visuales momentáneos tras sync hasta que refetch backend y limpie local?
+    // No limpiamos local automáticamente en `loadLocalProducts`...
+    
+    // Mejor estrategia para UI limpia:
+    // 1. Mostrar todos los Pendientes Locales (sincronizado=0).
+    // 2. Mostrar todos los de Backend (sesionData).
+    mergedProducts.length = 0 // Limpiar array
+    
+    // Agregar pendientes locales
+    const pendientes = localFormatted.filter(p => !p.sincronizado)
+    mergedProducts.push(...pendientes)
+    
+    // Agregar backend
+    mergedProducts.push(...backendProducts)
+  })
+
+  // Ordenar por fecha desc (más reciente arriba)
+  // Backend suele venir ordenado, pero al mezclar necesitamos reordenar
+  const productosOrdenados = mergedProducts.sort((a, b) => {
+    const dateA = new Date(a.fecha || a.createdAt || 0)
+    const dateB = new Date(b.fecha || b.createdAt || 0)
+    return dateB - dateA
+  })
+
+  // Productos con costo 0
 
   // Productos con costo 0
   const productosConCostoCero = productosContados.filter(p => (Number(p.costoProducto) || 0) === 0)
@@ -843,6 +1092,10 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
   // Descarga PDF (si sesión completada usa backend)
   const handleDownloadPDF = async () => {
+    if (!isConnected) {
+      Alert.alert('Conexión Requerida', 'La descarga de reportes PDF profesionales requiere conexión al servidor. Por favor, conéctate a internet.')
+      return
+    }
     try {
       const baseURL = api.defaults.baseURL
       const url = `${baseURL}/reportes/inventario/${sesionId}/pdf`
@@ -927,6 +1180,10 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
   // Imprimir/descargar páginas específicas del PDF
   const handlePrintPages = async (pageSpec) => {
+    if (!isConnected) {
+      Alert.alert('Conexión Requerida', 'La impresión remota y generación de PDF requiere conexión al servidor.')
+      return
+    }
     try {
       const sanitized = String(pageSpec || '').replace(/\s+/g, '')
       const pattern = /^\d+(-\d+)?(,\d+(-\d+)?)*$/
@@ -978,6 +1235,38 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
 
 
+  // Manejar error de sesión
+  if (errorLoadingSesion && !loadingSesion && !sesionData) {
+    return (
+      <View style={styles.container}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <Ionicons name="alert-circle" size={64} color="#ef4444" />
+          <Text style={{ fontSize: 20, fontWeight: 'bold', marginTop: 20, marginBottom: 10, color: '#1e293b' }}>
+            Error al cargar la sesión
+          </Text>
+          <Text style={{ fontSize: 16, textAlign: 'center', color: '#64748b', marginBottom: 20 }}>
+            No se pudo cargar la sesión de inventario. Por favor, verifica tu conexión e intenta nuevamente.
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: '#3b82f6', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 }}
+            onPress={() => {
+              setErrorSesion(null);
+              refetch();
+            }}
+          >
+            <Text style={{ color: '#ffffff', fontWeight: 'bold' }}>Reintentar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ marginTop: 12, paddingHorizontal: 24, paddingVertical: 12 }}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={{ color: '#3b82f6', fontWeight: '600' }}>Volver</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <Modal visible={loadingSesion} animationType="fade">
@@ -1008,6 +1297,11 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
             </Text>
           </View>
           <View style={styles.headerActions}>
+            <View style={[styles.statusBadge, { backgroundColor: isConnected ? '#10b981' : '#f59e0b' }]}>
+               <Ionicons name={isConnected ? "wifi" : "wifi-outline"} size={14} color="#fff" />
+               <Text style={styles.statusText}>{isConnected ? 'ON' : 'OFF'}</Text>
+            </View>
+            
             <View style={styles.timerContainer}>
               <Ionicons name="time" size={16} color="#ffffff" />
               <Text style={styles.timerText}>{formatTime(tiempoTranscurrido)}</Text>
@@ -1019,6 +1313,39 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
               <Ionicons name="ellipsis-vertical" size={24} color="#ffffff" />
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Barra de Control Offline/Sync */}
+        <View style={styles.syncBar}>
+          <View style={styles.switchContainer}>
+            <Text style={styles.switchLabel}>Envío Auto</Text>
+            <Switch
+              value={autoSend}
+              onValueChange={setAutoSend}
+              trackColor={{ false: "#767577", true: "#81b0ff" }}
+              thumbColor={autoSend ? "#2563eb" : "#f4f3f4"}
+              style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+            />
+          </View>
+          
+          {(!autoSend || pendingSyncs > 0) && (
+            <TouchableOpacity 
+              style={[styles.syncButton, pendingSyncs > 0 ? styles.syncButtonActive : styles.syncButtonInactive]} 
+              onPress={handleSyncNow}
+              disabled={isSyncing || pendingSyncs === 0}
+            >
+              {isSyncing ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="cloud-upload-outline" size={16} color="#fff" style={{marginRight: 4}} />
+                  <Text style={styles.syncButtonText}>
+                    {pendingSyncs > 0 ? `Sincronizar (${pendingSyncs})` : 'Sincronizado'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
       </LinearGradient>
 
@@ -1071,6 +1398,8 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
       {/* Botones de acción principales */}
       <View style={styles.actionButtonsContainer}>
+        {/* Botón escanear oculto por solicitud */}
+        {/*
         <TouchableOpacity
           style={[styles.actionButton, styles.scanButton]}
           onPress={() => setShowScanner(true)}
@@ -1078,6 +1407,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
           <Ionicons name="barcode" size={24} color="#ffffff" />
           <Text style={styles.actionButtonText}>Escanear</Text>
         </TouchableOpacity>
+        */}
 
         <TouchableOpacity
           style={[styles.actionButton, styles.searchButton]}
@@ -1647,6 +1977,58 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  statusText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+    marginLeft: 4,
+  },
+  syncBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    marginTop: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  switchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  switchLabel: {
+    color: '#fff',
+    fontSize: 12,
+    marginRight: 5,
+    fontWeight: '600',
+  },
+  syncButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
+  syncButtonActive: {
+    backgroundColor: '#f59e0b',
+  },
+  syncButtonInactive: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  syncButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   menuButton: {
     marginLeft: 15,
