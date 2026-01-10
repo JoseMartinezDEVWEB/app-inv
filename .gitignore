@@ -170,3 +170,7 @@ temp/
 
 # Lock files (keep package-lock.json but ignore yarn.lock if not using yarn)
 yarn.lock
+
+# Electron build installers (archivos muy grandes)
+frontend-desktop/dist-installer/
+frontend-desktop/resources/

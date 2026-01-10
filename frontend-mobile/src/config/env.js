@@ -1,13 +1,24 @@
 /**
- * Configuración de entorno para la aplicación móvil
- * Soporta detección automática de entorno (nube/local)
- * y conectividad flexible
+ * Configuracion de entorno para la aplicacion movil
+ * MODO HIBRIDO: Funciona con internet (backend) y sin internet (SQLite local)
  */
 
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-// Función para detectar si estamos en un dispositivo real o emulador
+// =============================================
+// CONFIGURACION DEL BACKEND
+// =============================================
+// URL del backend en la nube (Render) - Backend principal
+const CLOUD_API_URL = 'https://appj4-hlqj.onrender.com/api';
+
+// Si quieres usar un backend LOCAL en vez de la nube, configura aqui:
+// (Dejar en null para usar la nube o detectar automaticamente)
+const CUSTOM_BACKEND_IP = null;  // Ejemplo: '192.168.1.100'
+const CUSTOM_BACKEND_PORT = '4000';
+// =============================================
+
+// Funcion para detectar tipo de dispositivo
 const detectDeviceType = () => {
   if (Platform.OS === 'android') {
     return Constants.isDevice ? 'physical-android' : 'emulator-android';
@@ -17,113 +28,80 @@ const detectDeviceType = () => {
   return 'unknown';
 };
 
-// Función para obtener la IP local de la LAN (si está configurada)
-const getLanIpFromConfig = () => {
-  const extra = Constants.expoConfig?.extra ?? {};
-  const endpoints = extra.API_ENDPOINTS ?? {};
-  return endpoints.lan || null;
-};
-
-// Función para detectar si estamos en un build de producción
+// Funcion para detectar si es build de produccion
 const isProductionBuild = () => {
-  // __DEV__ es false en builds de producción de React Native
   return !__DEV__;
 };
 
-// Función para detectar si estamos en modo local
-export const isOfflineMode = () => {
-  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-  return apiUrl === 'local-mode' || apiUrl === 'offline-mode' || apiUrl === 'local-only';
+// Funcion para construir URL de backend local
+const buildLocalBackendUrl = (ip, port = '4000') => {
+  if (!ip) return null;
+  const cleanIp = ip.replace(/^https?:\/\//, '');
+  return `http://${cleanIp}:${port}/api`;
 };
 
-// Función para resolver la URL de la API con prioridad inteligente
+// Funcion para resolver la URL de la API
 export const resolveApiBaseUrl = () => {
   const extra = Constants.expoConfig?.extra ?? {};
   const endpoints = extra.API_ENDPOINTS ?? {};
   const deviceType = detectDeviceType();
   const isProduction = isProductionBuild();
   
-  // Detectar modo offline
-  if (isOfflineMode()) {
-    console.log('📴 MODO OFFLINE ACTIVADO - Sin conexión a API');
-    return 'offline-mode';
-  }
-  
-  // URL por defecto en la nube (siempre accesible)
-  const fallbackCloudUrl = 'https://appj4-hlqj.onrender.com/api';
-  
-  // Log para debugging
-  console.log('🔧 Configuración de API (Móvil):');
+  console.log('🔧 Configuracion de API:');
   console.log('   Dispositivo:', deviceType);
-  console.log('   ¿Es producción?:', isProduction);
-  console.log('   Variables disponibles:', {
-    EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
-    DEFAULT_REMOTE_API_URL: extra.DEFAULT_REMOTE_API_URL,
-    cloud: endpoints.cloud,
-    lan: endpoints.lan,
-    local: endpoints.local,
-    emulator: endpoints.emulator,
-  });
+  console.log('   Produccion:', isProduction);
   
-  let candidates;
-  
-  if (isProduction) {
-    // En producción (APK/AAB): SOLO usar URLs remotas
-    candidates = [
-      process.env.EXPO_PUBLIC_API_URL,      // Variable de entorno de build
-      extra.EXPO_PUBLIC_API_URL,            // Variable en app.json
-      extra.DEFAULT_REMOTE_API_URL,         // URL remota por defecto
-      endpoints.cloud,                      // Endpoint de la nube
-      fallbackCloudUrl,                     // Fallback garantizado
-    ];
-  } else {
-    // En desarrollo (Expo Go, Dev Client): priorizar LAN/local
-    // FORZAR USO DE BACKEND LOCAL (ignorar variables de entorno en dev)
-    candidates = [
-      endpoints.emulator,                   // Emulador (desarrollo) <- PRIORIDAD #1
-      endpoints.lan,                        // LAN (desarrollo en red local)
-      endpoints.local,                      // Localhost (desarrollo)
-      extra.DEFAULT_REMOTE_API_URL,         // Remoto como fallback
-      endpoints.cloud,                      // Endpoint de la nube
-      fallbackCloudUrl,                     // Último recurso
-    ];
+  // 1. Prioridad: IP Personalizada manual
+  if (CUSTOM_BACKEND_IP) {
+    const customUrl = buildLocalBackendUrl(CUSTOM_BACKEND_IP, CUSTOM_BACKEND_PORT);
+    console.log('   Usando backend personalizado:', customUrl);
+    return customUrl;
   }
   
-  // Encontrar la primera URL válida
-  const url = candidates.find(
-    (value) => typeof value === 'string' && value.trim().length > 0
-  ) || fallbackCloudUrl;
+  // 2. Producción: Usar nube
+  if (isProduction) {
+    console.log('✅ Modo PRODUCCION - Backend en la nube');
+    return CLOUD_API_URL;
+  } 
   
-  // Remover slash final si existe
-  const cleanUrl = url.replace(/\/$/, '');
-  
-  console.log('✅ URL de API seleccionada:', cleanUrl);
-  console.log('   Backend:', isProduction ? '☁️ Remoto (Render)' : '💻 Local/LAN');
-  
-  return cleanUrl;
+  // 3. Desarrollo: Detectar entorno
+  // Intenta usar la IP de la máquina de desarrollo (LAN) si está disponible en Constants
+  const debuggerHost = Constants.expoConfig?.hostUri;
+  const lanIp = debuggerHost ? debuggerHost.split(':')[0] : null;
+
+  if (lanIp && lanIp !== 'localhost' && lanIp !== '127.0.0.1') {
+      const lanUrl = `http://${lanIp}:${CUSTOM_BACKEND_PORT}/api`;
+      console.log('💻 Modo DESARROLLO (LAN) - Detectado:', lanUrl);
+      return lanUrl;
+  }
+
+  // Fallback a endpoints configurados o nube
+  const devUrl = endpoints.lan || 
+                 endpoints.emulator || 
+                 endpoints.local || 
+                 CLOUD_API_URL;
+                 
+  console.log('💻 Modo DESARROLLO - URL:', devUrl);
+  return devUrl;
 };
 
-// Función para resolver la URL de WebSocket
+// Funcion para resolver URL de WebSocket
 export const resolveWebSocketUrl = () => {
   const apiUrl = resolveApiBaseUrl();
-  
-  // El WebSocket está en el mismo host que la API, solo quitamos '/api'
   const wsUrl = apiUrl.replace('/api', '');
-  
-  console.log('✅ URL de WebSocket:', wsUrl);
-  
+  console.log('✅ WebSocket URL:', wsUrl);
   return wsUrl;
 };
 
-// Función para verificar conectividad con el backend
-export const checkBackendConnectivity = async () => {
+// Verificar conectividad con el backend
+export const checkBackendConnectivity = async (timeout = 5000) => {
   const apiUrl = resolveApiBaseUrl();
   
   try {
     console.log('🔍 Verificando conectividad con:', `${apiUrl}/salud`);
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 segundos timeout
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
     
     const response = await fetch(`${apiUrl}/salud`, {
       method: 'GET',
@@ -134,33 +112,63 @@ export const checkBackendConnectivity = async () => {
     
     if (response.ok) {
       const data = await response.json();
-      console.log('✅ Backend conectado:', data);
-      return { success: true, data };
+      console.log('✅ Backend CONECTADO');
+      return { connected: true, data };
     } else {
-      console.log('⚠️ Backend respondió con error:', response.status);
-      return { success: false, error: `HTTP ${response.status}` };
+      console.log('⚠️ Backend respondio con error:', response.status);
+      return { connected: false, error: `HTTP ${response.status}` };
     }
   } catch (error) {
-    console.log('❌ Error al conectar con el backend:', error.message);
-    return { success: false, error: error.message };
+    console.log('📴 Sin conexion al backend:', error.message);
+    return { connected: false, error: error.message };
   }
 };
 
-// Exportar configuración
-export const config = {
-  apiUrl: resolveApiBaseUrl(),
-  wsUrl: resolveWebSocketUrl(),
-  isOffline: isOfflineMode(),
-  deviceType: detectDeviceType(),
-  appName: Constants.expoConfig?.name || 'Gestor de Inventario J4 Pro',
-  appVersion: Constants.expoConfig?.version || '2.0.0',
-  platform: Platform.OS,
+// Estado de conexion global (se actualiza dinamicamente)
+let _isOnline = true;
+
+export const setOnlineStatus = (status) => {
+  _isOnline = status;
+  console.log(_isOnline ? '🌐 ONLINE - Usando backend' : '📴 OFFLINE - Usando SQLite local');
 };
 
-// Log de configuración
-console.log('📋 Configuración cargada (Móvil):', config);
-if (config.isOffline) {
-  console.log('📴 APP EN MODO OFFLINE - Solo base de datos local');
-}
+export const isOnline = () => _isOnline;
+
+// Funcion para obtener info de configuracion (debugging)
+export const getConfigInfo = () => ({
+  apiUrl: resolveApiBaseUrl(),
+  wsUrl: resolveWebSocketUrl(),
+  cloudUrl: CLOUD_API_URL,
+  customBackendIP: CUSTOM_BACKEND_IP,
+  isProduction: isProductionBuild(),
+  deviceType: detectDeviceType(),
+  platform: Platform.OS,
+});
+
+// Configuracion exportada
+export const config = {
+  // URLs
+  apiUrl: resolveApiBaseUrl(),
+  wsUrl: resolveWebSocketUrl(),
+  cloudApiUrl: CLOUD_API_URL,
+  
+  // Estado
+  isOffline: false,
+  isProduction: isProductionBuild(),
+  deviceType: detectDeviceType(),
+  platform: Platform.OS,
+  
+  // Info de la app
+  appName: Constants.expoConfig?.name || 'Gestor de Inventario J4 Pro',
+  appVersion: Constants.expoConfig?.version || '2.0.0',
+  
+  // MODO STANDALONE (Local)
+  useLocalDbOnly: true, // Forzar uso de DB local siempre
+
+  // Funciones
+  checkConnectivity: checkBackendConnectivity,
+  isOnline,
+  setOnlineStatus,
+};
 
 export default config;

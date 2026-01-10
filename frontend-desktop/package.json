@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Frontend Desktop - Gestor de Inventario J4 Pro",
+  "author": "Jose Martinez",
   "main": "electron/main.js",
   "homepage": "./",
   "scripts": {

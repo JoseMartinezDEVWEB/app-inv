@@ -223,12 +223,18 @@ export const invitacionesApi = {
 }
 
 export const solicitudesConexionApi = {
-  // Públicas (sin auth)
+  // Públicas (sin auth) - Colaboradores
   solicitar: (data) => api.post('/solicitudes-conexion/solicitar', data),
   verificarEstado: (solicitudId) => api.get(`/solicitudes-conexion/estado/${solicitudId}`),
   agregarProductoOffline: (solicitudId, productoData) => api.post(`/solicitudes-conexion/${solicitudId}/productos-offline`, { productoData }),
+  
+  // Estados de conexión (colaboradores)
+  ping: (solicitudId) => api.post(`/solicitudes-conexion/${solicitudId}/ping`),
+  conectar: (solicitudId) => api.post(`/solicitudes-conexion/${solicitudId}/conectar`),
+  cerrarSesion: (solicitudId) => api.post(`/solicitudes-conexion/${solicitudId}/cerrar-sesion`),
+  enviarProductos: (solicitudId, sesionInventarioId) => api.post(`/solicitudes-conexion/${solicitudId}/enviar-productos`, { sesionInventarioId }),
 
-  // Protegidas (requieren auth)
+  // Protegidas (requieren auth) - Admin
   listarPendientes: () => api.get('/solicitudes-conexion/pendientes'),
   listarConectados: (sesionId) => api.get('/solicitudes-conexion/conectados', { params: { sesionId } }),
   aceptar: (solicitudId, sesionInventarioId) => api.post(`/solicitudes-conexion/${solicitudId}/aceptar`, { sesionInventarioId }),
@@ -236,6 +242,15 @@ export const solicitudesConexionApi = {
   obtenerProductosOffline: (solicitudId) => api.get(`/solicitudes-conexion/${solicitudId}/productos-offline`),
   sincronizar: (solicitudId, temporalIds) => api.post(`/solicitudes-conexion/${solicitudId}/sincronizar`, { temporalIds }),
   desconectar: (solicitudId) => api.post(`/solicitudes-conexion/${solicitudId}/desconectar`),
+  
+  // Cola de productos (Admin)
+  obtenerColasPendientes: () => api.get('/solicitudes-conexion/colas-pendientes'),
+  obtenerDetalleCola: (colaId) => api.get(`/solicitudes-conexion/colas/${colaId}`),
+  marcarColaEnRevision: (colaId) => api.post(`/solicitudes-conexion/colas/${colaId}/revisar`),
+  aceptarProductosCola: (colaId, productosIds, notas = '') => api.post(`/solicitudes-conexion/colas/${colaId}/aceptar`, { productosIds, notas }),
+  aceptarTodosCola: (colaId, notas = '') => api.post(`/solicitudes-conexion/colas/${colaId}/aceptar-todos`, { notas }),
+  rechazarProductosCola: (colaId, productosIds, notas = '') => api.post(`/solicitudes-conexion/colas/${colaId}/rechazar`, { productosIds, notas }),
+  rechazarTodosCola: (colaId, notas = '') => api.post(`/solicitudes-conexion/colas/${colaId}/rechazar-todos`, { notas }),
 }
 
 export const reportesApi = {

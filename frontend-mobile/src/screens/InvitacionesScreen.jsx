@@ -15,7 +15,7 @@ const InvitacionesScreen = () => {
   const [modalGenerar, setModalGenerar] = useState(false)
   const [modalQR, setModalQR] = useState(false)
   const [qrData, setQrData] = useState(null)
-  const [form, setForm] = useState({ rol: 'colaborador', email: '', nombre: '', expiraEnMinutos: 30 })
+  const [form, setForm] = useState({ rol: 'colaborador', email: '', nombre: '', expiraEnMinutos: 1440 }) // Por defecto 24h
 
   const { data, isLoading, isFetching } = useQuery(
     ['mis-invitaciones'],
@@ -176,11 +176,32 @@ const InvitacionesScreen = () => {
               <View style={{ flex: 1 }}>
                 <View style={styles.rowBetween}>
                   <Text style={styles.name}>{colab.nombre || 'Sin nombre'}</Text>
-                  <TouchableOpacity onPress={() => toggleMutation.mutate(colab._id)}>
-                    <View style={[styles.badge, colab.activo ? styles.badgeOk : styles.badgeGray]}>
-                      <Text style={{ fontSize: 11, fontWeight: '700' }}>{colab.activo ? 'Activo' : 'Inactivo'}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {/* Estado de conexión */}
+                    <View style={[
+                      styles.badge, 
+                      colab.estadoConexion === 'conectado' ? styles.badgeOk : 
+                      colab.estadoConexion === 'esperando_reconexion' ? styles.badgePending : 
+                      styles.badgeGray
+                    ]}>
+                      <Ionicons 
+                        name={colab.estadoConexion === 'conectado' ? 'wifi' : colab.estadoConexion === 'esperando_reconexion' ? 'wifi-outline' : 'cloud-offline-outline'} 
+                        size={12} 
+                        color={colab.estadoConexion === 'conectado' ? '#166534' : colab.estadoConexion === 'esperando_reconexion' ? '#854d0e' : '#374151'} 
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text style={{ fontSize: 10, fontWeight: '700' }}>
+                        {colab.estadoConexion === 'conectado' ? 'Conectado' : 
+                         colab.estadoConexion === 'esperando_reconexion' ? 'Reconectando' : 'Desconectado'}
+                      </Text>
                     </View>
-                  </TouchableOpacity>
+                    {/* Estado activo/inactivo */}
+                    <TouchableOpacity onPress={() => toggleMutation.mutate(colab._id)}>
+                      <View style={[styles.badge, colab.activo ? styles.badgeOk : styles.badgeGray]}>
+                        <Text style={{ fontSize: 10, fontWeight: '700' }}>{colab.activo ? 'Activo' : 'Inactivo'}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 <View style={styles.codeBox}>
                   <Text style={styles.codeLabel}>Código:</Text>
@@ -212,10 +233,24 @@ const InvitacionesScreen = () => {
           </View>
           <TextInput style={styles.input} placeholder="Nombre (opcional)" value={form.nombre} onChangeText={(t) => setForm({ ...form, nombre: t })} />
           <TextInput style={styles.input} placeholder="Email (opcional)" keyboardType="email-address" value={form.email} onChangeText={(t) => setForm({ ...form, email: t })} />
-          <View style={styles.rowBetween}>
-            {[10,30,60,120,1440].map((m) => (
-              <TouchableOpacity key={m} onPress={() => setForm({ ...form, expiraEnMinutos: m })} style={[styles.durationChip, form.expiraEnMinutos === m ? styles.durationChipActive : null]}>
-                <Text style={[styles.durationText, form.expiraEnMinutos === m ? styles.durationTextActive : null]}>{m >= 60 ? `${m/60}h` : `${m}m`}</Text>
+          <View style={styles.durationRow}>
+            {[
+              { minutos: 1440, label: '24h' },      // 1 día
+              { minutos: 10080, label: '7 días' },   // 7 días
+              { minutos: 21600, label: '15 días' },  // 15 días
+              { minutos: 43200, label: '1 mes' },    // 1 mes (30 días)
+              { minutos: 129600, label: '3 meses' }, // 3 meses (90 días)
+              { minutos: 259200, label: '6 meses' }, // 6 meses (180 días)
+              { minutos: 518400, label: '12 meses' } // 12 meses (360 días)
+            ].map(({ minutos, label }) => (
+              <TouchableOpacity 
+                key={minutos} 
+                onPress={() => setForm({ ...form, expiraEnMinutos: minutos })} 
+                style={[styles.durationChip, form.expiraEnMinutos === minutos ? styles.durationChipActive : null]}
+              >
+                <Text style={[styles.durationText, form.expiraEnMinutos === minutos ? styles.durationTextActive : null]}>
+                  {label}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -305,9 +340,10 @@ const styles = StyleSheet.create({
   roleChipActive: { borderColor: '#2563eb', backgroundColor: '#eff6ff' },
   roleChipText: { color: '#374151', fontWeight: '600' },
   roleChipTextActive: { color: '#1d4ed8' },
-  durationChip: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 16, paddingHorizontal: 8, paddingVertical: 6, marginHorizontal: 3, backgroundColor: '#fff' },
+  durationRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10 },
+  durationChip: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 16, paddingHorizontal: 8, paddingVertical: 6, marginHorizontal: 3, marginBottom: 6, backgroundColor: '#fff', minWidth: 70 },
   durationChipActive: { borderColor: '#2563eb', backgroundColor: '#eff6ff' },
-  durationText: { color: '#374151', fontWeight: '600' },
+  durationText: { color: '#374151', fontWeight: '600', fontSize: 12, textAlign: 'center' },
   durationTextActive: { color: '#1d4ed8' },
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 12 },
   codeBox: { backgroundColor: '#f3e8ff', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, flexDirection: 'row', alignItems: 'center', marginVertical: 6 },

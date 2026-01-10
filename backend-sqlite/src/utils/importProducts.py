@@ -2,396 +2,237 @@
 # -*- coding: utf-8 -*-
 """
 Script para importar productos desde archivos XLSX o PDF
-Utiliza IA (Google Gemini) para procesar archivos complejos
+Versión mejorada y robusta para integración con backend Node.js
 """
 
 import sys
 import json
 import os
 import pandas as pd
-import PyPDF2
-import pdfplumber
+import io
 from typing import List, Dict, Any
-import re
+import traceback
 
-# Intentar importar Google Gemini (opcional, para PDFs complejos)
-try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
-    print("Warning: Google Gemini no está disponible. Instala: pip install google-generativeai", file=sys.stderr)
+# Configurar encoding para salida estándar (importante para Windows/Node.js)
+sys.stdout.reconfigure(encoding='utf-8')
+sys.stderr.reconfigure(encoding='utf-8')
 
-
-def limpiar_texto(texto: str) -> str:
+def limpiar_texto(texto: Any) -> str:
     """Limpia y normaliza texto"""
     if pd.isna(texto) or texto is None:
         return ""
     return str(texto).strip()
 
-
 def parsear_numero(valor: Any) -> float:
     """Convierte un valor a número, manejando diferentes formatos"""
-    if pd.isna(valor) or valor is None:
+    if pd.isna(valor) or valor is None or valor == '':
         return 0.0
     
-    # Si es string, limpiar y convertir
-    if isinstance(valor, str):
-        # Remover caracteres no numéricos excepto punto y coma
-        valor = re.sub(r'[^\d.,]', '', valor)
-        # Reemplazar coma por punto si es necesario
-        valor = valor.replace(',', '.')
-        try:
-            return float(valor)
-        except ValueError:
-            return 0.0
+    if isinstance(valor, (int, float)):
+        return float(valor)
+        
+    s_valor = str(valor).strip()
+    # Eliminar símbolos de moneda y separadores de miles
+    s_valor = s_valor.replace('$', '').replace('€', '').replace(',', '')
     
     try:
-        return float(valor)
-    except (ValueError, TypeError):
+        return float(s_valor)
+    except ValueError:
         return 0.0
-
 
 def procesar_excel(archivo_path: str) -> List[Dict[str, Any]]:
-    """
-    Procesa un archivo Excel y extrae productos
-    
-    Formato esperado (basado en Inv_MINI MARKET LOS PEREZ.xlsx):
-    - Encabezados en fila 4: SKU, Nombre, Cantidad, Costo, Total, Precio
-    - Los datos empiezan desde la fila 5
-    """
-    productos = []
-    
+    """Procesa un archivo Excel y retorna una lista de diccionarios"""
     try:
-        # Leer el archivo Excel
-        # Intentar leer sin encabezados primero para detectar la estructura
-        df_raw = pd.read_excel(archivo_path, header=None)
+        # Leer Excel
+        df = pd.read_excel(archivo_path, dtype=str) # Leer todo como string para evitar conversiones automáticas erróneas
         
-        # Buscar la fila con los encabezados (SKU, Nombre, etc.)
-        header_row = None
-        for idx, row in df_raw.iterrows():
-            row_str = ' '.join([str(cell).lower() for cell in row if pd.notna(cell)])
-            if 'sku' in row_str and ('nombre' in row_str or 'producto' in row_str):
-                header_row = idx
-                break
+        # Normalizar nombres de columnas (minusculas, sin acentos, sin espacios extra)
+        df.columns = df.columns.astype(str).str.strip().str.lower()
         
-        if header_row is None:
-            # Si no encontramos encabezados, intentar leer con header=0
-            df = pd.read_excel(archivo_path)
-        else:
-            # Leer con los encabezados encontrados
-            df = pd.read_excel(archivo_path, header=header_row)
-            # Limpiar nombres de columnas
-            df.columns = [str(col).strip() for col in df.columns]
+        # Mapeo de posibles nombres de columnas a nuestro esquema
+        mapa_columnas = {
+            'nombre': ['nombre', 'producto', 'descripción', 'descripcion', 'articulo', 'item'],
+            'codigo_barras': ['codigo', 'código', 'barras', 'barcode', 'ean', 'sku', 'referencia'],
+            'precio': ['precio', 'costo', 'valor', 'pvp', 'precio venta', 'precio_venta'],
+            'categoria': ['categoria', 'categoría', 'grupo', 'familia', 'departamento'],
+            'stock': ['stock', 'cantidad', 'existencia', 'inventario', 'unidades']
+        }
         
-        # Mapear columnas comunes
-        nombre_col = None
-        costo_col = None
-        codigo_col = None
-        sku_col = None
-        
-        for col in df.columns:
-            col_lower = str(col).lower()
-            if 'nombre' in col_lower or 'producto' in col_lower or 'descripcion' in col_lower:
-                nombre_col = col
-            elif 'costo' in col_lower or 'precio' in col_lower:
-                if costo_col is None or 'costo' in col_lower:
-                    costo_col = col
-            elif 'codigo' in col_lower or 'barras' in col_lower or 'barcode' in col_lower:
-                codigo_col = col
-            elif 'sku' in col_lower:
-                sku_col = col
-        
-        # Si no encontramos nombre_col, usar la primera columna que no sea numérica
-        if nombre_col is None:
-            for col in df.columns:
-                if df[col].dtype == 'object':
-                    nombre_col = col
+        # Identificar columnas
+        columnas_encontradas = {}
+        for campo_destino, posibles_nombres in mapa_columnas.items():
+            for posible in posibles_nombres:
+                match = next((col for col in df.columns if posible in col), None)
+                if match:
+                    columnas_encontradas[campo_destino] = match
                     break
         
-        # Si no encontramos costo_col, buscar columnas numéricas
-        if costo_col is None:
-            for col in df.columns:
-                if df[col].dtype in ['float64', 'int64']:
-                    costo_col = col
-                    break
+        # Si no encontramos columna nombre, es crítico
+        if 'nombre' not in columnas_encontradas:
+            # Intentar usar la primera columna de texto como nombre si no se encontró explícitamente
+            if len(df.columns) > 0:
+                columnas_encontradas['nombre'] = df.columns[0]
+            else:
+                return {'error': 'No se pudo identificar la columna de Nombre del producto'}
+
+        productos = []
         
-        # Procesar cada fila
-        for idx, row in df.iterrows():
-            nombre = limpiar_texto(row.get(nombre_col, ''))
+        for _, row in df.iterrows():
+            nombre = limpiar_texto(row.get(columnas_encontradas.get('nombre')))
             
-            # Saltar filas vacías o sin nombre
-            if not nombre or nombre == '' or nombre.lower() in ['nan', 'none', '']:
+            # Saltar filas vacías
+            if not nombre:
                 continue
-            
-            # Obtener código de barras (SKU o código)
-            codigo_barras = None
-            if codigo_col:
-                codigo_barras = limpiar_texto(row.get(codigo_col, ''))
-            elif sku_col:
-                codigo_barras = limpiar_texto(row.get(sku_col, ''))
-            
-            # Si el código está vacío, usar None
-            if not codigo_barras or codigo_barras.lower() in ['nan', 'none', '']:
-                codigo_barras = None
-            
-            # Obtener costo
-            costo = 0.0
-            if costo_col:
-                costo = parsear_numero(row.get(costo_col, 0))
-            
-            # Si el costo es 0, intentar buscar en otras columnas numéricas
-            if costo == 0:
-                for col in df.columns:
-                    if col != nombre_col and df[col].dtype in ['float64', 'int64']:
-                        valor = parsear_numero(row.get(col, 0))
-                        if valor > 0:
-                            costo = valor
-                            break
-            
-            # Crear producto
+                
             producto = {
                 'nombre': nombre,
-                'codigoBarras': codigo_barras,
-                'costoBase': costo,
-                'categoria': 'General',
-                'unidad': 'unidad',
-                'descripcion': None,
-                'proveedor': None
+                'codigo_barras': limpiar_texto(row.get(columnas_encontradas.get('codigo_barras'))) if 'codigo_barras' in columnas_encontradas else '',
+                'precio': parsear_numero(row.get(columnas_encontradas.get('precio'))) if 'precio' in columnas_encontradas else 0,
+                'categoria': limpiar_texto(row.get(columnas_encontradas.get('categoria'))) if 'categoria' in columnas_encontradas else 'General',
+                'stock': int(parsear_numero(row.get(columnas_encontradas.get('stock')))) if 'stock' in columnas_encontradas else 0,
+                'descripcion': '' # Opcional
             }
             
+            # Generar código de barras si no existe (usando nombre o aleatorio es responsabilidad del backend, aquí lo dejamos vacío o limpio)
+            if not producto['codigo_barras']:
+                 # Si no tiene código, usamos algo derivado del nombre o vacío para que el backend decida
+                 pass 
+
             productos.append(producto)
-        
+            
         return productos
-        
+
     except Exception as e:
-        return {
-            'error': f'Error al procesar Excel: {str(e)}',
-            'productos': []
-        }
+        return {'error': f'Error procesando Excel: {str(e)}'}
 
-
-def extraer_texto_pdf(archivo_path: str) -> str:
-    """Extrae texto de un PDF usando pdfplumber (mejor para tablas)"""
-    texto_completo = ""
-    
+def procesar_pdf(archivo_path: str) -> List[Dict[str, Any]]:
+    """
+    Procesamiento básico de PDF (extracción de texto)
+    Nota: Para PDFs complejos se recomienda usar servicios de IA o librerías más avanzadas.
+    Esta es una implementación básica compatible.
+    """
     try:
+        import pdfplumber
+        texto_completo = ""
+        productos = []
+        
         with pdfplumber.open(archivo_path) as pdf:
             for page in pdf.pages:
-                # Intentar extraer tablas primero
+                # Intentar extraer tablas
                 tablas = page.extract_tables()
+                
                 if tablas:
                     for tabla in tablas:
-                        for fila in tabla:
-                            if fila:
-                                texto_completo += ' | '.join([str(cell) if cell else '' for cell in fila]) + '\n'
-                
-                # También extraer texto normal
-                texto = page.extract_text()
-                if texto:
-                    texto_completo += texto + '\n'
-    except Exception as e:
-        print(f"Error con pdfplumber: {e}", file=sys.stderr)
-        # Fallback a PyPDF2
-        try:
-            with open(archivo_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                for page in pdf_reader.pages:
-                    texto_completo += page.extract_text() + '\n'
-        except Exception as e2:
-            print(f"Error con PyPDF2: {e2}", file=sys.stderr)
-    
-    return texto_completo
+                        # Asumir que la primera fila es encabezado si parece texto
+                        # Heurística simple: buscar columnas
+                        if not tabla: continue
+                        
+                        header = [str(c).lower().strip() if c else '' for c in tabla[0]]
+                        
+                        # Buscar índices
+                        idx_nombre = -1
+                        idx_precio = -1
+                        idx_codigo = -1
+                        
+                        for i, col in enumerate(header):
+                            if 'nombre' in col or 'descrip' in col or 'articulo' in col: idx_nombre = i
+                            elif 'precio' in col or 'valor' in col: idx_precio = i
+                            elif 'cod' in col or 'ref' in col: idx_codigo = i
+                        
+                        # Procesar filas de datos (saltando encabezado si se detectó)
+                        start_idx = 1 if (idx_nombre != -1 or idx_precio != -1) else 0
+                        
+                        for fila in tabla[start_idx:]:
+                            if not fila: continue
+                            
+                            # Si no detectamos encabezados, asumir orden común: Codigo, Nombre, ..., Precio
+                            p_nombre = ""
+                            p_precio = 0
+                            p_codigo = ""
+                            
+                            if idx_nombre != -1 and len(fila) > idx_nombre:
+                                p_nombre = limpiar_texto(fila[idx_nombre])
+                            elif len(fila) >= 2: # Fallback: segunda columna suele ser nombre
+                                p_nombre = limpiar_texto(fila[1])
+                            elif len(fila) == 1:
+                                p_nombre = limpiar_texto(fila[0])
+                                
+                            if not p_nombre: continue
 
+                            if idx_precio != -1 and len(fila) > idx_precio:
+                                p_precio = parsear_numero(fila[idx_precio])
+                            elif len(fila) >= 3: # Fallback: última o tercera columna suele ser precio
+                                # Intentar buscar un número en las columnas restantes
+                                for cell in reversed(fila):
+                                    try:
+                                        val = parsear_numero(cell)
+                                        if val > 0: 
+                                            p_precio = val
+                                            break
+                                    except: continue
+                            
+                            if idx_codigo != -1 and len(fila) > idx_codigo:
+                                p_codigo = limpiar_texto(fila[idx_codigo])
+                            elif len(fila) >= 1: # Fallback: primera columna suele ser código
+                                possible_code = limpiar_texto(fila[0])
+                                if len(possible_code) < 20 and any(c.isdigit() for c in possible_code):
+                                    p_codigo = possible_code
 
-def procesar_pdf_con_ia(archivo_path: str, api_key: str = None) -> List[Dict[str, Any]]:
-    """
-    Procesa un PDF usando IA (Google Gemini) para extraer productos
-    """
-    if not GEMINI_AVAILABLE or not api_key:
-        # Si no hay IA, intentar extracción básica
-        texto = extraer_texto_pdf(archivo_path)
-        return procesar_texto_basico(texto)
-    
-    try:
-        # Configurar Gemini
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # Extraer texto del PDF
-        texto = extraer_texto_pdf(archivo_path)
-        
-        # Limitar el texto a 30k caracteres para evitar límites de tokens
-        texto_limite = texto[:30000] if len(texto) > 30000 else texto
-        
-        # Prompt para la IA
-        prompt = f"""
-Analiza el siguiente texto extraído de un inventario en PDF. 
-Extrae todos los productos y devuélvelos en formato JSON array.
+                            productos.append({
+                                'nombre': p_nombre,
+                                'codigo_barras': p_codigo,
+                                'precio': p_precio,
+                                'categoria': 'General',
+                                'stock': 0
+                            })
 
-Para cada producto, identifica:
-- nombre: El nombre del producto
-- codigoBarras: El código de barras o SKU (si existe)
-- costoBase: El costo o precio (solo el número, sin símbolos)
-- categoria: Siempre "General"
-
-Formato de respuesta (SOLO JSON, sin markdown, sin explicaciones):
-[
-  {{
-    "nombre": "Nombre del producto",
-    "codigoBarras": "123456789" o null,
-    "costoBase": 10.50,
-    "categoria": "General"
-  }}
-]
-
-Texto del inventario:
-{texto_limite}
-"""
-        
-        # Generar respuesta
-        response = model.generate_content(prompt)
-        respuesta_texto = response.text
-        
-        # Limpiar la respuesta (remover markdown si existe)
-        respuesta_texto = respuesta_texto.strip()
-        if respuesta_texto.startswith('```json'):
-            respuesta_texto = respuesta_texto[7:]
-        if respuesta_texto.startswith('```'):
-            respuesta_texto = respuesta_texto[3:]
-        if respuesta_texto.endswith('```'):
-            respuesta_texto = respuesta_texto[:-3]
-        respuesta_texto = respuesta_texto.strip()
-        
-        # Parsear JSON
-        productos = json.loads(respuesta_texto)
-        
-        # Validar y normalizar
-        productos_validos = []
-        for producto in productos:
-            if isinstance(producto, dict) and 'nombre' in producto:
-                productos_validos.append({
-                    'nombre': str(producto.get('nombre', '')).strip(),
-                    'codigoBarras': str(producto.get('codigoBarras', '')).strip() if producto.get('codigoBarras') else None,
-                    'costoBase': parsear_numero(producto.get('costoBase', 0)),
-                    'categoria': 'General',
-                    'unidad': 'unidad',
-                    'descripcion': None,
-                    'proveedor': None
-                })
-        
-        return productos_validos
-        
-    except json.JSONDecodeError as e:
-        return {
-            'error': f'Error al parsear respuesta de IA: {str(e)}',
-            'productos': []
-        }
-    except Exception as e:
-        return {
-            'error': f'Error al procesar PDF con IA: {str(e)}',
-            'productos': []
-        }
-
-
-def procesar_texto_basico(texto: str) -> List[Dict[str, Any]]:
-    """Procesa texto básico sin IA (método simple)"""
-    productos = []
-    lineas = texto.split('\n')
-    
-    for linea in lineas:
-        linea = linea.strip()
-        if not linea or len(linea) < 3:
-            continue
-        
-        # Intentar detectar patrones básicos
-        # Formato: Nombre | Código | Costo
-        partes = [p.strip() for p in linea.split('|')]
-        
-        if len(partes) >= 2:
-            nombre = partes[0]
-            costo = 0.0
-            codigo = None
+        if not productos:
+            return {'error': 'No se pudieron extraer productos del PDF de forma estructurada. Intente convertirlo a Excel.'}
             
-            # Buscar número en las partes
-            for parte in partes[1:]:
-                num = parsear_numero(parte)
-                if num > 0:
-                    costo = num
-                    break
-                elif len(parte) > 5 and parte.replace('.', '').replace(',', '').isdigit():
-                    codigo = parte
-            
-            if nombre and nombre.lower() not in ['nombre', 'producto', 'descripcion', 'sku']:
-                productos.append({
-                    'nombre': nombre,
-                    'codigoBarras': codigo,
-                    'costoBase': costo,
-                    'categoria': 'General',
-                    'unidad': 'unidad',
-                    'descripcion': None,
-                    'proveedor': None
-                })
-    
-    return productos
+        return productos
 
+    except ImportError:
+        return {'error': 'Librería pdfplumber no instalada en el servidor'}
+    except Exception as e:
+        return {'error': f'Error procesando PDF: {str(e)}'}
 
 def main():
-    """Función principal"""
+    """Función principal de entrada"""
     if len(sys.argv) < 3:
-        print(json.dumps({
-            'error': 'Uso: python importProducts.py <tipo> <archivo> [api_key]',
-            'productos': []
-        }))
+        print(json.dumps({'error': 'Argumentos insuficientes'}))
         sys.exit(1)
+        
+    tipo = sys.argv[1].lower()
+    archivo = sys.argv[2]
     
-    tipo_archivo = sys.argv[1].lower()
-    archivo_path = sys.argv[2]
-    api_key = sys.argv[3] if len(sys.argv) > 3 else None
-    
-    # Verificar que el archivo existe
-    if not os.path.exists(archivo_path):
-        print(json.dumps({
-            'error': f'Archivo no encontrado: {archivo_path}',
-            'productos': []
-        }))
+    # Validar archivo
+    if not os.path.exists(archivo):
+        print(json.dumps({'error': f'Archivo no encontrado: {archivo}'}))
         sys.exit(1)
+        
+    resultado = []
     
     try:
-        if tipo_archivo in ['xlsx', 'xls']:
-            productos = procesar_excel(archivo_path)
-        elif tipo_archivo == 'pdf':
-            productos = procesar_pdf_con_ia(archivo_path, api_key)
+        if tipo in ['xlsx', 'xls']:
+            resultado = procesar_excel(archivo)
+        elif tipo == 'pdf':
+            resultado = procesar_pdf(archivo)
         else:
-            print(json.dumps({
-                'error': f'Tipo de archivo no soportado: {tipo_archivo}',
-                'productos': []
-            }))
-            sys.exit(1)
-        
-        # Si hay error en el resultado, manejarlo
-        if isinstance(productos, dict) and 'error' in productos:
-            print(json.dumps(productos))
-            sys.exit(1)
-        
-        # Retornar productos
-        resultado = {
-            'exito': True,
-            'productos': productos,
-            'total': len(productos)
-        }
-        
-        print(json.dumps(resultado, ensure_ascii=False))
-        
+            resultado = {'error': 'Formato no soportado'}
+            
+        # Verificar si el resultado es un dict de error
+        if isinstance(resultado, dict) and 'error' in resultado:
+            # Imprimir JSON de error
+            print(json.dumps({'exito': False, 'mensaje': resultado['error']}))
+        else:
+            # Imprimir JSON de éxito
+            print(json.dumps({'exito': True, 'productos': resultado}, ensure_ascii=False))
+            
     except Exception as e:
-        print(json.dumps({
-            'error': f'Error inesperado: {str(e)}',
-            'productos': []
-        }))
+        # Capturar cualquier error no controlado
+        tb = traceback.format_exc()
+        print(json.dumps({'exito': False, 'mensaje': f'Error interno: {str(e)}', 'trace': tb}))
         sys.exit(1)
-
 
 if __name__ == '__main__':
     main()
-
-

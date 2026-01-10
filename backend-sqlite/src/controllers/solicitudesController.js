@@ -1,4 +1,4 @@
-import SolicitudConexion from '../models/SolicitudConexion.js'
+import SolicitudConexion, { ESTADOS_CONEXION } from '../models/SolicitudConexion.js'
 import Invitacion from '../models/Invitacion.js'
 import { respuestaExito } from '../utils/helpers.js'
 import { AppError } from '../middlewares/errorHandler.js'
@@ -208,6 +208,161 @@ export const desconectarColaborador = async (req, res) => {
   res.json(respuestaExito(solicitudDesconectada, 'Colaborador desconectado'))
 }
 
+// ============================================
+// GESTIÓN DE ESTADOS DE CONEXIÓN
+// ============================================
+
+// Ping del colaborador (mantiene conexión activa)
+export const pingColaborador = async (req, res) => {
+  const { solicitudId } = req.params
+  
+  const solicitud = SolicitudConexion.actualizarPing(solicitudId)
+  
+  if (!solicitud) {
+    throw new AppError('Solicitud no encontrada', 404)
+  }
+  
+  res.json(respuestaExito({ 
+    estadoConexion: solicitud.estadoConexion,
+    ultimoPing: solicitud.ultimoPing 
+  }))
+}
+
+// Marcar colaborador como conectado
+export const conectarColaborador = async (req, res) => {
+  const { solicitudId } = req.params
+  
+  const solicitud = SolicitudConexion.marcarConectado(solicitudId)
+  
+  if (!solicitud) {
+    throw new AppError('Solicitud no encontrada', 404)
+  }
+  
+  res.json(respuestaExito(solicitud, 'Colaborador conectado'))
+}
+
+// Marcar colaborador como desconectado voluntariamente
+export const cerrarSesionColaborador = async (req, res) => {
+  const { solicitudId } = req.params
+  
+  const solicitud = SolicitudConexion.marcarDesconectado(solicitudId)
+  
+  if (!solicitud) {
+    throw new AppError('Solicitud no encontrada', 404)
+  }
+  
+  res.json(respuestaExito(solicitud, 'Sesión cerrada'))
+}
+
+// ============================================
+// GESTIÓN DE COLA DE PRODUCTOS
+// ============================================
+
+// Obtener colas pendientes de revisión (para el admin)
+export const obtenerColasPendientes = async (req, res) => {
+  const colas = SolicitudConexion.obtenerColasPendientes(req.usuario.id)
+  
+  res.json(respuestaExito(colas))
+}
+
+// Obtener detalle de una cola
+export const obtenerDetalleCola = async (req, res) => {
+  const { colaId } = req.params
+  
+  const cola = SolicitudConexion.obtenerCola(colaId)
+  
+  if (!cola) {
+    throw new AppError('Cola no encontrada', 404)
+  }
+  
+  res.json(respuestaExito(cola))
+}
+
+// Marcar cola en revisión (admin está revisando)
+export const marcarColaEnRevision = async (req, res) => {
+  const { colaId } = req.params
+  
+  const cola = SolicitudConexion.marcarColaEnRevision(colaId)
+  
+  res.json(respuestaExito(cola, 'Cola en revisión'))
+}
+
+// Aceptar productos de una cola
+export const aceptarProductosCola = async (req, res) => {
+  const { colaId } = req.params
+  const { productosIds, notas } = req.body
+  
+  if (!productosIds || !Array.isArray(productosIds)) {
+    throw new AppError('Debe proporcionar IDs de productos', 400)
+  }
+  
+  const cola = SolicitudConexion.aceptarProductosCola(colaId, productosIds, notas)
+  
+  res.json(respuestaExito(cola, 'Productos aceptados'))
+}
+
+// Rechazar productos de una cola
+export const rechazarProductosCola = async (req, res) => {
+  const { colaId } = req.params
+  const { productosIds, notas } = req.body
+  
+  if (!productosIds || !Array.isArray(productosIds)) {
+    throw new AppError('Debe proporcionar IDs de productos', 400)
+  }
+  
+  const cola = SolicitudConexion.rechazarProductosCola(colaId, productosIds, notas)
+  
+  res.json(respuestaExito(cola, 'Productos rechazados'))
+}
+
+// Enviar productos del colaborador como cola (desde el colaborador)
+export const enviarProductosComoCola = async (req, res) => {
+  const { solicitudId } = req.params
+  const { sesionInventarioId } = req.body
+  
+  const cola = SolicitudConexion.enviarProductosComoCola(solicitudId, sesionInventarioId)
+  
+  if (!cola) {
+    throw new AppError('No hay productos pendientes para enviar', 400)
+  }
+  
+  res.json(respuestaExito(cola, 'Productos enviados para revisión'))
+}
+
+// Aceptar todos los productos de una cola
+export const aceptarTodosProductosCola = async (req, res) => {
+  const { colaId } = req.params
+  const { notas } = req.body
+  
+  const cola = SolicitudConexion.obtenerCola(colaId)
+  
+  if (!cola) {
+    throw new AppError('Cola no encontrada', 404)
+  }
+  
+  const productosIds = cola.productos.map(p => p.id)
+  const colaActualizada = SolicitudConexion.aceptarProductosCola(colaId, productosIds, notas)
+  
+  res.json(respuestaExito(colaActualizada, 'Todos los productos aceptados'))
+}
+
+// Rechazar todos los productos de una cola
+export const rechazarTodosProductosCola = async (req, res) => {
+  const { colaId } = req.params
+  const { notas } = req.body
+  
+  const cola = SolicitudConexion.obtenerCola(colaId)
+  
+  if (!cola) {
+    throw new AppError('Cola no encontrada', 404)
+  }
+  
+  const productosIds = cola.productos.map(p => p.id)
+  const colaActualizada = SolicitudConexion.rechazarProductosCola(colaId, productosIds, notas)
+  
+  res.json(respuestaExito(colaActualizada, 'Todos los productos rechazados'))
+}
+
 export default {
   crearSolicitud,
   verificarEstado,
@@ -219,4 +374,17 @@ export default {
   obtenerProductosOffline,
   sincronizarProductos,
   desconectarColaborador,
+  // Estados de conexión
+  pingColaborador,
+  conectarColaborador,
+  cerrarSesionColaborador,
+  // Cola de productos
+  obtenerColasPendientes,
+  obtenerDetalleCola,
+  marcarColaEnRevision,
+  aceptarProductosCola,
+  rechazarProductosCola,
+  enviarProductosComoCola,
+  aceptarTodosProductosCola,
+  rechazarTodosProductosCola,
 }

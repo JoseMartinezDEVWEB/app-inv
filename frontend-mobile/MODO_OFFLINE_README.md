@@ -107,3 +107,7 @@ Para problemas con el modo offline:
 
 **Versión recomendada**: Si tienes internet estable, usa la versión Cloud para mejor colaboración y respaldos automáticos.
 
+
+
+
+

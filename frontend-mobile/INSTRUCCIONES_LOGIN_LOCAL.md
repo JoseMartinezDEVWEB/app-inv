@@ -112,3 +112,7 @@ Si tienes usuarios en el backend remoto y quieres migrarlos al local:
 **Versión**: 1.0.0  
 **Última actualización**: Diciembre 30, 2025
 
+
+
+
+

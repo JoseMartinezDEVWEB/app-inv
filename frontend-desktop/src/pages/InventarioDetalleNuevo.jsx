@@ -8,7 +8,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import { sesionesApi, productosApi, reportesApi, invitacionesApi, solicitudesConexionApi, handleApiError } from '../services/api'
 import logoInfocolmados from '../img/logo_transparent.png'
-import { ArrowLeft, Search, Trash2, Clock, TrendingUp, Users, CreditCard, Briefcase, PiggyBank, DollarSign, ShoppingCart, Barcode, X, Printer, FileText, Settings, TrendingDown, Wallet, Calculator, Calendar, Download, Share2, FileSpreadsheet, FileImage, UserMinus, Menu, Smartphone, QrCode, RefreshCw, Wifi, WifiOff, PieChart } from 'lucide-react'
+import { ArrowLeft, Search, Trash2, Clock, TrendingUp, Users, CreditCard, Briefcase, PiggyBank, DollarSign, ShoppingCart, Barcode, X, Printer, FileText, Settings, TrendingDown, Wallet, Calculator, Calendar, Download, Share2, FileSpreadsheet, FileImage, UserMinus, Menu, Smartphone, QrCode, RefreshCw, Wifi, WifiOff, PieChart, Eye, CheckCircle, XCircle, Package } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import ProductoForm from '../components/ProductoForm'
@@ -2830,12 +2830,17 @@ const InventarioDetalleNuevo = () => {
                                 )}
                               </td>
                               <td className="px-4 py-4 whitespace-nowrap">
-                                <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${colab.estadoConexion === 'conectado'
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-gray-100 text-gray-800'
-                                  }`}>
+                                <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                  colab.estadoConexion === 'conectado'
+                                    ? 'bg-green-100 text-green-800'
+                                    : colab.estadoConexion === 'esperando_reconexion'
+                                      ? 'bg-yellow-100 text-yellow-800'
+                                      : 'bg-gray-100 text-gray-800'
+                                }`}>
                                   {colab.estadoConexion === 'conectado' ? (
                                     <><Wifi className="w-3 h-3 mr-1 inline" /> Conectado</>
+                                  ) : colab.estadoConexion === 'esperando_reconexion' ? (
+                                    <><Wifi className="w-3 h-3 mr-1 inline animate-pulse" /> Reconectando...</>
                                   ) : (
                                     <><WifiOff className="w-3 h-3 mr-1 inline" /> Desconectado</>
                                   )}
@@ -2862,12 +2867,16 @@ const InventarioDetalleNuevo = () => {
                                 <div className="flex justify-end gap-2">
                                   {cantidadPendientes > 0 && (
                                     <button
-                                      onClick={() => handleSincronizarColaborador(colab._id)}
-                                      className="text-blue-600 hover:text-blue-900 flex items-center gap-1"
-                                      title="Sincronizar productos"
+                                      onClick={() => {
+                                        setColaboradorSeleccionado(colab)
+                                        setProductosParaRevisar(productosPendientes)
+                                        setShowRevisarProductosModal(true)
+                                      }}
+                                      className="text-orange-600 hover:text-orange-900 flex items-center gap-1 font-medium"
+                                      title="Revisar productos antes de agregar"
                                     >
-                                      <RefreshCw className="w-4 h-4" />
-                                      Sincronizar
+                                      <Eye className="w-4 h-4" />
+                                      Revisar ({cantidadPendientes})
                                     </button>
                                   )}
                                   <button
@@ -2916,9 +2925,10 @@ const InventarioDetalleNuevo = () => {
                     <ShoppingCart className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white">Revisar Productos</h3>
+                    <h3 className="text-xl font-bold text-white">Revisar Productos del Colaborador</h3>
                     <p className="text-sm text-white/80">
-                      Colaborador: {colaboradorSeleccionado?.colaborador?.nombre || 'Desconocido'}
+                      {colaboradorSeleccionado?.nombreColaborador || colaboradorSeleccionado?.colaborador?.nombre || 'Colaborador'} 
+                      {' - '}{productosParaRevisar.length} producto(s)
                     </p>
                   </div>
                 </div>

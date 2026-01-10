@@ -38,8 +38,8 @@ function createWindow() {
   if (isDev) {
     // Vite usa puerto 3000 (configurado en vite.config.js)
     mainWindow.loadURL('http://localhost:3000')
-    // Abrir DevTools automáticamente en modo desarrollo
-    mainWindow.webContents.openDevTools()
+    // No abrir DevTools automáticamente a menos que sea necesario para debugging
+    // mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
@@ -50,20 +50,22 @@ function createWindow() {
     mainWindow.show()
   })
 
-  // Atajos de teclado para abrir/cerrar DevTools (Ctrl+Shift+I o F12)
+  // Atajos de teclado para abrir/cerrar DevTools (Ctrl+Shift+I o F12) solo en desarrollo
   mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.control && input.shift && input.key.toLowerCase() === 'i') {
-      if (mainWindow.webContents.isDevToolsOpened()) {
-        mainWindow.webContents.closeDevTools()
-      } else {
-        mainWindow.webContents.openDevTools()
+    if (isDev) {
+      if (input.control && input.shift && input.key.toLowerCase() === 'i') {
+        if (mainWindow.webContents.isDevToolsOpened()) {
+          mainWindow.webContents.closeDevTools()
+        } else {
+          mainWindow.webContents.openDevTools()
+        }
       }
-    }
-    if (input.key === 'F12') {
-      if (mainWindow.webContents.isDevToolsOpened()) {
-        mainWindow.webContents.closeDevTools()
-      } else {
-        mainWindow.webContents.openDevTools()
+      if (input.key === 'F12') {
+        if (mainWindow.webContents.isDevToolsOpened()) {
+          mainWindow.webContents.closeDevTools()
+        } else {
+          mainWindow.webContents.openDevTools()
+        }
       }
     }
   })

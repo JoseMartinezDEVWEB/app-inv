@@ -1,5 +1,5 @@
 import { productosApi, handleApiResponse, handleApiError } from './api';
-import * as FileSystem from 'expo-file-system';
+import api from './api';
 
 /**
  * Importa productos desde un archivo XLSX o PDF usando el backend Python
@@ -11,65 +11,62 @@ import * as FileSystem from 'expo-file-system';
  */
 export const importarProductosDesdeArchivo = async (file, apiKey = null) => {
     try {
-        // Convertir el archivo a FormData para enviarlo al backend
+        console.log('📤 Preparando envío de archivo:', file.name);
+
         const formData = new FormData();
         
-        // Leer el archivo como blob/base64 y convertirlo a formato que el backend pueda procesar
-        const fileUri = file.uri;
-        const fileName = file.name || 'archivo.xlsx';
-        
-        // Determinar el tipo MIME basado en la extensión del archivo
-        let fileType = file.mimeType;
-        if (!fileType) {
-            const parts = fileName.split('.');
-            const ext = parts.length > 0 ? parts[parts.length - 1].toLowerCase() : '';
-            if (ext === 'xlsx') {
-                fileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-            } else if (ext === 'xls') {
-                fileType = 'application/vnd.ms-excel';
-            } else if (ext === 'pdf') {
-                fileType = 'application/pdf';
-            } else {
-                fileType = 'application/octet-stream';
-            }
-        }
-        
-        // Crear objeto de archivo para FormData (formato React Native)
+        // React Native espera este formato específico para archivos en FormData
         formData.append('archivo', {
-            uri: fileUri,
-            type: fileType,
-            name: fileName,
+            uri: file.uri,
+            name: file.name,
+            type: file.mimeType || 'application/octet-stream' // Fallback si no hay mimeType
         });
-        
+
         if (apiKey) {
             formData.append('apiKey', apiKey);
         }
 
-        // Llamar al endpoint del backend
-        const response = await productosApi.importarDesdeArchivo(formData, apiKey);
-        const resultado = handleApiResponse(response);
-        
-        // El backend devuelve los productos ya procesados
-        return resultado.productos || [];
+        console.log('📡 Enviando al backend...');
+
+        // Usar la instancia de axios 'api' que ya tiene la configuración base
+        // Nota: No poner 'Content-Type': 'multipart/form-data' manualmente en axios,
+        // axios lo hace automáticamente y si lo fuerzas puede fallar el boundary.
+        const response = await api.post('/productos/generales/importar', formData, {
+            headers: {
+                'Accept': 'application/json',
+                // Dejar que axios maneje el Content-Type multipart
+            },
+            transformRequest: (data, headers) => {
+                // Evitar que axios transforme el FormData
+                return data;
+            },
+        });
+
+        console.log('✅ Respuesta del servidor:', response.data);
+
+        if (response.data && response.data.exito) {
+            return response.data.datos || [];
+        } else {
+            throw new Error(response.data?.mensaje || 'Error desconocido en la respuesta');
+        }
+
     } catch (error) {
-        handleApiError(error);
-        throw error;
+        console.error('❌ Error en importarProductosDesdeArchivo:', error);
+        
+        let mensaje = 'Error al importar archivo';
+        
+        if (error.response) {
+            // Error del servidor (500, 400, etc.)
+            console.error('Data error:', error.response.data);
+            mensaje = error.response.data?.mensaje || `Error del servidor (${error.response.status})`;
+        } else if (error.request) {
+            // Error de conexión
+            mensaje = 'No se pudo conectar con el servidor. Verifica tu conexión.';
+        } else {
+            // Error de configuración
+            mensaje = error.message;
+        }
+        
+        throw new Error(mensaje);
     }
-};
-
-// Funciones legacy para compatibilidad (ahora se usa el backend)
-export const parseExcelMobile = async (uri) => {
-    // Esta función ya no se usa, pero se mantiene por compatibilidad
-    console.warn('parseExcelMobile está deprecado. Use importarProductosDesdeArchivo');
-    return [];
-};
-
-/**
- * Procesa datos crudos (texto o array) usando Gemini para estructurarlos
- * DEPRECADO: Ahora se usa el backend Python que procesa todo
- */
-export const processWithAIMobile = async (rawData, apiKey) => {
-    // Esta función ya no se usa, pero se mantiene por compatibilidad
-    console.warn('processWithAIMobile está deprecado. Use importarProductosDesdeArchivo');
-    return [];
 };

@@ -5,13 +5,27 @@
     "requireCommit": false
   },
   "build": {
+    "production": {
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://appj4-hlqj.onrender.com/api"
+      }
+    },
     "production-local": {
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "local-mode"
+        "EXPO_PUBLIC_API_URL": "https://appj4-hlqj.onrender.com/api"
+      }
+    },
+    "preview": {
+      "android": {
+        "buildType": "apk"
       }
     }
   },

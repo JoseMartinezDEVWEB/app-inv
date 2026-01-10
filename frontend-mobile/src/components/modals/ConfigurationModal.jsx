@@ -1,9 +1,11 @@
 import React, { useState } from 'react'
-import { View, Text, Modal, TouchableOpacity, ScrollView, TextInput, Switch, Alert } from 'react-native'
+import { View, Text, Modal, TouchableOpacity, ScrollView, TextInput, Switch, Alert, ActivityIndicator } from 'react-native'
 import { Picker } from '@react-native-picker/picker'
 import { StyleSheet } from 'react-native'
 import Ionicons from 'react-native-vector-icons/Ionicons'
 import { useLoader } from '../../context/LoaderContext'
+import exportService from '../../services/exportService'
+import { isOnline } from '../../config/env'
 
 const ConfigurationModal = ({ visible, onClose }) => {
   const { showAnimation } = useLoader()
@@ -62,8 +64,11 @@ const ConfigurationModal = ({ visible, onClose }) => {
     { id: 'distribucion', title: 'Distribución', icon: 'calculator-outline', color: '#10b981' },
     { id: 'contador', title: 'Contador', icon: 'calendar-outline', color: '#f59e0b' },
     { id: 'empleados', title: 'Empleados', icon: 'people-outline', color: '#3b82f6' },
-    { id: 'descargar', title: 'Descargar', icon: 'download-outline', color: '#06b6d4' }
+    { id: 'descargar', title: 'Descargar', icon: 'download-outline', color: '#06b6d4' },
+    { id: 'respaldar', title: 'Respaldar', icon: 'cloud-upload-outline', color: '#8b5cf6' }
   ]
+
+  const [isExporting, setIsExporting] = useState(false)
 
   const updateSocio = (index, field, value) => {
     const newSocios = [...distribucionData.socios]
@@ -563,6 +568,13 @@ const ConfigurationModal = ({ visible, onClose }) => {
               <Text style={[styles.sectionTitle, { color: '#06b6d4', marginLeft: 8 }]}>Descargar/Imprimir Inventario</Text>
             </View>
 
+            <View style={styles.infoBox}>
+              <Ionicons name="wifi-outline" size={20} color="#f59e0b" />
+              <Text style={styles.infoText}>
+                ⚠️ Las funciones de descarga en PDF/Excel profesional requieren conexión a internet.
+              </Text>
+            </View>
+            
             <Text style={styles.subsectionTitle}>Opciones de Descarga</Text>
             
             <View style={styles.formSection}>
@@ -670,6 +682,73 @@ const ConfigurationModal = ({ visible, onClose }) => {
                 <Ionicons name="print-outline" size={20} color="#ffffff" />
                 <Text style={styles.printButtonText}>Imprimir</Text>
               </TouchableOpacity>
+            </View>
+          </ScrollView>
+        )
+
+      case 'respaldar':
+        return (
+          <ScrollView style={styles.tabContent}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name="cloud-upload-outline" size={20} color="#8b5cf6" />
+              <Text style={[styles.sectionTitle, { color: '#8b5cf6', marginLeft: 8 }]}>Respaldo de Datos (Admin)</Text>
+            </View>
+
+            <Text style={styles.descriptionText}>
+              Utilice estas opciones para asegurar sus datos locales y exportar información importante.
+            </Text>
+
+            <View style={styles.backupGrid}>
+              <TouchableOpacity 
+                style={[styles.backupCard, { borderColor: '#8b5cf6' }]} 
+                onPress={async () => {
+                  setIsExporting(true);
+                  await exportService.exportarSQLite();
+                  setIsExporting(false);
+                }}
+                disabled={isExporting}
+              >
+                <Ionicons name="database-outline" size={32} color="#8b5cf6" />
+                <Text style={styles.backupCardTitle}>Base de Datos Completa</Text>
+                <Text style={styles.backupCardDesc}>Archivo .db local (SQLite)</Text>
+                {isExporting && <ActivityIndicator size="small" color="#8b5cf6" style={{marginTop: 8}} />}
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.backupCard, { borderColor: '#10b981' }]} 
+                onPress={async () => {
+                  setIsExporting(true);
+                  await exportService.exportarClientesCSV();
+                  setIsExporting(false);
+                }}
+                disabled={isExporting}
+              >
+                <Ionicons name="people-outline" size={32} color="#10b981" />
+                <Text style={styles.backupCardTitle}>Lista de Clientes</Text>
+                <Text style={styles.backupCardDesc}>Formato CSV para Excel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.backupCard, { borderColor: '#3b82f6' }]} 
+                onPress={() => {
+                  if (!isOnline()) {
+                    Alert.alert('Sin Internet', 'Para generar reportes PDF avanzados debe estar conectado al servidor.');
+                    return;
+                  }
+                  Alert.alert('Próximamente', 'Seleccione la sesión de inventario desde el historial para exportar su reporte.');
+                }}
+              >
+                <Ionicons name="document-text-outline" size={32} color="#3b82f6" />
+                <Text style={styles.backupCardTitle}>Reportes de Inventario</Text>
+                <Text style={styles.backupCardDesc}>Requiere Internet (PDF/Excel)</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.infoBox}>
+              <Ionicons name="information-circle-outline" size={20} color="#f59e0b" />
+              <Text style={styles.infoText}>
+                El respaldo de la base de datos incluye: Clientes, Productos, Usuarios e Historial de Inventarios realizados.
+              </Text>
             </View>
           </ScrollView>
         )
@@ -1142,6 +1221,44 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#92400e',
     lineHeight: 18,
+    flex: 1,
+  },
+  descriptionText: {
+    fontSize: 14,
+    color: '#64748b',
+    marginBottom: 20,
+  },
+  backupGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 20,
+  },
+  backupCard: {
+    width: '100%',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  backupCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginTop: 8,
+  },
+  backupCardDesc: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
+    textAlign: 'center',
   },
   addEmpleadoButton: {
     flexDirection: 'row',

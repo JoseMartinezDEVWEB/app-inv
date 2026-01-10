@@ -1,10 +1,15 @@
 import * as SecureStore from 'expo-secure-store'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { Platform } from 'react-native'
 
-// Verificar si SecureStore está disponible
+// Verificar si SecureStore está disponible y es confiable
 const canUseSecureStore = async () => {
   try {
-    // SecureStore solo funciona en dispositivos reales
+    // En Android, a veces SecureStore tiene problemas en builds híbridas o sin firma correcta
+    // Para asegurar estabilidad, usamos AsyncStorage en Android por ahora
+    if (Platform.OS === 'android') {
+      return false
+    }
     await SecureStore.isAvailableAsync()
     return true
   } catch (_) {
@@ -20,13 +25,19 @@ export async function setInternetCredentials(service, username, password) {
     try {
       await SecureStore.setItemAsync(`ss:${service}`, data)
       return true
-    } catch (_) {
-      // Fallback a AsyncStorage si falla
+    } catch (e) {
+      console.log('SecureStore set failed', e)
+      // Fallback continuará abajo
     }
   }
   
-  await AsyncStorage.setItem(`ss:${service}`, data)
-  return true
+  try {
+    await AsyncStorage.setItem(`ss:${service}`, data)
+    return true
+  } catch (e) {
+    console.error('AsyncStorage set failed', e)
+    return false
+  }
 }
 
 export async function getInternetCredentials(service) {
@@ -39,17 +50,19 @@ export async function getInternetCredentials(service) {
         const v = JSON.parse(raw)
         return v && typeof v === 'object' ? v : null
       }
-    } catch (_) {
-      // Fallback a AsyncStorage si falla
+    } catch (e) {
+      console.log('SecureStore get failed', e)
+      // Fallback continuará abajo
     }
   }
   
-  const raw = await AsyncStorage.getItem(`ss:${service}`)
-  if (!raw) return null
   try {
+    const raw = await AsyncStorage.getItem(`ss:${service}`)
+    if (!raw) return null
     const v = JSON.parse(raw)
     return v && typeof v === 'object' ? v : null
-  } catch (_) {
+  } catch (e) {
+    console.error('AsyncStorage get failed', e)
     return null
   }
 }
@@ -61,9 +74,11 @@ export async function resetInternetCredentials(service) {
     try {
       await SecureStore.deleteItemAsync(`ss:${service}`)
     } catch (_) {
-      // Continuar aunque falle
+      // Continuar
     }
   }
   
-  await AsyncStorage.removeItem(`ss:${service}`)
+  try {
+    await AsyncStorage.removeItem(`ss:${service}`)
+  } catch (_) {}
 }

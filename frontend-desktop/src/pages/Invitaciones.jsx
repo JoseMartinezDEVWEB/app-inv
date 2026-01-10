@@ -277,7 +277,7 @@ const Invitaciones = () => {
                   Rol
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Nombre/Email
+                  Nombre/Código
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Estado
@@ -316,12 +316,9 @@ const Invitaciones = () => {
                       <div className="text-sm font-medium text-gray-900">
                         {invitacion.nombre || '-'}
                       </div>
-                      <div className="text-sm text-gray-500">
-                        {invitacion.email || '-'}
-                      </div>
-                      {/* Mostrar código asignado para que el admin lo comparta */}
-                      <div className="mt-1 text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded inline-block font-mono tracking-wider">
-                        Código: {invitacion.codigo ? String(Array.from(invitacion.codigo).reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % 1000000).padStart(6, '0') : invitacion.codigoNumerico || 'N/A'}
+                      {/* Mostrar código de acceso prominente para que el admin lo comparta */}
+                      <div className="mt-1 text-sm font-mono font-bold text-violet-600 bg-violet-50 px-3 py-1 rounded inline-block tracking-widest border border-violet-200">
+                        {invitacion.codigoNumerico || invitacion.codigo || '------'}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

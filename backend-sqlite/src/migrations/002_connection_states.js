@@ -90,3 +90,4 @@ export const down = (db) => {
   console.log('⬇️ Migración 002_connection_states revertida')
 }
 
+

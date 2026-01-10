@@ -1,288 +1,169 @@
 import NetInfo from '@react-native-community/netinfo'
 import localDb from './localDb'
-import { solicitudesConexionApi } from './api'
+import api, { solicitudesConexionApi, sesionesApi } from './api'
 import { showMessage } from 'react-native-flash-message'
 
 /**
- * Servicio de Sincronización con Patrón Outbox
- * Maneja automáticamente el reintento de tareas cuando hay conexión
+ * Servicio de Sincronización Maestro (Offline-First)
+ * Centraliza toda la lógica de replicación entre SQLite y MongoDB.
  */
 class SyncService {
   constructor() {
     this.isProcessing = false
-    this.netInfoUnsubscribe = null
     this.syncInterval = null
     this.listeners = []
   }
 
-  /**
-   * Iniciar servicio de sincronización
-   * Escucha cambios de conectividad y procesa cola pendiente
-   */
   start() {
-    console.log('🔄 Iniciando servicio de sincronización...')
+    console.log('🔄 Iniciando motor de sincronización Offline-First...')
     
-    // Escuchar cambios de conectividad
-    this.netInfoUnsubscribe = NetInfo.addEventListener(state => {
+    // Escuchar cambios de red
+    NetInfo.addEventListener(state => {
       if (state.isConnected && !this.isProcessing) {
-        console.log('✅ Conexión detectada, procesando cola...')
-        this.procesarColaPendiente()
+        this.syncWithCloud()
       }
     })
 
-    // Intentar procesar cada 30 segundos si hay conexión
+    // Intervalo de heartbeat (cada 1 minuto)
     this.syncInterval = setInterval(() => {
-      NetInfo.fetch().then(state => {
-        if (state.isConnected && !this.isProcessing) {
-          this.procesarColaPendiente()
-        }
-      })
-    }, 30000) // 30 segundos
-
-    // Procesar inmediatamente si hay conexión
-    NetInfo.fetch().then(state => {
-      if (state.isConnected) {
-        this.procesarColaPendiente()
-      }
-    })
+      this.syncWithCloud()
+    }, 60000)
   }
 
-  /**
-   * Detener servicio de sincronización
-   */
   stop() {
-    console.log('⏸️ Deteniendo servicio de sincronización...')
+    if (this.syncInterval) clearInterval(this.syncInterval)
+  }
+
+  /**
+   * FUNCIÓN MAESTRA DE SINCRONIZACIÓN
+   * 1. Verifica conexión (Ping)
+   * 2. Push: Envía cambios locales (is_dirty=1) a la nube
+   * 3. Pull: Descarga cambios de la nube (opcional por ahora, enfocado en backup)
+   */
+  async syncWithCloud() {
+    if (this.isProcessing) return
     
-    if (this.netInfoUnsubscribe) {
-      this.netInfoUnsubscribe()
-      this.netInfoUnsubscribe = null
-    }
-
-    if (this.syncInterval) {
-      clearInterval(this.syncInterval)
-      this.syncInterval = null
-    }
-  }
-
-  /**
-   * Agregar tarea a la cola de sincronización
-   */
-  async agregarTarea(tipo, payload) {
-    try {
-      const id = await localDb.agregarAColaSincronizacion(tipo, payload)
-      console.log(`📦 Tarea agregada a cola: ${tipo} (ID: ${id})`)
-      
-      // Notificar a listeners
-      this.notificarListeners({ tipo: 'tarea_agregada', id, tipo: tipo })
-      
-      // Intentar procesar inmediatamente si hay conexión
-      const state = await NetInfo.fetch()
-      if (state.isConnected) {
-        this.procesarColaPendiente()
-      }
-      
-      return id
-    } catch (error) {
-      console.error('❌ Error agregando tarea a cola:', error)
-      throw error
-    }
-  }
-
-  /**
-   * Procesar todas las tareas pendientes en la cola
-   */
-  async procesarColaPendiente() {
-    if (this.isProcessing) {
-      console.log('⚠️ Ya hay un proceso de sincronización en curso')
-      return
-    }
+    const state = await NetInfo.fetch()
+    if (!state.isConnected) return
 
     this.isProcessing = true
-    console.log('🔄 Procesando cola de sincronización...')
+    console.log('☁️ Iniciando ciclo de sincronización...')
 
     try {
-      const tareas = await localDb.obtenerTareasPendientes()
-      
-      if (tareas.length === 0) {
-        console.log('✅ No hay tareas pendientes')
+      // 1. Verificar Salud del Backend (Ping)
+      // Esto maneja el Cold Start implícitamente al esperar respuesta
+      try {
+        await api.get('/salud', { timeout: 5000 })
+      } catch (e) {
+        console.log('⚠️ Backend no disponible o despertando...')
         this.isProcessing = false
         return
       }
 
-      console.log(`📋 ${tareas.length} tarea(s) pendiente(s)`)
-      
-      let completadas = 0
-      let fallidas = 0
+      // 2. Obtener datos sucios de SQLite
+      const cambios = await localDb.obtenerRegistrosSucios()
+      const tablas = Object.keys(cambios)
 
-      for (const tarea of tareas) {
-        try {
-          // Limitar reintentos a 3
-          if (tarea.intentos >= 3) {
-            console.log(`⚠️ Tarea ${tarea.id} excedió límite de reintentos`)
-            await localDb.marcarTareaFallida(tarea.id, 'Máximo de reintentos alcanzado')
-            fallidas++
-            continue
-          }
+      if (tablas.length === 0) {
+        console.log('✅ Todo sincronizado (Nada sucio localmente)')
+        this.isProcessing = false
+        return
+      }
 
-          // Procesar según tipo
-          let resultado = false
-          switch (tarea.tipo) {
-            case 'enviar_producto':
-              resultado = await this.enviarProducto(tarea.payload)
-              break
-            case 'integrar_inventario':
-              resultado = await this.integrarInventario(tarea.payload)
-              break
-            default:
-              console.warn(`⚠️ Tipo de tarea desconocido: ${tarea.tipo}`)
-          }
+      console.log(`📦 Encontrados cambios en: ${tablas.join(', ')}`)
 
-          if (resultado) {
-            await localDb.marcarTareaCompletada(tarea.id)
-            completadas++
-            console.log(`✅ Tarea ${tarea.id} completada`)
-            this.notificarListeners({ tipo: 'tarea_completada', id: tarea.id })
-          } else {
-            await localDb.marcarTareaFallida(tarea.id, 'Falló el procesamiento')
-            fallidas++
-          }
-        } catch (error) {
-          console.error(`❌ Error procesando tarea ${tarea.id}:`, error)
-          await localDb.marcarTareaFallida(tarea.id, error.message)
-          fallidas++
+      // 3. Enviar cambios por lotes (Batch Sync)
+      // Enviamos estructura: { productos: [...], sesiones: [...] }
+      const payload = {
+        changes: cambios,
+        deviceId: 'device-id-placeholder', // Debería venir de config
+        timestamp: Date.now()
+      }
+
+      // Endpoint masivo en el backend (Debe ser implementado en MongoDB)
+      const response = await api.post('/sync/push', payload)
+
+      if (response.data.success) {
+        // 4. Confirmar sincronización localmente
+        for (const tabla of tablas) {
+            const ids = cambios[tabla].map(r => r.id_uuid);
+            await localDb.confirmarSincronizacion(tabla, ids);
         }
+        
+        console.log('✅ Sincronización exitosa con la nube')
+        this.notificarListeners({ tipo: 'sync_success', count: tablas.length })
       }
 
-      console.log(`✅ Sincronización completada: ${completadas} exitosas, ${fallidas} fallidas`)
-      
-      if (completadas > 0) {
-        showMessage({
-          message: '✅ Sincronización exitosa',
-          description: `${completadas} producto(s) enviado(s)`,
-          type: 'success',
-          duration: 3000,
-        })
-      }
-
-      if (fallidas > 0) {
-        showMessage({
-          message: '⚠️ Algunas sincronizaciones fallaron',
-          description: `${fallidas} tarea(s) pendiente(s)`,
-          type: 'warning',
-          duration: 3000,
-        })
-      }
-
-      // Limpiar tareas completadas antiguas (más de 1 día)
-      await localDb.limpiarTareasCompletadas()
     } catch (error) {
-      console.error('❌ Error procesando cola:', error)
+      console.error('❌ Error crítico en syncWithCloud:', error)
+      this.notificarListeners({ tipo: 'sync_error', error: error.message })
     } finally {
       this.isProcessing = false
     }
   }
 
   /**
-   * Enviar producto individual a servidor
+   * Gestión de Colaboradores (Online Only)
+   * Verifica conexión estricta antes de enviar datos de colaborador.
    */
-  async enviarProducto(payload) {
-    const { solicitudId, producto } = payload
-    
-    try {
-      await solicitudesConexionApi.agregarProductoOffline(solicitudId, producto)
-      
-      // Eliminar de productos_colaborador si existe
-      if (producto.temporalId) {
-        await localDb.eliminarProductoColaborador(producto.temporalId)
-      }
-      
-      return true
-    } catch (error) {
-      console.error('Error enviando producto:', error)
-      return false
-    }
-  }
-
-  /**
-   * Integrar inventario completo (endpoint nuevo)
-   */
-  async integrarInventario(payload) {
-    const { sesionId, productos, colaboradorId, solicitudId } = payload
-    
-    try {
-      // Aquí llamarías al nuevo endpoint de integración
-      // Por ahora usamos el método antiguo como fallback
-      console.log('🔄 Integrando inventario:', { sesionId, productosCount: productos.length })
-      
-      // TODO: Implementar llamada al nuevo endpoint /api/inventario/integrar
-      // await api.post('/inventario/integrar', { sesionId, productos, colaboradorId, solicitudId })
-      
-      return true
-    } catch (error) {
-      console.error('Error integrando inventario:', error)
-      return false
-    }
-  }
-
-  /**
-   * Obtener estadísticas de sincronización
-   */
-  async obtenerEstadisticas() {
-    try {
-      return await localDb.obtenerEstadisticasSincronizacion()
-    } catch (error) {
-      console.error('Error obteniendo estadísticas:', error)
-      return { total: 0, pendientes: 0, completadas: 0, errores: 0 }
-    }
-  }
-
-  /**
-   * Forzar sincronización inmediata
-   */
-  async forzarSincronizacion() {
+  async enviarDatosColaborador(solicitudId, sesionId) {
     const state = await NetInfo.fetch()
-    
     if (!state.isConnected) {
-      showMessage({
-        message: '⚠️ Sin conexión',
-        description: 'No hay conexión a internet',
-        type: 'warning',
-      })
+      showMessage({ message: 'Se requiere internet para enviar al administrador', type: 'warning' })
       return false
     }
 
-    await this.procesarColaPendiente()
-    return true
-  }
+    try {
+      // Verificar backend
+      await api.get('/salud')
 
-  /**
-   * Agregar listener para eventos de sincronización
-   */
-  addListener(callback) {
-    this.listeners.push(callback)
-    return () => {
-      this.listeners = this.listeners.filter(cb => cb !== callback)
+      // Recopilar datos locales de esta sesión de colaborador
+      // Usamos la tabla productos_contados o productos_colaborador según tu lógica actual
+      // Asumiendo que el colaborador guarda en productos_colaborador temporalmente
+      const productos = await localDb.obtenerProductosColaborador(solicitudId)
+      
+      if (productos.length === 0) return true
+
+      // Enviar
+      await solicitudesConexionApi.enviarProductos(solicitudId, sesionId, productos)
+      
+      // Limpiar local si éxito
+      await localDb.limpiarProductosColaborador(solicitudId)
+      
+      showMessage({ message: 'Datos enviados al administrador', type: 'success' })
+      return true
+
+    } catch (error) {
+      console.error('Error enviando datos colaborador:', error)
+      showMessage({ message: 'Error enviando datos. El servidor podría estar despertando.', type: 'danger' })
+      return false
     }
   }
 
-  /**
-   * Notificar a todos los listeners
-   */
-  notificarListeners(evento) {
-    this.listeners.forEach(callback => {
-      try {
-        callback(evento)
-      } catch (error) {
-        console.error('Error en listener:', error)
-      }
-    })
+  // --- MÉTODOS LEGACY DE SOPORTE (Para no romper UI existente) ---
+  
+  async agregarTarea(tipo, payload) {
+    // En la nueva arquitectura, simplemente guardamos en DB local (ya hecho por la UI)
+    // y disparamos syncWithCloud
+    this.syncWithCloud()
+    return 1
   }
+
+  async procesarColaPendiente() {
+    return this.syncWithCloud()
+  }
+
+  async sincronizarDesdeTabla(sesionId) {
+    return this.syncWithCloud()
+  }
+
+  async obtenerEstadisticas() {
+    return localDb.obtenerEstadisticasSincronizacion()
+  }
+
+  addListener(cb) { this.listeners.push(cb); return () => this.listeners = this.listeners.filter(l => l !== cb) }
+  notificarListeners(ev) { this.listeners.forEach(cb => cb(ev)) }
 }
 
-// Exportar instancia singleton
 const syncService = new SyncService()
-
 export default syncService
-
-
-

@@ -14,6 +14,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { clientesApi, handleApiError } from '../services/api';
 import { showMessage } from 'react-native-flash-message';
+// TODO: Descomentar cuando MessageContext esté listo
+// import { useMessage } from '../context/MessageContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import ClienteModal from '../components/ClienteModal';
 import ImportarPDFModal from '../components/ImportarPDFModal';
@@ -81,28 +83,63 @@ const ClientesScreen = ({ navigation }) => {
 
   const createMutation = useMutation(clientesApi.create, {
     onSuccess: () => {
-      queryClient.invalidateQueries('clientes');
-      showMessage({ message: 'Cliente creado exitosamente', type: 'success' });
+      // Invalidar TODAS las queries relacionadas con clientes
+      queryClient.invalidateQueries(['clientes']);
+      queryClient.invalidateQueries(['clientesParaSesion']);
+      // Forzar refetch inmediato
+      refetch();
+      
+      showMessage({ 
+        message: 'Cliente creado exitosamente', 
+        type: 'success' 
+      });
       setModalVisible(false);
     },
-    onError: handleApiError,
+    onError: (error) => {
+      showMessage({ 
+        message: error?.response?.data?.mensaje || error.message || 'Error al crear cliente', 
+        type: 'danger' 
+      });
+    },
   });
 
   const updateMutation = useMutation(({ id, data }) => clientesApi.update(id, data), {
     onSuccess: () => {
-      queryClient.invalidateQueries('clientes');
-      showMessage({ message: 'Cliente actualizado exitosamente', type: 'success' });
+      queryClient.invalidateQueries(['clientes']);
+      queryClient.invalidateQueries(['clientesParaSesion']);
+      refetch();
+      
+      showMessage({ 
+        message: 'Cliente actualizado exitosamente',
+        type: 'success' 
+      });
       setModalVisible(false);
     },
-    onError: handleApiError,
+    onError: (error) => {
+      showMessage({ 
+        message: error?.response?.data?.mensaje || error.message || 'Error al actualizar cliente', 
+        type: 'danger' 
+      });
+    },
   });
 
   const deleteMutation = useMutation(clientesApi.delete, {
     onSuccess: () => {
-      queryClient.invalidateQueries('clientes');
-      showMessage({ message: 'Cliente eliminado exitosamente', type: 'success' });
+      queryClient.invalidateQueries(['clientes']);
+      queryClient.invalidateQueries(['clientesParaSesion']);
+      refetch();
+      
+      showMessage({ 
+        message: 'Cliente eliminado exitosamente',
+        type: 'success' 
+      });
     },
-    onError: handleApiError,
+    onError: (error) => {
+      showMessage({ 
+        message: error?.response?.data?.mensaje || error.message || 'Error al eliminar cliente', 
+        type: 'danger' 
+      });
+    },
   });
 
   const handleOpenModal = (cliente = null) => {

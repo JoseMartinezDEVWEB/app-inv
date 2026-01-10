@@ -139,6 +139,18 @@ export const AuthProvider = ({ children }) => {
           if (tokenExpired) {
             console.log('⚠️ Token expirado detectado al iniciar app')
             
+            // Si es un token local (generado por la app), limpiar y permitir nuevo login
+            if (access.startsWith('local-token-')) {
+              console.log('🔐 Token local expirado - limpiando credenciales')
+              await Promise.all([
+                resetInternetCredentials('auth_token'),
+                resetInternetCredentials('refresh_token'),
+                resetInternetCredentials('user_data'),
+              ])
+              dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
+              return
+            }
+            
             // Si es colaborador temporal, no tiene refresh token - hacer logout silencioso
             if (isTempCollaborator) {
               console.log('🔐 Colaborador temporal con token expirado - cerrando sesión')
@@ -150,8 +162,8 @@ export const AuthProvider = ({ children }) => {
               return
             }
 
-            // Si tiene refresh token, intentar refrescar
-            if (refresh) {
+            // Si tiene refresh token válido, intentar refrescar
+            if (refresh && !refresh.startsWith('local-refresh-')) {
               console.log('🔄 Intentando refrescar token automáticamente...')
               try {
                 const response = await axios.post(`${config.apiUrl}/auth/refresh`, {
@@ -191,7 +203,12 @@ export const AuthProvider = ({ children }) => {
                   throw new Error('No se recibió token de acceso')
                 }
               } catch (refreshError) {
-                console.error('❌ Error refrescando token:', refreshError.message)
+                // Solo mostrar error si no es 401 (token inválido esperado)
+                if (refreshError.response?.status !== 401) {
+                  console.error('❌ Error refrescando token:', refreshError.message)
+                } else {
+                  console.log('🔐 Token de refresh inválido - requiere nuevo login')
+                }
                 
                 // Si falla el refresh, limpiar todo y hacer logout silencioso
                 await Promise.all([
@@ -202,19 +219,23 @@ export const AuthProvider = ({ children }) => {
                 
                 dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
                 
-                showMessage({
-                  message: 'Sesión expirada',
-                  description: 'Por favor, inicia sesión nuevamente',
-                  type: 'warning',
-                  duration: 3000,
-                })
+                // No mostrar mensaje si es 401 (esperado al iniciar sin sesión válida)
+                if (refreshError.response?.status !== 401) {
+                  showMessage({
+                    message: 'Sesión expirada',
+                    description: 'Por favor, inicia sesión nuevamente',
+                    type: 'warning',
+                    duration: 3000,
+                  })
+                }
                 return
               }
             } else {
-              // Token expirado y no hay refresh token - logout silencioso
-              console.log('❌ Token expirado sin refresh token disponible')
+              // No hay refresh token válido, limpiar y permitir nuevo login silenciosamente
+              console.log('🔐 No hay token de refresh válido - limpiando credenciales')
               await Promise.all([
                 resetInternetCredentials('auth_token'),
+                resetInternetCredentials('refresh_token'),
                 resetInternetCredentials('user_data'),
               ])
               dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })

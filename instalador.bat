@@ -20,7 +20,7 @@ set "RESET=[0m"
 echo %BLUE%Verificando requisitos del sistema...%RESET%
 where node >nul 2>&1
 if %errorlevel% neq 0 (
-    echo %RED%❌ Node.js no está instalado.%RESET%
+    echo %RED%[ERROR] Node.js no esta instalado.%RESET%
     echo.
     echo Por favor, instala Node.js desde: https://nodejs.org/
     echo Versión mínima requerida: Node.js 18.x o superior
@@ -31,28 +31,28 @@ if %errorlevel% neq 0 (
 
 :: Verificar versión de Node.js
 for /f "tokens=*" %%i in ('node --version') do set NODE_VERSION=%%i
-echo %GREEN%✅ Node.js encontrado: %NODE_VERSION%%RESET%
+    echo %GREEN%[OK] Node.js encontrado: %NODE_VERSION%%RESET%
 
 :: Verificar npm
 where npm >nul 2>&1
 if %errorlevel% neq 0 (
-    echo %RED%❌ npm no está instalado.%RESET%
+    echo %RED%[ERROR] npm no esta instalado.%RESET%
     pause
     exit /b 1
 )
 
 for /f "tokens=*" %%i in ('npm --version') do set NPM_VERSION=%%i
-echo %GREEN%✅ npm encontrado: %NPM_VERSION%%RESET%
+    echo %GREEN%[OK] npm encontrado: %NPM_VERSION%%RESET%
 
 :: Verificar Python (para importación de productos)
 where python >nul 2>&1
 if %errorlevel% neq 0 (
-    echo %YELLOW%⚠️  Python no está instalado. La función de importación de productos puede no funcionar.%RESET%
+    echo %YELLOW%[ADVERTENCIA] Python no esta instalado. La funcion de importacion de productos puede no funcionar.%RESET%
     echo    Puedes instalarlo desde: https://www.python.org/downloads/
     echo.
 ) else (
     for /f "tokens=*" %%i in ('python --version') do set PYTHON_VERSION=%%i
-    echo %GREEN%✅ Python encontrado: %PYTHON_VERSION%%RESET%
+    echo %GREEN%[OK] Python encontrado: %PYTHON_VERSION%%RESET%
 )
 
 echo.
@@ -63,7 +63,7 @@ echo.
 
 cd backend-sqlite
 if %errorlevel% neq 0 (
-    echo %RED%❌ Error: No se encontró la carpeta backend-sqlite%RESET%
+    echo %RED%[ERROR] No se encontro la carpeta backend-sqlite%RESET%
     pause
     exit /b 1
 )
@@ -71,21 +71,21 @@ if %errorlevel% neq 0 (
 echo %BLUE%Instalando dependencias del backend...%RESET%
 call npm install
 if %errorlevel% neq 0 (
-    echo %RED%❌ Error al instalar dependencias del backend%RESET%
+    echo %RED%[ERROR] Error al instalar dependencias del backend%RESET%
     pause
     exit /b 1
 )
 
-echo %GREEN%✅ Dependencias del backend instaladas%RESET%
+echo %GREEN%[OK] Dependencias del backend instaladas%RESET%
 
 :: Verificar si existe .env
 if not exist .env (
-    echo %YELLOW%⚠️  Archivo .env no encontrado. Creando desde .env.example...%RESET%
+    echo %YELLOW%[ADVERTENCIA] Archivo .env no encontrado. Creando desde .env.example...%RESET%
     if exist .env.example (
         copy .env.example .env >nul
-        echo %GREEN%✅ Archivo .env creado%RESET%
+        echo %GREEN%[OK] Archivo .env creado%RESET%
     ) else (
-        echo %YELLOW%⚠️  .env.example no encontrado. Usando configuración por defecto.%RESET%
+        echo %YELLOW%[ADVERTENCIA] .env.example no encontrado. Usando configuracion por defecto.%RESET%
     )
 )
 
@@ -95,24 +95,24 @@ if not exist database\backups mkdir database\backups
 if not exist logs mkdir logs
 if not exist temp mkdir temp
 
-echo %GREEN%✅ Directorios creados%RESET%
+echo %GREEN%[OK] Directorios creados%RESET%
 
 :: Ejecutar migraciones
 echo.
 echo %BLUE%Ejecutando migraciones de base de datos...%RESET%
 call npm run migrate
 if %errorlevel% neq 0 (
-    echo %YELLOW%⚠️  Advertencia: Error al ejecutar migraciones. Puede que la base de datos ya esté inicializada.%RESET%
+    echo %YELLOW%[ADVERTENCIA] Error al ejecutar migraciones. Puede que la base de datos ya este inicializada.%RESET%
 )
 
 :: Ejecutar seeds (opcional)
 echo.
-set /p RUN_SEEDS="¿Deseas ejecutar los datos de prueba? (S/N): "
+set /p RUN_SEEDS="Deseas ejecutar los datos de prueba? (S/N): "
 if /i "!RUN_SEEDS!"=="S" (
     echo %BLUE%Ejecutando seeds...%RESET%
     call npm run seed
     if %errorlevel% neq 0 (
-        echo %YELLOW%⚠️  Advertencia: Error al ejecutar seeds.%RESET%
+        echo %YELLOW%[ADVERTENCIA] Error al ejecutar seeds.%RESET%
     )
 )
 
@@ -126,7 +126,7 @@ echo.
 
 cd frontend-desktop
 if %errorlevel% neq 0 (
-    echo %RED%❌ Error: No se encontró la carpeta frontend-desktop%RESET%
+    echo %RED%[ERROR] No se encontro la carpeta frontend-desktop%RESET%
     pause
     exit /b 1
 )
@@ -134,21 +134,21 @@ if %errorlevel% neq 0 (
 echo %BLUE%Instalando dependencias del frontend...%RESET%
 call npm install
 if %errorlevel% neq 0 (
-    echo %RED%❌ Error al instalar dependencias del frontend%RESET%
+    echo %RED%[ERROR] Error al instalar dependencias del frontend%RESET%
     pause
     exit /b 1
 )
 
-echo %GREEN%✅ Dependencias del frontend instaladas%RESET%
+echo %GREEN%[OK] Dependencias del frontend instaladas%RESET%
 
 cd ..
 
 echo.
 echo ========================================
-echo   INSTALACIÓN COMPLETADA
+echo   INSTALACION COMPLETADA
 echo ========================================
 echo.
-echo %GREEN%✅ Todo está listo para usar la aplicación%RESET%
+echo %GREEN%[OK] Todo esta listo para usar la aplicacion%RESET%
 echo.
 echo Para iniciar la aplicación en modo desarrollo:
 echo   1. Backend: cd backend-sqlite ^&^& npm start

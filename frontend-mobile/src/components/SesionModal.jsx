@@ -17,7 +17,8 @@ const SesionModal = ({ visible, onClose, onSave }) => {
       // El backend (esquemaPaginacion) sólo permite limite hasta 100
       const response = await clientesApi.getAll({ limite: 100, pagina: 1 })
       console.log('✅ Respuesta de clientes:', response.data)
-      const clientes = response.data?.datos?.clientes || []
+      // El backend devuelve { datos: { datos: clientes[], paginacion: {...} } }
+      const clientes = response.data?.datos?.datos || response.data?.datos?.clientes || []
       console.log(`✅ Total de clientes cargados: ${clientes.length}`)
       return clientes
     },

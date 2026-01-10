@@ -45,12 +45,12 @@
     },
     "web": {},
     "extra": {
-      "EXPO_PUBLIC_API_URL": "",
-      "DEFAULT_REMOTE_API_URL": "http://10.0.2.2:4000/api",
+      "EXPO_PUBLIC_API_URL": "https://appj4-hlqj.onrender.com/api",
+      "DEFAULT_REMOTE_API_URL": "https://appj4-hlqj.onrender.com/api",
       "API_ENDPOINTS": {
         "local": "http://localhost:4000/api",
         "emulator": "http://10.0.2.2:4000/api",
-        "lan": "http://10.0.0.41:4000/api",
+        "lan": "http://192.168.1.100:4000/api",
         "cloud": "https://appj4-hlqj.onrender.com/api"
       },
       "eas": {

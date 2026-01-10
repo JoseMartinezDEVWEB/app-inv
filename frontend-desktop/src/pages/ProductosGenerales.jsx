@@ -129,12 +129,12 @@ const ProductosGenerales = () => {
     }
   )
 
-  const productos = productosData?.datos || []
+  const productos = productosData?.productos || []
   const paginacion = productosData?.paginacion || {}
-  const categorias = categoriasData?.categorias || []
+  const categorias = categoriasData?.categorias || categoriasData || []
 
   // Debug: Log productos para verificar estructura
-  console.log('Productos recibidos:', productos)
+  console.log('Productos recibidos:', productos.length, 'items')
   if (productos.length > 0) {
     console.log('Primer producto:', productos[0])
   }

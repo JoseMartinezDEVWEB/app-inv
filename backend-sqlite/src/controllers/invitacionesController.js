@@ -88,6 +88,8 @@ export const listarMisInvitaciones = async (req, res) => {
     rol: inv.metadata?.rol || 'colaborador',
     nombre: inv.metadata?.nombre || null,
     email: inv.metadata?.email || null,
+    // Calcular y devolver el código numérico de 6 dígitos
+    codigoNumerico: Invitacion.calcularCodigoNumerico(inv.codigoQR),
     estado:
       inv.estado === 'activa' ? 'pendiente' : inv.estado === 'usada' ? 'consumida' : inv.estado,
     expiraEn: inv.expiraEn,

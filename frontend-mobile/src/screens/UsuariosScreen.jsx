@@ -25,11 +25,24 @@ const UsuariosScreen = () => {
   const resetForm = () => setForm({ nombre: '', email: '', password: '', telefono: '', rol: 'colaborador' })
 
   const createMutation = useMutation((payload) => usuariosApi.create(payload), {
-    onSuccess: () => {
-      showMessage({ message: 'Usuario creado', type: 'success' })
-      setModalCrear(false)
-      resetForm()
-      queryClient.invalidateQueries(['usuarios-subordinados'])
+    onSuccess: (response) => {
+      const mensaje = response.data?.mensaje || 'Usuario creado';
+      const codigoAcceso = response.data?.datos?.codigoAcceso;
+      
+      if (codigoAcceso) {
+        // Mostrar alerta especial con el código de acceso del colaborador
+        Alert.alert(
+          '✅ Usuario Colaborador Creado',
+          `Nombre: ${response.data?.datos?.nombre}\n\n📱 Código de Acceso:\n\n${codigoAcceso}\n\nComparte este código de 6 dígitos con el colaborador para que pueda conectarse desde la app móvil.`,
+          [{ text: 'Entendido', style: 'default' }]
+        );
+      } else {
+        showMessage({ message: mensaje, type: 'success' });
+      }
+      
+      setModalCrear(false);
+      resetForm();
+      queryClient.invalidateQueries(['usuarios-subordinados']);
     },
     onError: handleApiError,
   })

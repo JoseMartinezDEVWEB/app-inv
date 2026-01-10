@@ -30,7 +30,6 @@
         "arch": ["x64"]
       }
     ],
-    "icon": "../logo_transparent-1UMhnOlZ.png",
     "artifactName": "${productName}-Setup-${version}.${ext}"
   },
   "nsis": {
@@ -41,9 +40,6 @@
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
     "shortcutName": "Gestor Inventario J4 Pro",
-    "installerIcon": "../logo_transparent-1UMhnOlZ.png",
-    "uninstallerIcon": "../logo_transparent-1UMhnOlZ.png",
-    "installerHeaderIcon": "../logo_transparent-1UMhnOlZ.png",
     "language": "1034",
     "warningsAsErrors": false
   },

@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons'
 import * as DocumentPicker from 'expo-document-picker'
 import { importarProductosDesdeArchivo } from '../../services/importService'
 import { showMessage } from 'react-native-flash-message'
+import { isOnline } from '../../config/env'
 
 const ImportarConGeminiModal = ({ visible, onClose, onProductosImportados, solicitudId }) => {
   const [etapa, setEtapa] = useState('inicial') // inicial, seleccionando, procesando, revision
@@ -68,6 +69,18 @@ const ImportarConGeminiModal = ({ visible, onClose, onProductosImportados, solic
 
     setCargando(true)
     setEtapa('procesando')
+
+    // Verificar internet antes de procesar
+    if (!isOnline()) {
+      setCargando(false)
+      setEtapa('seleccionando')
+      Alert.alert(
+        'Conexión Requerida',
+        'La importación con IA requiere conexión a internet para procesar el archivo en el servidor. Por favor, conéctate y vuelve a intentarlo.',
+        [{ text: 'Entendido' }]
+      )
+      return
+    }
 
     try {
       // Si es PDF y no hay API key, preguntar si quiere continuar sin ella
@@ -185,7 +198,7 @@ const ImportarConGeminiModal = ({ visible, onClose, onProductosImportados, solic
       <View style={styles.infoBox}>
         <Ionicons name="information-circle-outline" size={20} color="#0ea5e9" />
         <Text style={styles.infoText}>
-          La IA procesará el archivo y extraerá los productos automáticamente
+          La IA procesará el archivo y extraerá los productos automáticamente. (Requiere Internet)
         </Text>
       </View>
 
@@ -300,23 +313,34 @@ const ImportarConGeminiModal = ({ visible, onClose, onProductosImportados, solic
       </Text>
 
       <ScrollView style={styles.listaProductos} showsVerticalScrollIndicator={false}>
-        {productosImportados.map((producto, index) => (
-          <View key={index} style={styles.productoCard}>
+        {productosImportados.map((producto, index) => {
+          // Asegurar que el producto tenga las propiedades necesarias
+          const productoSafe = {
+            nombre: producto.nombre || 'Sin nombre',
+            sku: producto.sku || producto.codigo || '',
+            codigoBarras: producto.codigoBarras || producto.codigo || '',
+            cantidad: producto.cantidad || 1,
+            costo: producto.costo || producto.costoBase || 0,
+          }
+          
+          return (
+          <View key={`producto-${index}-${productoSafe.nombre}`} style={styles.productoCard}>
             <View style={styles.productoNumero}>
               <Text style={styles.productoNumeroText}>{index + 1}</Text>
             </View>
             <View style={styles.productoInfo}>
-              <Text style={styles.productoNombre}>{producto.nombre}</Text>
+              <Text style={styles.productoNombre}>{productoSafe.nombre}</Text>
               <Text style={styles.productoDetalles}>
-                {producto.sku ? `SKU: ${producto.sku}` : 'Sin SKU'}
-                {producto.codigoBarras ? ` • CB: ${producto.codigoBarras}` : ''}
+                {productoSafe.sku ? `SKU: ${productoSafe.sku}` : 'Sin SKU'}
+                {productoSafe.codigoBarras ? ` • CB: ${productoSafe.codigoBarras}` : ''}
               </Text>
               <Text style={styles.productoCantidad}>
-                Cantidad: {producto.cantidad || 1} | Costo: ${producto.costo || 0}
+                Cantidad: {productoSafe.cantidad} | Costo: ${productoSafe.costo.toFixed(2)}
               </Text>
             </View>
           </View>
-        ))}
+          )
+        })}
       </ScrollView>
 
       <View style={styles.botonesContainer}>

@@ -7,12 +7,14 @@ import {
   TouchableOpacity,
   Dimensions,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '../context/AuthContext'
 import { useLoader } from '../context/LoaderContext'
-import { useQueryClient } from 'react-query'
+import { useQueryClient, useQuery } from 'react-query'
+import { clientesApi, sesionesApi, reportesApi, handleApiResponse } from '../services/api'
 
 const { width } = Dimensions.get('window')
 
@@ -29,32 +31,96 @@ const DashboardScreen = ({ navigation }) => {
     setTimeout(() => setRefreshing(false), 900)
   }, [queryClient, showLoader])
 
+  // Obtener estadísticas de clientes
+  const { data: totalClientes = 0 } = useQuery(
+    'clientes-stats',
+    async () => {
+      const response = await clientesApi.getAll({ limite: 1, pagina: 1 })
+      const datos = handleApiResponse(response)
+      return datos.paginacion?.total || datos.paginacion?.totalRegistros || 0
+    },
+    { retry: 1 }
+  )
+
+  // Obtener sesiones
+  const { data: sesionesData } = useQuery(
+    'sesiones-recientes',
+    async () => {
+      const response = await sesionesApi.getAll({ limite: 50, pagina: 1 })
+      return handleApiResponse(response)
+    },
+    { retry: 1 }
+  )
+
+  // Obtener estadísticas de reportes
+  const { data: reportesData } = useQuery(
+    'reportes-stats',
+    async () => {
+      const response = await reportesApi.getStats()
+      return handleApiResponse(response)
+    },
+    { retry: 1 }
+  )
+
+  // Calcular estadísticas
+  const sesionesActivas = sesionesData?.sesiones?.filter(
+    s => s.estado === 'iniciada' || s.estado === 'en_progreso'
+  ).length || 0
+
+  const sesionesCompletadas = reportesData?.estadisticasGenerales?.totalSesiones || 
+                              sesionesData?.sesiones?.filter(s => s.estado === 'completada').length || 0
+
+  const valorTotal = reportesData?.estadisticasGenerales?.valorTotalInventarios || 0
+
+  // Actividades recientes (últimas sesiones)
+  const actividadesRecientes = sesionesData?.sesiones?.slice(0, 5).map(sesion => {
+    const tipo = sesion.estado === 'completada' ? 'completada' : sesion.estado === 'en_progreso' ? 'en_progreso' : 'iniciada'
+    const icono = tipo === 'completada' ? 'checkmark-circle' : tipo === 'en_progreso' ? 'time' : 'play-circle'
+    const color = tipo === 'completada' ? '#22c55e' : tipo === 'en_progreso' ? '#f59e0b' : '#3b82f6'
+    const titulo = tipo === 'completada' ? 'Sesión completada' : tipo === 'en_progreso' ? 'Sesión en progreso' : 'Sesión iniciada'
+    
+    return {
+      id: sesion._id || sesion.id,
+      tipo,
+      icono,
+      color,
+      titulo,
+      descripcion: `Cliente: ${sesion.clienteNegocio?.nombre || 'Sin cliente'} - Valor: $${(sesion.totales?.valorTotalInventario || 0).toLocaleString()}`,
+      tiempo: new Date(sesion.updatedAt || sesion.createdAt).toLocaleDateString('es-ES', { 
+        day: 'numeric', 
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    }
+  }) || []
+
   // Tarjetas de estadísticas
   const statCards = [
     {
       title: 'Total Clientes',
-      value: '12',
+      value: totalClientes.toString(),
       icon: 'people',
       color: '#3b82f6',
       gradient: ['#3b82f6', '#2563eb'],
     },
     {
       title: 'Sesiones Activas',
-      value: '3',
+      value: sesionesActivas.toString(),
       icon: 'time',
       color: '#f59e0b',
       gradient: ['#f59e0b', '#d97706'],
     },
     {
       title: 'Sesiones Completadas',
-      value: '8',
+      value: sesionesCompletadas.toString(),
       icon: 'checkmark-circle',
       color: '#22c55e',
       gradient: ['#22c55e', '#16a34a'],
     },
     {
       title: 'Valor Total',
-      value: '$45,000',
+      value: `$${valorTotal.toLocaleString()}`,
       icon: 'cash',
       color: '#ef4444',
       gradient: ['#ef4444', '#dc2626'],
@@ -156,38 +222,25 @@ const DashboardScreen = ({ navigation }) => {
       <View style={styles.activitiesContainer}>
         <Text style={styles.sectionTitle}>Actividades Recientes</Text>
         <View style={styles.activitiesList}>
-          <View style={styles.activityItem}>
-            <View style={[styles.activityIcon, { backgroundColor: '#22c55e' }]}>
-              <Ionicons name="checkmark-circle" size={20} color="#ffffff" />
+          {actividadesRecientes.length === 0 ? (
+            <View style={styles.emptyActivities}>
+              <Ionicons name="document-text-outline" size={48} color="#cbd5e1" />
+              <Text style={styles.emptyActivitiesText}>No hay actividades recientes</Text>
             </View>
-            <View style={styles.activityContent}>
-              <Text style={styles.activityTitle}>Sesión completada</Text>
-              <Text style={styles.activityDescription}>Cliente: Tienda ABC - Valor: $15,000</Text>
-              <Text style={styles.activityTime}>Hace 2 horas</Text>
-            </View>
-          </View>
-          
-          <View style={styles.activityItem}>
-            <View style={[styles.activityIcon, { backgroundColor: '#3b82f6' }]}>
-              <Ionicons name="people" size={20} color="#ffffff" />
-            </View>
-            <View style={styles.activityContent}>
-              <Text style={styles.activityTitle}>Nuevo cliente agregado</Text>
-              <Text style={styles.activityDescription}>Supermercado XYZ registrado</Text>
-              <Text style={styles.activityTime}>Hace 4 horas</Text>
-            </View>
-          </View>
-          
-          <View style={styles.activityItem}>
-            <View style={[styles.activityIcon, { backgroundColor: '#f59e0b' }]}>
-              <Ionicons name="document-text" size={20} color="#ffffff" />
-            </View>
-            <View style={styles.activityContent}>
-              <Text style={styles.activityTitle}>Reporte generado</Text>
-              <Text style={styles.activityDescription}>Balance mensual - Enero 2024</Text>
-              <Text style={styles.activityTime}>Hace 6 horas</Text>
-            </View>
-          </View>
+          ) : (
+            actividadesRecientes.map((actividad) => (
+              <View key={actividad.id} style={styles.activityItem}>
+                <View style={[styles.activityIcon, { backgroundColor: actividad.color }]}>
+                  <Ionicons name={actividad.icono} size={20} color="#ffffff" />
+                </View>
+                <View style={styles.activityContent}>
+                  <Text style={styles.activityTitle}>{actividad.titulo}</Text>
+                  <Text style={styles.activityDescription}>{actividad.descripcion}</Text>
+                  <Text style={styles.activityTime}>{actividad.tiempo}</Text>
+                </View>
+              </View>
+            ))
+          )}
         </View>
       </View>
     </ScrollView>
@@ -363,6 +416,17 @@ const styles = StyleSheet.create({
   activityTime: {
     fontSize: 12,
     color: '#94a3b8',
+  },
+  emptyActivities: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyActivitiesText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#94a3b8',
+    textAlign: 'center',
   },
 })
 

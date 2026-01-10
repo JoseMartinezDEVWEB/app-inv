@@ -149,7 +149,15 @@ const LoginScreen = ({ navigation }) => {
       )
     } catch (error) {
       console.error('Error al crear solicitud de conexión:', error)
-      Alert.alert('Error', error.response?.data?.mensaje || 'Código inválido o error de conexión')
+      const mensajeError = error.response?.data?.mensaje || error.message || 'Error de conexión'
+      Alert.alert(
+        'Error al Conectar', 
+        mensajeError + '\n\nSugerencias:\n' +
+        '• Verifica que el código sea correcto\n' +
+        '• Asegúrate de estar en la misma red que el administrador\n' +
+        '• Verifica que el servidor backend esté corriendo\n' +
+        '• El colaborador debe estar activo en el sistema'
+      )
     } finally {
       setLoadingCodigo(false)
     }
@@ -244,7 +252,8 @@ const LoginScreen = ({ navigation }) => {
               </LinearGradient>
             </TouchableOpacity>
 
-            {/* Botón Acceder como Colaborador */}
+            {/* Botón Acceder como Colaborador (Eliminado QR, solo manual) */}
+            {/*
             <TouchableOpacity
               style={styles.collaboratorButton}
               onPress={() => setShowQRScanner(true)}
@@ -252,14 +261,15 @@ const LoginScreen = ({ navigation }) => {
               <Ionicons name="qr-code-outline" size={20} color="#8b5cf6" />
               <Text style={styles.collaboratorButtonText}>Escanear Código QR</Text>
             </TouchableOpacity>
+            */}
 
-            {/* Botón Ingresar Código Manual */}
+            {/* Botón Ingresar Código Manual - Ahora estilo principal */}
             <TouchableOpacity
-              style={styles.codigoButton}
+              style={styles.collaboratorButton}
               onPress={() => setShowCodigoInput(!showCodigoInput)}
             >
-              <Ionicons name="keypad-outline" size={20} color="#7c3aed" />
-              <Text style={styles.codigoButtonText}>Ingresar Código de 6 Dígitos</Text>
+              <Ionicons name="keypad-outline" size={20} color="#8b5cf6" />
+              <Text style={styles.collaboratorButtonText}>Ingresar como Colaborador</Text>
             </TouchableOpacity>
 
             {/* Input de Código (mostrar condicionalmente) */}

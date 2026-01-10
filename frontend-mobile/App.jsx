@@ -6,6 +6,7 @@ import { NavigationContainer } from '@react-navigation/native'
 import { createStackNavigator } from '@react-navigation/stack'
 import { AuthProvider, useAuth } from './src/context/AuthContext'
 import { LoaderProvider, useLoader } from './src/context/LoaderContext'
+import { MessageProvider } from './src/context/MessageContext'
 import { gestureHandlerRootHOC } from 'react-native-gesture-handler'
 import FlashMessage from 'react-native-flash-message'
 import { QueryClient, QueryClientProvider } from 'react-query'
@@ -177,10 +178,12 @@ export default gestureHandlerRootHOC(function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <LoaderProvider>
-        <AuthProvider>
-          <AppContent />
-          <FlashMessage position="top" />
-        </AuthProvider>
+        <MessageProvider>
+          <AuthProvider>
+            <AppContent />
+            <FlashMessage position="top" />
+          </AuthProvider>
+        </MessageProvider>
       </LoaderProvider>
     </QueryClientProvider>
   )
