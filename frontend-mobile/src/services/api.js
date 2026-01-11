@@ -7,13 +7,14 @@ import localDb from './localDb'
 // MODO STANDALONE: Activado para priorizar SQLite
 const FORCE_STANDALONE = true; 
 
-// Rutas que requieren conexión real (Colaboración, Auth inicial, Sync)
+// Rutas que requieren conexión real (Colaboración, Auth inicial, Sync, Importación)
 const ROUTES_PREFER_REMOTE = [
   '/solicitudes-conexion',
   '/invitaciones',
   '/auth/login', // Login inicial requiere nube para obtener token
   '/sync',       // Nueva ruta de sincronización
-  '/salud'
+  '/salud',
+  '/importar',   // Importación de archivos requiere servidor (procesamiento Python/IA)
 ];
 
 const API_BASE_URL = config.apiUrl
@@ -40,7 +41,22 @@ const mockLocalResponse = async (config) => {
 
   try {
     const { url, method, data: dataStr } = config;
-    const data = dataStr ? JSON.parse(dataStr) : {};
+    
+    // Si es FormData o no es un string JSON, no intentar parsearlo
+    let data = {};
+    if (dataStr && typeof dataStr === 'string') {
+      try {
+        data = JSON.parse(dataStr);
+      } catch (e) {
+        // Si no es JSON válido, dejar data como objeto vacío
+        // Esto evita errores con FormData u otros formatos
+        console.log('⚠️ Adaptador local: data no es JSON, omitiendo parseo');
+        data = {};
+      }
+    } else if (dataStr && typeof dataStr === 'object' && !(dataStr instanceof FormData)) {
+      // Si ya es un objeto (pero no FormData), usarlo directamente
+      data = dataStr;
+    }
     
     // --- LECTURAS (GET) SIEMPRE A LOCAL ---
     
@@ -127,10 +143,12 @@ api.interceptors.response.use(
     return response;
   },
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error?.config;
 
-    // Detectar COLD START o problemas de red en rutas remotas
-    if (!originalRequest._retry && (error.code === 'ECONNABORTED' || error.response?.status >= 500)) {
+    // Verificar que originalRequest existe antes de acceder a sus propiedades
+    if (originalRequest) {
+      // Detectar COLD START o problemas de red en rutas remotas
+      if (!originalRequest._retry && (error.code === 'ECONNABORTED' || error.response?.status >= 500)) {
         console.log('🔄 Detectado posible Cold Start o error de servidor. Reintentando...');
         originalRequest._retry = true;
         
@@ -138,6 +156,7 @@ api.interceptors.response.use(
         await new Promise(resolve => setTimeout(resolve, 3000));
         
         return api(originalRequest);
+      }
     }
 
     // Fallback a offline si falla lo remoto (para casos híbridos)
@@ -187,6 +206,26 @@ export const productosApi = {
     create: (d) => api.post('/productos/generales', d),
     update: (id, d) => api.put(`/productos/generales/${id}`, d),
     delete: (id) => api.delete(`/productos/generales/${id}`),
+    getByBarcode: async (codigo) => {
+        // Offline-first: buscar en localDb primero
+        try {
+            const productoLocal = await localDb.buscarProductoPorCodigo(codigo);
+            if (productoLocal) {
+                return { data: { exito: true, datos: productoLocal } };
+            }
+        } catch (e) {
+            console.log('Error buscando localmente:', e);
+        }
+        // Si no se encuentra localmente y hay conexión, buscar en servidor
+        try {
+            return await api.get(`/productos/generales/buscar/codigo/${codigo}`);
+        } catch (e) {
+            // Si falla, retornar null
+            return { data: { exito: false, datos: null } };
+        }
+    },
+    getByClient: (clienteId, params) => api.get(`/productos/cliente/${clienteId}`, { params }),
+    createForClient: (clienteId, data) => api.post(`/productos/cliente/${clienteId}`, data),
 };
 
 export const reportesApi = {
@@ -228,6 +267,33 @@ export const invitacionesApi = {
     create: (d) => api.post('/invitaciones', d),
     createQR: (d) => api.post('/invitaciones/generar-qr', d), // Generar código QR para invitaciones
     delete: (id) => api.delete(`/invitaciones/${id}`),
+    getQR: (invitacionId) => api.get(`/invitaciones/qr/${invitacionId}`),
+    cancel: (id) => api.delete(`/invitaciones/${id}`),
+    consumirSinCuenta: (token) => api.post('/invitaciones/consumir-sin-cuenta', { token }),
+    consumirCodigo: (codigo) => api.post('/invitaciones/consumir-codigo', { codigo }),
+};
+
+// API para solicitudes de conexión de colaboradores
+// Estas rutas están en ROUTES_PREFER_REMOTE, así que van directamente al servidor
+export const solicitudesConexionApi = {
+  // Públicas (sin auth) - Colaboradores
+  solicitar: (data) => api.post('/solicitudes-conexion/solicitar', data),
+  verificarEstado: (solicitudId) => api.get(`/solicitudes-conexion/estado/${solicitudId}`),
+  agregarProductoOffline: (solicitudId, productoData) => api.post(`/solicitudes-conexion/${solicitudId}/productos-offline`, { productoData }),
+  
+  // Estados de conexión (colaboradores)
+  ping: (solicitudId) => api.post(`/solicitudes-conexion/${solicitudId}/ping`),
+  conectar: (solicitudId) => api.post(`/solicitudes-conexion/${solicitudId}/conectar`),
+  cerrarSesion: (solicitudId) => api.post(`/solicitudes-conexion/${solicitudId}/cerrar-sesion`),
+  enviarProductos: (solicitudId, sesionInventarioId) => api.post(`/solicitudes-conexion/${solicitudId}/enviar-productos`, { sesionInventarioId }),
+
+  // Protegidas (requieren auth) - Admin
+  listarPendientes: () => api.get('/solicitudes-conexion/pendientes'),
+  listarConectados: (sesionId) => api.get('/solicitudes-conexion/conectados', { params: { sesionId } }),
+  aceptar: (solicitudId, sesionInventarioId) => api.post(`/solicitudes-conexion/${solicitudId}/aceptar`, { sesionInventarioId }),
+  rechazar: (solicitudId) => api.post(`/solicitudes-conexion/${solicitudId}/rechazar`),
+  obtenerProductosOffline: (solicitudId) => api.get(`/solicitudes-conexion/${solicitudId}/productos-offline`),
+  sincronizar: (solicitudId, temporalIds) => api.post(`/solicitudes-conexion/${solicitudId}/sincronizar`, { temporalIds }),
 };
 
 // Export default

@@ -1,9 +1,19 @@
 import dbManager from '../config/database.js'
 
+// Generador UUID v4
+const generateUUID = () => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
 class ClienteNegocio {
   // Crear nuevo cliente
   static crear(datos) {
     const db = dbManager.getDatabase()
+    const timestamp = Date.now()
 
     const {
       nombre,
@@ -13,13 +23,29 @@ class ClienteNegocio {
       configuracionInventario = {},
       proximaVisita = null,
       notas = null,
+      uuid = null,
+      business_id = null,
+      created_by = null,
     } = datos
+
+    // Si viene uuid del frontend, verificar que no exista ya
+    const clienteUuid = uuid || generateUUID()
+    
+    if (uuid) {
+      const existeStmt = db.prepare('SELECT id FROM clientes_negocios WHERE uuid = ?')
+      const existe = existeStmt.get(uuid)
+      if (existe) {
+        // Ya existe, actualizamos y retornamos
+        return ClienteNegocio.actualizar(existe.id, datos)
+      }
+    }
 
     const stmt = db.prepare(`
       INSERT INTO clientes_negocios (
         nombre, telefono, direccion, contadorAsignadoId,
-        configuracionInventario, proximaVisita, notas, activo
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        configuracionInventario, proximaVisita, notas, activo,
+        uuid, business_id, created_by, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const info = stmt.run(
@@ -30,15 +56,24 @@ class ClienteNegocio {
       JSON.stringify(configuracionInventario),
       proximaVisita,
       notas,
-      1
+      1,
+      clienteUuid,
+      business_id || contadorAsignadoId,
+      created_by || contadorAsignadoId,
+      timestamp,
+      timestamp
     )
 
     return ClienteNegocio.buscarPorId(info.lastInsertRowid)
   }
 
-  // Buscar cliente por ID
+  // Buscar cliente por ID o UUID
   static buscarPorId(id) {
     const db = dbManager.getDatabase()
+    
+    // Verificar si es UUID o ID numérico
+    const isUuid = typeof id === 'string' && id.includes('-')
+    
     const stmt = db.prepare(`
       SELECT 
         cn.*,
@@ -46,7 +81,7 @@ class ClienteNegocio {
         u.email as emailContador
       FROM clientes_negocios cn
       INNER JOIN usuarios u ON cn.contadorAsignadoId = u.id
-      WHERE cn.id = ?
+      WHERE ${isUuid ? 'cn.uuid = ?' : 'cn.id = ?'}
     `)
     const cliente = stmt.get(id)
 
@@ -55,12 +90,13 @@ class ClienteNegocio {
       cliente.estadisticas = JSON.parse(cliente.estadisticas || '{}')
       // Alias para compatibilidad con frontend que espera _id
       cliente._id = cliente.id
+      cliente.id_uuid = cliente.uuid
     }
 
     return cliente
   }
 
-  // Buscar clientes de un contador (con paginación)
+  // Buscar clientes por business_id (filtro global para Colaboradores/Contadores)
   static buscarPorContador(contadorId, opciones = {}) {
     const db = dbManager.getDatabase()
 
@@ -69,12 +105,22 @@ class ClienteNegocio {
       pagina = 1,
       buscar = null,
       soloActivos = true,
+      businessId = null, // Nuevo: permite filtrar por business_id directamente
     } = opciones
 
     const offset = (pagina - 1) * limite
 
-    let whereConditions = ['cn.contadorAsignadoId = ?']
-    let params = [contadorId]
+    // Determinar business_id: si el usuario es colaborador, usar el de su admin
+    let effectiveBusinessId = businessId
+    if (!effectiveBusinessId) {
+      const usuarioStmt = db.prepare('SELECT contablePrincipalId FROM usuarios WHERE id = ?')
+      const usuario = usuarioStmt.get(contadorId)
+      effectiveBusinessId = usuario?.contablePrincipalId || contadorId
+    }
+
+    // Filtrar por business_id para asegurar que ven datos correctos del negocio
+    let whereConditions = ['(cn.business_id = ? OR cn.contadorAsignadoId = ?)']
+    let params = [effectiveBusinessId, contadorId]
 
     if (soloActivos) {
       whereConditions.push('cn.activo = 1')
@@ -110,11 +156,11 @@ class ClienteNegocio {
 
     const clientes = stmt.all(...params, limite, offset).map(cliente => ({
       ...cliente,
-      ...cliente,
       configuracionInventario: JSON.parse(cliente.configuracionInventario || '{}'),
       estadisticas: JSON.parse(cliente.estadisticas || '{}'),
       // Alias para compatibilidad con frontend que espera _id
       _id: cliente.id,
+      id_uuid: cliente.uuid,
     }))
 
     return {
@@ -156,9 +202,10 @@ class ClienteNegocio {
   // Actualizar cliente
   static actualizar(id, datos) {
     const db = dbManager.getDatabase()
+    const timestamp = Date.now()
 
-    const campos = []
-    const valores = []
+    const campos = ['updated_at = ?']
+    const valores = [timestamp]
 
     if (datos.nombre !== undefined) {
       campos.push('nombre = ?')
@@ -185,19 +232,25 @@ class ClienteNegocio {
       valores.push(datos.notas)
     }
 
-    if (campos.length === 0) {
-      return ClienteNegocio.buscarPorId(id)
-    }
-
+    // Verificar si es UUID o ID numérico
+    const isUuid = typeof id === 'string' && id.includes('-')
     valores.push(id)
 
     const stmt = db.prepare(`
       UPDATE clientes_negocios 
       SET ${campos.join(', ')}
-      WHERE id = ?
+      WHERE ${isUuid ? 'uuid = ?' : 'id = ?'}
     `)
 
     stmt.run(...valores)
+    
+    // Buscar por ID numérico si actualizamos por UUID
+    if (isUuid) {
+      const findStmt = db.prepare('SELECT id FROM clientes_negocios WHERE uuid = ?')
+      const found = findStmt.get(id)
+      return found ? ClienteNegocio.buscarPorId(found.id) : null
+    }
+    
     return ClienteNegocio.buscarPorId(id)
   }
 

@@ -193,3 +193,4 @@ refetch();
 **Documentación actualizada:** 10/01/2026
 
 
+

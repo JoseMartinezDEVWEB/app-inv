@@ -45,6 +45,7 @@ import FinancialModal from '../components/modals/FinancialModal'
 import ProductSearchModal from '../components/modals/ProductSearchModal'
 import ZeroCostProductsModal from '../components/modals/ZeroCostProductsModal'
 import ProductosGeneralesModal from '../components/modals/ProductosGeneralesModal'
+import BarcodeProductModal from '../components/modals/BarcodeProductModal'
 
 const { width, height } = Dimensions.get('window')
 
@@ -92,6 +93,9 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
   const [showScanner, setShowScanner] = useState(false)
   const [showSearchModal, setShowSearchModal] = useState(false)
   const [showAddProductModal, setShowAddProductModal] = useState(false)
+  const [showBarcodeProductModal, setShowBarcodeProductModal] = useState(false)
+  const [scannedProduct, setScannedProduct] = useState(null)
+  const [scannedBarcode, setScannedBarcode] = useState(null)
   const [activeFinancialModal, setActiveFinancialModal] = useState(null)
   const [showFinancialModal, setShowFinancialModal] = useState(false)
   const [showDistribucionModal, setShowDistribucionModal] = useState(false)
@@ -357,8 +361,9 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
         for (const pOffline of batch) {
           const pData = pOffline.productoData
 
-          // Buscar si existe en sesión
-          const existente = productosContados.find(p =>
+          // Buscar si existe en sesión (usar datos de sesión disponibles)
+          const productosExistentes = sesionData?.productosContados || []
+          const existente = productosExistentes.find(p =>
             p.nombreProducto?.toLowerCase().trim() === pData.nombre?.toLowerCase().trim()
           )
 
@@ -586,75 +591,37 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
   const handleBarCodeScanned = async ({ data }) => {
     setShowScanner(false);
     try {
-      // Primero buscar en productos generales por código de barras
+      // Buscar producto por código de barras (offline-first)
       const response = await productosApi.getByBarcode(data);
-      // Backend SQLite devuelve el objeto directamente en datos
-      const productoGeneral = response.data.datos;
+      const productoGeneral = response?.data?.datos;
 
       if (productoGeneral) {
-        // Si encontramos el producto general, verificar si el cliente ya lo tiene
+        // Si encontramos el producto, verificar si el cliente ya lo tiene
         const clienteId = sesionData?.clienteNegocio?._id;
+        let productoParaAgregar = productoGeneral;
+
         if (clienteId) {
           try {
             const clientProductsResponse = await productosApi.getByClient(clienteId, { buscar: productoGeneral.nombre, limite: 1 });
-            const clientProducts = clientProductsResponse.data.datos.productos;
+            const clientProducts = clientProductsResponse?.data?.datos?.productos || [];
 
-            if (clientProducts && clientProducts.length > 0) {
-              // El cliente ya tiene este producto
-              const clientProduct = clientProducts[0];
-              setSelectedProducto(clientProduct);
-              setCantidad('1');
-              setCosto(String(clientProduct.costo || ''));
-              showMessage({ message: `Producto encontrado: ${clientProduct.nombre}`, type: 'info' });
+            if (clientProducts.length > 0) {
+              // El cliente ya tiene este producto - usar el del cliente
+              productoParaAgregar = clientProducts[0];
             } else {
-              // El cliente no tiene este producto, ofrecer crearlo
-              Alert.alert(
-                'Producto no asignado',
-                `Se encontró "${productoGeneral.nombre}" pero no está asignado a este cliente. ¿Deseas asignarlo?`,
-                [
-                  { text: 'Cancelar', style: 'cancel' },
-                  {
-                    text: 'Asignar Producto', onPress: () => {
-                      setNewProductData(prev => ({
-                        ...prev,
-                        nombre: productoGeneral.nombre,
-                        descripcion: productoGeneral.descripcion || '',
-                        categoria: productoGeneral.categoria || '',
-                        unidad: productoGeneral.unidad || 'unidad',
-                        costo: String(productoGeneral.costoBase || ''),
-                        codigoBarras: data
-                      }))
-                      setShowAddProductModal(true)
-                    }
-                  }
-                ]
-              )
+              // El cliente no tiene este producto - usar el general
+              // El producto general se puede agregar directamente
             }
           } catch (clientError) {
-            // Error al buscar productos del cliente, ofrecer crear nuevo
-            Alert.alert(
-              'Producto encontrado',
-              `Se encontró "${productoGeneral.nombre}". ¿Deseas asignarlo a este cliente?`,
-              [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                  text: 'Asignar Producto', onPress: () => {
-                    setNewProductData(prev => ({
-                      ...prev,
-                      nombre: productoGeneral.nombre,
-                      descripcion: productoGeneral.descripcion || '',
-                      categoria: productoGeneral.categoria || '',
-                      unidad: productoGeneral.unidad || 'unidad',
-                      costo: String(productoGeneral.costoBase || ''),
-                      codigoBarras: data
-                    }))
-                    setShowAddProductModal(true)
-                  }
-                }
-              ]
-            )
+            // Si falla la búsqueda del cliente, usar el producto general
+            console.log('Error buscando productos del cliente:', clientError);
           }
         }
+
+        // Abrir modal para agregar cantidad y costo
+        setScannedProduct(productoParaAgregar);
+        setScannedBarcode(data);
+        setShowBarcodeProductModal(true);
       } else {
         // No se encontró el producto, ofrecer crear uno nuevo
         Alert.alert(
@@ -672,6 +639,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
         )
       }
     } catch (error) {
+      console.log('Error buscando producto:', error);
       Alert.alert(
         'Producto no encontrado',
         `No se encontró un producto con el código ${data}. ¿Deseas crear uno nuevo?`,
@@ -685,6 +653,82 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
           }
         ]
       )
+    }
+  };
+
+  // Manejar confirmación desde el modal de código de barras
+  const handleBarcodeProductConfirm = async ({ cantidad, costo }) => {
+    if (!scannedProduct) return;
+
+    setShowBarcodeProductModal(false);
+
+    try {
+      const clienteId = sesionData?.clienteNegocio?._id;
+      let productoId = scannedProduct._id || scannedProduct.id;
+
+      // Si el producto es general y no está asignado al cliente, asignarlo primero
+      if (clienteId && !scannedProduct.costo) {
+        try {
+          const clientProductsResponse = await productosApi.getByClient(clienteId, { buscar: scannedProduct.nombre, limite: 1 });
+          const clientProducts = clientProductsResponse?.data?.datos?.productos || [];
+
+          if (clientProducts.length === 0) {
+            // El cliente no tiene este producto, crearlo
+            const nuevoProducto = await productosApi.createForClient(clienteId, {
+              nombre: scannedProduct.nombre,
+              costo: costo,
+              unidad: scannedProduct.unidad || 'unidad',
+              sku: scannedProduct.sku || scannedBarcode,
+              codigoBarras: scannedBarcode,
+              descripcion: scannedProduct.descripcion || '',
+              categoria: scannedProduct.categoria || ''
+            });
+            productoId = nuevoProducto?.data?.datos?.producto?._id || nuevoProducto?.data?.producto?._id;
+          } else {
+            productoId = clientProducts[0]._id;
+          }
+        } catch (error) {
+          console.log('Error creando producto para cliente:', error);
+          // Continuar con el producto general si falla
+        }
+      }
+
+      // Agregar producto a la sesión
+      const productPayload = {
+        producto: productoId,
+        cantidadContada: cantidad,
+        costoProducto: costo,
+      };
+
+      // Guardar en local primero (UI instantánea)
+      const localId = await localDb.guardarConteoLocal({
+        sesionId,
+        productoId: productPayload.producto,
+        nombreProducto: scannedProduct.nombre,
+        skuProducto: scannedProduct.sku || scannedBarcode || '',
+        cantidad: cantidad,
+        costo: costo
+      });
+
+      showMessage({ message: 'Producto agregado', type: 'success' });
+      loadLocalProducts(); // Actualizar UI local
+
+      // Intentar enviar al servidor si está conectado y AutoSend está ON
+      if (autoSend && isConnected) {
+        try {
+          await sesionesApi.addProduct(sesionId, productPayload);
+          await localDb.marcarConteoSincronizado(localId);
+          queryClient.invalidateQueries(['sesion', sesionId]);
+        } catch (error) {
+          console.log('Fallo envío inmediato, encolando...', error);
+          // El producto ya está en local, se sincronizará después
+        }
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setScannedProduct(null);
+      setScannedBarcode(null);
     }
   };
 
@@ -993,7 +1037,8 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
     return dateB - dateA
   })
 
-  // Productos con costo 0
+  // Alias para compatibilidad con código existente
+  const productosContados = productosOrdenados
 
   // Productos con costo 0
   const productosConCostoCero = productosContados.filter(p => (Number(p.costoProducto) || 0) === 0)
@@ -1398,16 +1443,13 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
       {/* Botones de acción principales */}
       <View style={styles.actionButtonsContainer}>
-        {/* Botón escanear oculto por solicitud */}
-        {/*
         <TouchableOpacity
           style={[styles.actionButton, styles.scanButton]}
           onPress={() => setShowScanner(true)}
         >
           <Ionicons name="barcode" size={24} color="#ffffff" />
-          <Text style={styles.actionButtonText}>Escanear</Text>
+          <Text style={styles.actionButtonText}>Código</Text>
         </TouchableOpacity>
-        */}
 
         <TouchableOpacity
           style={[styles.actionButton, styles.searchButton]}
@@ -1554,6 +1596,21 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
           const cost = product.isClientProduct ? product.costo : product.costoBase;
           setCosto(String(cost || ''));
         }}
+      />
+
+      {/* Modal para agregar cantidad/costo después de escanear código de barras */}
+      <BarcodeProductModal
+        visible={showBarcodeProductModal}
+        onClose={() => {
+          setShowBarcodeProductModal(false);
+          setScannedProduct(null);
+          setScannedBarcode(null);
+        }}
+        producto={scannedProduct}
+        codigoBarras={scannedBarcode}
+        onConfirm={handleBarcodeProductConfirm}
+        costoInicial={scannedProduct?.costo || scannedProduct?.costoBase || ''}
+        cantidadInicial="1"
       />
 
       {/* Modal de Nuevo Producto */}

@@ -29,7 +29,8 @@ const ProductSearchModal = ({ visible, onClose, onSelectProduct, clienteId }) =>
       retry: false,
       staleTime: 30000,
       onError: (error) => {
-        console.log('⚠️ Error cargando productos generales:', error.response?.status, error.message);
+        // Silencioso - no mostrar errores de conexión
+        // Los productos se cargan desde localDb cuando no hay conexión
       }
     }
   );
@@ -207,13 +208,7 @@ const ProductSearchModal = ({ visible, onClose, onSelectProduct, clienteId }) =>
                       ? 'Error al buscar productos. Intenta de nuevo.'
                       : 'No se encontraron productos.'}
                   </Text>
-                  {(clientError || generalError || generalListError) && (
-                    <Text style={styles.errorText}>
-                      {clientError && !generalError 
-                        ? 'Buscando solo en productos generales...' 
-                        : 'Verifica tu conexión a internet.'}
-                    </Text>
-                  )}
+                  {/* No mostrar errores de conexión - la búsqueda funciona offline desde localDb */}
                 </View>
               }
               ListHeaderComponent={

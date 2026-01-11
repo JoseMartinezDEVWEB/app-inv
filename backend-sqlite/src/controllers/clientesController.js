@@ -37,9 +37,16 @@ export const obtenerCliente = async (req, res) => {
 
 // Crear nuevo cliente
 export const crearCliente = async (req, res) => {
+  // Calcular business_id (el admin principal del negocio)
+  const businessId = req.usuario.contablePrincipalId || req.usuario.id
+
   const datosCliente = {
     ...req.body,
     contadorAsignadoId: req.usuario.id,
+    business_id: businessId,
+    created_by: req.usuario.id,
+    // Si el frontend envía uuid, lo usamos; si no, se genera en el modelo
+    uuid: req.body.uuid || req.body.id_uuid || null,
   }
 
   const cliente = ClienteNegocio.crear(datosCliente)

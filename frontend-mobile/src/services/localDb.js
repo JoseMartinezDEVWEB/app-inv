@@ -60,7 +60,7 @@ const localDb = {
                 );
             `);
 
-            // Tabla de Sesiones (Inventarios)
+            // Tabla de Sesiones (Inventarios) con soporte Offline-First y roles
             await database.execAsync(`
                 CREATE TABLE IF NOT EXISTS sesiones(
                     _id TEXT PRIMARY KEY,
@@ -69,15 +69,21 @@ const localDb = {
                     fecha TEXT,
                     estado TEXT,
                     clienteNombre TEXT,
+                    clienteNegocioId TEXT,
                     totalProductos INTEGER DEFAULT 0,
                     valorTotal REAL DEFAULT 0,
                     
+                    -- CAMPOS DE JERARQUÍA Y ROLES
+                    business_id TEXT,           -- ID del Admin/Negocio principal
+                    created_by TEXT,            -- Usuario que creó el registro
+                    
                     -- CAMPOS DE SINCRONIZACIÓN
                     is_dirty INTEGER DEFAULT 0,
+                    sync_status TEXT DEFAULT 'pending',
                     last_updated INTEGER,
                     deleted INTEGER DEFAULT 0,
                     
-                    local INTEGER DEFAULT 1, -- Por defecto local
+                    local INTEGER DEFAULT 1,
                     createdAt TEXT
                 );
             `);
@@ -120,17 +126,31 @@ const localDb = {
                 );
             `);
 
-            // Tabla de Cola de Sincronización (Outbox Pattern - Legacy/Hybrid support)
+            // Tabla de Cola de Sincronización mejorada (Outbox Pattern)
             await database.execAsync(`
                 CREATE TABLE IF NOT EXISTS cola_sincronizacion(
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    tipo TEXT NOT NULL,
-                    payload TEXT NOT NULL,
-                    estado TEXT DEFAULT 'pending',
+                    tipo TEXT NOT NULL,          -- 'cliente', 'producto', 'sesion', 'conteo'
+                    operacion TEXT NOT NULL,     -- 'create', 'update', 'delete'
+                    tabla TEXT NOT NULL,         -- Tabla origen
+                    registro_id TEXT NOT NULL,   -- ID del registro afectado
+                    payload TEXT NOT NULL,       -- Datos serializados
+                    estado TEXT DEFAULT 'pending', -- pending, processing, completed, failed
                     intentos INTEGER DEFAULT 0,
+                    max_intentos INTEGER DEFAULT 5,
                     ultimoIntento TEXT,
                     error TEXT,
+                    prioridad INTEGER DEFAULT 5, -- 1-10, menor es más prioritario
                     createdAt TEXT,
+                    updatedAt TEXT
+                );
+            `);
+
+            // Tabla de configuración de usuario para sincronización
+            await database.execAsync(`
+                CREATE TABLE IF NOT EXISTS sync_config(
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
                     updatedAt TEXT
                 );
             `);
@@ -149,7 +169,7 @@ const localDb = {
                 );
             `);
 
-            // Tabla de Clientes
+            // Tabla de Clientes con soporte Offline-First y roles
             await database.execAsync(`
                 CREATE TABLE IF NOT EXISTS clientes(
                     _id TEXT PRIMARY KEY,
@@ -159,10 +179,16 @@ const localDb = {
                     email TEXT,
                     telefono TEXT,
                     direccion TEXT,
+                    notas TEXT,
                     activo INTEGER DEFAULT 1,
+                    
+                    -- CAMPOS DE JERARQUÍA Y ROLES
+                    business_id TEXT,           -- ID del Admin/Negocio principal
+                    created_by TEXT,            -- Usuario que creó el registro
                     
                     -- CAMPOS DE SINCRONIZACIÓN
                     is_dirty INTEGER DEFAULT 0,
+                    sync_status TEXT DEFAULT 'pending', -- pending, synced, error
                     last_updated INTEGER,
                     deleted INTEGER DEFAULT 0,
                     
@@ -203,7 +229,14 @@ const localDb = {
                 await addColumnIfNotExists(table, 'is_dirty', 'INTEGER DEFAULT 0');
                 await addColumnIfNotExists(table, 'last_updated', 'INTEGER');
                 await addColumnIfNotExists(table, 'deleted', 'INTEGER DEFAULT 0');
+                await addColumnIfNotExists(table, 'sync_status', 'TEXT DEFAULT "pending"');
+                await addColumnIfNotExists(table, 'business_id', 'TEXT');
+                await addColumnIfNotExists(table, 'created_by', 'TEXT');
             }
+            
+            // Migraciones específicas
+            await addColumnIfNotExists('clientes', 'notas', 'TEXT');
+            await addColumnIfNotExists('sesiones', 'clienteNegocioId', 'TEXT');
 
             // Crear o actualizar usuario admin por defecto
             const checkAdmin = await database.getFirstAsync('SELECT * FROM usuarios WHERE email = ?', ['admin@j4pro.com']);
@@ -456,16 +489,26 @@ const localDb = {
 
     // --- CLIENTES (OFFLINE FIRST) ---
 
-    obtenerClientes: async (buscar = '') => {
+    /**
+     * Obtener clientes filtrados por business_id
+     * Esto asegura que Colaboradores y Contadores vean solo datos de su negocio
+     */
+    obtenerClientes: async (buscar = '', businessId = null) => {
         try {
             const database = await getDatabase();
             let query = 'SELECT * FROM clientes WHERE deleted = 0 AND activo = 1';
             let params = [];
 
+            // Filtro por business_id para jerarquía de roles
+            if (businessId) {
+                query += ' AND (business_id = ? OR business_id IS NULL)';
+                params.push(businessId);
+            }
+
             if (buscar) {
-                query += ' AND (nombre LIKE ? OR documento LIKE ? OR email LIKE ?)';
+                query += ' AND (nombre LIKE ? OR documento LIKE ? OR email LIKE ? OR telefono LIKE ?)';
                 const searchTerm = `%${buscar}%`;
-                params = [searchTerm, searchTerm, searchTerm];
+                params.push(searchTerm, searchTerm, searchTerm, searchTerm);
             }
 
             query += ' ORDER BY nombre LIMIT 100';
@@ -473,7 +516,9 @@ const localDb = {
             return result.map(c => ({
                 ...c,
                 id: c._id,
-                nombreNegocio: c.nombre
+                nombreNegocio: c.nombre,
+                // Indicador visual de estado de sincronización
+                _syncStatus: c.sync_status || (c.is_dirty ? 'pending' : 'synced')
             }));
         } catch (error) {
             console.error('Error obteniendo clientes:', error);
@@ -481,25 +526,51 @@ const localDb = {
         }
     },
 
-    crearClienteLocal: async (cliente) => {
+    /**
+     * Crear cliente localmente con soporte Optimistic UI
+     * El cliente aparece inmediatamente en la UI con sync_status = 'pending'
+     */
+    crearClienteLocal: async (cliente, businessId = null, userId = null) => {
         try {
             const database = await getDatabase();
-            const uuid = generateUUID();
+            const uuid = cliente.id_uuid || cliente.uuid || generateUUID();
             const id = cliente._id || uuid;
             const timestamp = Date.now();
+            const now = new Date().toISOString();
 
             await database.runAsync(
                 `INSERT INTO clientes(
                     _id, id_uuid, nombre, documento, email, telefono, 
-                    direccion, activo, is_dirty, last_updated, deleted, createdAt, updatedAt
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, 1, 1, ?, 0, ?, ?)`,
+                    direccion, notas, activo, business_id, created_by,
+                    is_dirty, sync_status, last_updated, deleted, createdAt, updatedAt
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 1, 'pending', ?, 0, ?, ?)`,
                 [
-                    id, uuid, cliente.nombre, cliente.documento || '', cliente.email || '',
-                    cliente.telefono || '', cliente.direccion || '', timestamp,
-                    new Date().toISOString(), new Date().toISOString()
+                    id, uuid, 
+                    cliente.nombre, 
+                    cliente.documento || '', 
+                    cliente.email || '',
+                    cliente.telefono || '', 
+                    cliente.direccion || '',
+                    cliente.notas || '',
+                    businessId,
+                    userId,
+                    timestamp,
+                    now, 
+                    now
                 ]
             );
-            return { ...cliente, _id: id, id_uuid: uuid, is_dirty: 1 };
+            
+            console.log(`✅ Cliente creado localmente: ${cliente.nombre} (pending sync)`);
+            
+            return { 
+                ...cliente, 
+                _id: id, 
+                id_uuid: uuid, 
+                is_dirty: 1,
+                sync_status: 'pending',
+                business_id: businessId,
+                created_by: userId
+            };
         } catch (error) {
             console.error('Error creando cliente local:', error);
             throw error;
@@ -727,8 +798,245 @@ const localDb = {
                     (SELECT COUNT(*) FROM clientes WHERE is_dirty = 1)
                 ) as total
             `);
-            return { total: sucios?.total || 0, pendientes: sucios?.total || 0, completadas: 0, errores: 0 };
+            
+            // Estadísticas detalladas por tabla
+            const detalles = await database.getFirstAsync(`
+                SELECT 
+                    (SELECT COUNT(*) FROM clientes WHERE is_dirty = 1) as clientesPendientes,
+                    (SELECT COUNT(*) FROM productos WHERE is_dirty = 1) as productosPendientes,
+                    (SELECT COUNT(*) FROM sesiones WHERE is_dirty = 1) as sesionesPendientes,
+                    (SELECT COUNT(*) FROM productos_contados WHERE is_dirty = 1) as conteosPendientes
+            `);
+            
+            return { 
+                total: sucios?.total || 0, 
+                pendientes: sucios?.total || 0, 
+                completadas: 0, 
+                errores: 0,
+                detalles: detalles || {}
+            };
         } catch (e) { return { total: 0 }; }
+    },
+
+    /**
+     * Sincronizar clientes desde el servidor (PULL)
+     * Actualiza o inserta clientes recibidos del servidor
+     */
+    sincronizarClientesDesdeServidor: async (clientes) => {
+        if (!Array.isArray(clientes) || clientes.length === 0) return;
+        
+        try {
+            const database = await getDatabase();
+            const timestamp = Date.now();
+            
+            for (const cliente of clientes) {
+                const uuid = cliente.uuid || cliente.id_uuid;
+                const id = cliente._id || cliente.id || uuid;
+                
+                // Verificar si existe
+                const existente = await database.getFirstAsync(
+                    'SELECT _id, is_dirty FROM clientes WHERE _id = ? OR id_uuid = ?',
+                    [id, uuid]
+                );
+                
+                if (existente) {
+                    // Solo actualizar si no tiene cambios locales pendientes
+                    if (!existente.is_dirty) {
+                        await database.runAsync(
+                            `UPDATE clientes SET 
+                                nombre = ?, telefono = ?, direccion = ?, email = ?,
+                                documento = ?, notas = ?, activo = ?, business_id = ?,
+                                last_updated = ?, sync_status = 'synced', is_dirty = 0
+                             WHERE _id = ? OR id_uuid = ?`,
+                            [
+                                cliente.nombre,
+                                cliente.telefono || '',
+                                cliente.direccion || '',
+                                cliente.email || '',
+                                cliente.documento || '',
+                                cliente.notas || '',
+                                cliente.activo !== undefined ? cliente.activo : 1,
+                                cliente.business_id,
+                                timestamp,
+                                id, uuid
+                            ]
+                        );
+                    }
+                } else {
+                    // Insertar nuevo
+                    await database.runAsync(
+                        `INSERT INTO clientes(
+                            _id, id_uuid, nombre, telefono, direccion, email,
+                            documento, notas, activo, business_id, created_by,
+                            is_dirty, sync_status, last_updated, deleted, createdAt, updatedAt
+                        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'synced', ?, 0, ?, ?)`,
+                        [
+                            id, uuid,
+                            cliente.nombre,
+                            cliente.telefono || '',
+                            cliente.direccion || '',
+                            cliente.email || '',
+                            cliente.documento || '',
+                            cliente.notas || '',
+                            cliente.activo !== undefined ? cliente.activo : 1,
+                            cliente.business_id,
+                            cliente.created_by,
+                            timestamp,
+                            cliente.createdAt || new Date().toISOString(),
+                            new Date().toISOString()
+                        ]
+                    );
+                }
+            }
+            
+            console.log(`✅ ${clientes.length} clientes sincronizados desde servidor`);
+        } catch (error) {
+            console.error('Error sincronizando clientes desde servidor:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Obtener estado de sincronización de un registro específico
+     */
+    obtenerEstadoSincronizacion: async (tabla, id) => {
+        try {
+            const database = await getDatabase();
+            const result = await database.getFirstAsync(
+                `SELECT is_dirty, sync_status, last_updated FROM ${tabla} WHERE _id = ? OR id_uuid = ?`,
+                [id, id]
+            );
+            return result || { is_dirty: 0, sync_status: 'unknown' };
+        } catch (e) {
+            return { is_dirty: 0, sync_status: 'error' };
+        }
+    },
+
+    /**
+     * Guardar configuración de sincronización
+     */
+    guardarConfigSync: async (key, value) => {
+        try {
+            const database = await getDatabase();
+            await database.runAsync(
+                `INSERT OR REPLACE INTO sync_config(key, value, updatedAt) VALUES(?, ?, ?)`,
+                [key, JSON.stringify(value), new Date().toISOString()]
+            );
+        } catch (e) {
+            console.error('Error guardando config sync:', e);
+        }
+    },
+
+    /**
+     * Obtener configuración de sincronización
+     */
+    obtenerConfigSync: async (key) => {
+        try {
+            const database = await getDatabase();
+            const result = await database.getFirstAsync(
+                'SELECT value FROM sync_config WHERE key = ?',
+                [key]
+            );
+            return result ? JSON.parse(result.value) : null;
+        } catch (e) {
+            return null;
+        }
+    },
+
+    /**
+     * Obtener productos de colaborador para enviar
+     */
+    obtenerProductosColaborador: async (solicitudId) => {
+        try {
+            const database = await getDatabase();
+            return await database.getAllAsync(
+                'SELECT * FROM productos_colaborador WHERE solicitudId = ? AND sincronizado = 0',
+                [solicitudId]
+            );
+        } catch (e) {
+            return [];
+        }
+    },
+
+    /**
+     * Limpiar productos de colaborador después de sincronizar
+     */
+    limpiarProductosColaborador: async (solicitudId) => {
+        try {
+            const database = await getDatabase();
+            await database.runAsync(
+                'DELETE FROM productos_colaborador WHERE solicitudId = ?',
+                [solicitudId]
+            );
+        } catch (e) {
+            console.error('Error limpiando productos colaborador:', e);
+        }
+    },
+
+    /**
+     * Actualizar cliente localmente (Optimistic UI)
+     */
+    actualizarClienteLocal: async (id, datos) => {
+        try {
+            const database = await getDatabase();
+            const timestamp = Date.now();
+            
+            const campos = ['last_updated = ?', 'is_dirty = 1', "sync_status = 'pending'", 'updatedAt = ?'];
+            const valores = [timestamp, new Date().toISOString()];
+            
+            if (datos.nombre !== undefined) {
+                campos.push('nombre = ?');
+                valores.push(datos.nombre);
+            }
+            if (datos.telefono !== undefined) {
+                campos.push('telefono = ?');
+                valores.push(datos.telefono);
+            }
+            if (datos.direccion !== undefined) {
+                campos.push('direccion = ?');
+                valores.push(datos.direccion);
+            }
+            if (datos.email !== undefined) {
+                campos.push('email = ?');
+                valores.push(datos.email);
+            }
+            if (datos.notas !== undefined) {
+                campos.push('notas = ?');
+                valores.push(datos.notas);
+            }
+            
+            valores.push(id);
+            
+            await database.runAsync(
+                `UPDATE clientes SET ${campos.join(', ')} WHERE _id = ? OR id_uuid = ?`,
+                [...valores, id]
+            );
+            
+            return true;
+        } catch (error) {
+            console.error('Error actualizando cliente local:', error);
+            return false;
+        }
+    },
+
+    /**
+     * Eliminar cliente localmente (soft delete)
+     */
+    eliminarClienteLocal: async (id) => {
+        try {
+            const database = await getDatabase();
+            const timestamp = Date.now();
+            
+            await database.runAsync(
+                `UPDATE clientes SET deleted = 1, is_dirty = 1, sync_status = 'pending', last_updated = ? WHERE _id = ? OR id_uuid = ?`,
+                [timestamp, id, id]
+            );
+            
+            return true;
+        } catch (error) {
+            console.error('Error eliminando cliente local:', error);
+            return false;
+        }
     }
 };
 

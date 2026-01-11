@@ -267,4 +267,23 @@ export const saludApi = {
   getSystemInfo: () => api.get('/salud/sistema'),
 }
 
+/**
+ * API de Sincronización Bidireccional
+ */
+export const syncApi = {
+  // Enviar cambios locales al servidor (PUSH)
+  pushBatch: (changes, deviceId) => api.post('/sync/batch', { 
+    changes, 
+    deviceId, 
+    timestamp: Date.now() 
+  }),
+  
+  // Descargar cambios del servidor (PULL)
+  pullUpdates: (lastSync, tables = 'clientes,productos,sesiones') => 
+    api.get('/sync/pull', { params: { lastSync, tables } }),
+  
+  // Obtener estado de sincronización
+  getStatus: () => api.get('/sync/status'),
+}
+
 export default api
