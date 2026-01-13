@@ -275,10 +275,10 @@ const ProductosGenerales = () => {
       }
     }
 
-    webSocketService.on('dispatch_inventory_result', handleResultado)
+    webSocketService.on('sync_finished_ok', handleResultado)
 
     return () => {
-      webSocketService.off('dispatch_inventory_result', handleResultado)
+      webSocketService.off('sync_finished_ok', handleResultado)
     }
   }, [user?.rol, isConnected])
 
@@ -424,9 +424,10 @@ const ProductosGenerales = () => {
               }}
               title={isConnected ? 'Click para actualizar' : 'Sin conexión WebSocket'}
             >
+              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
               <Users className={`w-4 h-4 ${isConnected ? 'text-blue-600' : 'text-gray-400'}`} />
               <span className="text-sm font-medium text-gray-700">
-                Colaboradores en línea:
+                Colaboradores activos:
               </span>
               <span className={`text-sm font-bold ${isConnected ? 'text-blue-600' : 'text-gray-400'}`}>
                 {isConnected ? (onlineColaboradores ?? 0) : '--'}

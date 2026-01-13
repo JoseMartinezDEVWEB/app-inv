@@ -61,6 +61,9 @@ class WebSocketService {
   setupEventListeners() {
     if (!this.socket) return
 
+    // Remover todos los listeners anteriores antes de agregar nuevos
+    this.socket.removeAllListeners()
+
     this.socket.on('connect', () => {
       console.log('🔌 Conectado al servidor WebSocket, ID:', this.socket.id)
       this.isConnected = true
@@ -149,10 +152,16 @@ class WebSocketService {
       this.emitLocal('colaborador_desconectado', data)
     })
 
-    // Resultado de envío de inventario
+    // Resultado de envío de inventario (nuevo evento sync_finished_ok)
+    this.socket.on('sync_finished_ok', (data) => {
+      console.log('📦 Resultado de envío de inventario (sync_finished_ok):', data)
+      this.emitLocal('sync_finished_ok', data)
+    })
+
+    // Mantener compatibilidad con evento anterior
     this.socket.on('dispatch_inventory_result', (data) => {
-      console.log('📦 Resultado de envío de inventario:', data)
-      this.emitLocal('dispatch_inventory_result', data)
+      console.log('📦 Resultado de envío de inventario (deprecated):', data)
+      this.emitLocal('sync_finished_ok', data)
     })
 
     this.socket.on('error', (error) => {

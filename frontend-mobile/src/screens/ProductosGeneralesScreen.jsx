@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { productosApi, handleApiError } from '../services/api';
@@ -8,7 +8,9 @@ import { useNetInfo } from '@react-native-community/netinfo';
 import { LinearGradient } from 'expo-linear-gradient';
 import ProductModal from '../components/ProductModal'; // Importar el modal
 import ImportModal from '../components/modals/ImportModal';
+import ModalSincronizacionInventario from '../components/ModalSincronizacionInventario';
 import { showMessage } from 'react-native-flash-message';
+import webSocketService from '../services/websocket';
 
 // Esqueleto de carga para las tarjetas de producto
 const SkeletonCard = () => (
@@ -42,6 +44,7 @@ const ProductCard = ({ item, onEdit }) => (
 
 const ProductosGeneralesScreen = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSincronizando, setIsSincronizando] = useState(false);
 
   const queryClient = useQueryClient();
   const [isModalVisible, setModalVisible] = useState(false);
@@ -65,14 +68,14 @@ const ProductosGeneralesScreen = () => {
           return { productos };
         } catch (error) {
           console.log('⚠️ Error API, intentando local:', error.message);
-          // Si falla la API, intentar local
-          const productosLocales = await localDb.obtenerProductos(searchTerm);
+          // Si falla la API, intentar local (buscar desde SQLite)
+          const productosLocales = await localDb.obtenerProductos({ buscar: searchTerm });
           return { productos: productosLocales };
         }
       } else {
-        // Si no hay internet, usar DB local
-        console.log('📴 Modo Offline: Usando DB local');
-        const productosLocales = await localDb.obtenerProductos(searchTerm);
+        // Si no hay internet, usar DB local (SQLite)
+        console.log('📴 Modo Offline: Usando DB local (SQLite)');
+        const productosLocales = await localDb.obtenerProductos({ buscar: searchTerm });
         return { productos: productosLocales };
       }
     },
@@ -80,6 +83,78 @@ const ProductosGeneralesScreen = () => {
       // select: (response) => response.data.datos, // Ya no es necesario porque retornamos la estructura correcta
     }
   );
+
+  // Escuchar evento de sincronización de inventario desde el admin
+  useEffect(() => {
+    let isProcessing = false; // Flag para evitar procesamiento múltiple
+    let lastTimestamp = null; // Timestamp del último inventario procesado
+
+    const handleSendInventory = async (data) => {
+      console.log('📦 [ProductosGeneralesScreen] Recibido send_inventory:', data.productos?.length || 0, 'productos', 'timestamp:', data.timestamp);
+      
+      if (!data.productos || data.productos.length === 0) {
+        console.warn('⚠️ [ProductosGeneralesScreen] No hay productos para sincronizar');
+        return;
+      }
+
+      // Evitar procesar el mismo inventario múltiples veces
+      if (isProcessing) {
+        console.log('⏸️ [ProductosGeneralesScreen] Ya se está procesando un inventario, ignorando duplicado');
+        return;
+      }
+
+      // Si es el mismo timestamp, ignorarlo
+      if (data.timestamp && lastTimestamp === data.timestamp) {
+        console.log('⏸️ [ProductosGeneralesScreen] Inventario con mismo timestamp, ignorando duplicado');
+        return;
+      }
+
+      isProcessing = true;
+      lastTimestamp = data.timestamp;
+      setIsSincronizando(true);
+
+      try {
+        console.log('🔄 [ProductosGeneralesScreen] Iniciando sincronización de productos...');
+        // Usar el método de sincronización masiva de localDb (actualiza SQLite)
+        await localDb.sincronizarProductosMasivo(data.productos);
+        console.log('✅ [ProductosGeneralesScreen] Sincronización completada exitosamente');
+        
+        // Invalidar query para refrescar la lista desde SQLite
+        queryClient.invalidateQueries('productos');
+        queryClient.invalidateQueries(['productos', searchTerm, netInfo.isConnected]);
+        
+        // Mostrar mensaje de éxito
+        Alert.alert(
+          '¡Inventario actualizado!',
+          `Se sincronizaron ${data.productos.length} productos correctamente. La búsqueda ahora mostrará los nuevos datos.`,
+          [{ 
+            text: 'OK',
+            onPress: () => {
+              // Refrescar manualmente la lista desde SQLite
+              refetch();
+            }
+          }]
+        );
+      } catch (error) {
+        console.error('❌ [ProductosGeneralesScreen] Error sincronizando productos:', error);
+        Alert.alert(
+          'Error',
+          'No se pudo sincronizar el inventario. Por favor, intente nuevamente.',
+          [{ text: 'OK' }]
+        );
+      } finally {
+        isProcessing = false;
+        setIsSincronizando(false);
+      }
+    };
+
+    webSocketService.on('send_inventory', handleSendInventory);
+
+    return () => {
+      webSocketService.off('send_inventory', handleSendInventory);
+    };
+  }, [queryClient, searchTerm, netInfo.isConnected, refetch]);
+
 
   // Mutación para crear producto
   const createMutation = useMutation(productosApi.create, {
@@ -214,6 +289,9 @@ const ProductosGeneralesScreen = () => {
         onClose={() => setImportModalVisible(false)}
         onImport={handleImportProducts}
       />
+
+      {/* Modal de sincronización de inventario */}
+      <ModalSincronizacionInventario visible={isSincronizando} />
     </View>
   );
 };

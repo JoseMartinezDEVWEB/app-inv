@@ -288,8 +288,7 @@ export const AuthProvider = ({ children }) => {
           dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
           }
         } else {
-          console.warn('⚠️ [AuthContext] ===== NO HAY TOKEN NI USERDATA =====')
-          console.warn('⚠️ [AuthContext] No hay credenciales guardadas')
+          // No hay credenciales - estado inicial normal, no mostrar advertencia
           dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
         }
       } catch (error) {

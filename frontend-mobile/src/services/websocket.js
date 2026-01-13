@@ -76,6 +76,9 @@ class WebSocketService {
   setupEventListeners() {
     if (!this.socket) return
 
+    // Remover todos los listeners anteriores antes de agregar nuevos
+    this.socket.removeAllListeners()
+
     this.socket.on('connect', () => {
       console.log('✅ [WebSocket Mobile] WebSocket conectado exitosamente')
       console.log(`🆔 [WebSocket Mobile] Socket ID: ${this.socket.id}`)
@@ -196,10 +199,16 @@ class WebSocketService {
       this.emitLocal('colaborador_desconectado', data)
     })
 
-    // Escuchar evento de inventario recibido del admin
+    // Escuchar evento de inventario recibido del admin (nuevo evento send_inventory)
+    this.socket.on('send_inventory', (data) => {
+      console.log('📦 [WebSocket Mobile] Inventario recibido del admin:', data.productos?.length || 0, 'productos')
+      this.emitLocal('send_inventory', data)
+    })
+
+    // Mantener compatibilidad con evento anterior
     this.socket.on('dispatch_inventory', (data) => {
-      console.log('📦 Inventario recibido del admin:', data.productos?.length || 0, 'productos')
-      this.emitLocal('dispatch_inventory', data)
+      console.log('⚠️ [WebSocket Mobile] Uso de evento deprecated dispatch_inventory, redirigiendo a send_inventory')
+      this.emitLocal('send_inventory', data)
     })
   }
 

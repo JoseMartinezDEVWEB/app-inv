@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import NetInfo from '@react-native-community/netinfo'
 import { showMessage } from 'react-native-flash-message'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import ModalSincronizacionBLE from '../components/ModalSincronizacionBLE'
+import ModalSincronizacionInventario from '../components/ModalSincronizacionInventario'
 import BLEService from '../services/BLEService'
 import SincronizacionRedModal from '../components/modals/SincronizacionRedModal'
 import ImportarConGeminiModal from '../components/modals/ImportarConGeminiModal'
@@ -50,6 +51,10 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
   const [productoParaAgregar, setProductoParaAgregar] = useState(null)
   const [codigoBarrasEscaneado, setCodigoBarrasEscaneado] = useState(null)
   const [estadisticasSync, setEstadisticasSync] = useState({ pendientes: 0, completadas: 0, errores: 0 })
+  const [isSincronizandoInventario, setIsSincronizandoInventario] = useState(false)
+  
+  // Ref para evitar procesamiento múltiple de inventario
+  const processingInventoryRef = useRef({ isProcessing: false, lastTimestamp: null })
 
   const [barcode, setBarcode] = useState('')
   const [busqueda, setBusqueda] = useState('')
@@ -186,8 +191,67 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
     }
     getBarCodeScannerPermissions()
 
+    // Escuchar evento de sincronización de inventario desde el admin
+    const handleSendInventory = async (data) => {
+      console.log('📦 [SesionColaboradorScreen] Recibido send_inventory:', data.productos?.length || 0, 'productos', 'timestamp:', data.timestamp)
+      
+      if (!data.productos || data.productos.length === 0) {
+        console.warn('⚠️ [SesionColaboradorScreen] No hay productos para sincronizar')
+        return
+      }
+
+      // Evitar procesar el mismo inventario múltiples veces
+      if (processingInventoryRef.current.isProcessing) {
+        console.log('⏸️ [SesionColaboradorScreen] Ya se está procesando un inventario, ignorando duplicado')
+        return
+      }
+
+      // Si es el mismo timestamp, ignorarlo
+      if (data.timestamp && processingInventoryRef.current.lastTimestamp === data.timestamp) {
+        console.log('⏸️ [SesionColaboradorScreen] Inventario con mismo timestamp, ignorando duplicado')
+        return
+      }
+
+      processingInventoryRef.current.isProcessing = true
+      processingInventoryRef.current.lastTimestamp = data.timestamp
+      setIsSincronizandoInventario(true)
+
+      try {
+        console.log('🔄 [SesionColaboradorScreen] Iniciando sincronización de productos...')
+        // Usar el método de sincronización masiva de localDb (actualiza SQLite)
+        await localDb.sincronizarProductosMasivo(data.productos)
+        console.log('✅ [SesionColaboradorScreen] Sincronización completada exitosamente')
+        
+        // Mostrar mensaje de éxito
+        Alert.alert(
+          '¡Inventario actualizado!',
+          `Se sincronizaron ${data.productos.length} productos correctamente. Los productos ahora están disponibles para buscar y escanear.`,
+          [{ 
+            text: 'OK',
+            onPress: () => {
+              // Recargar productos offline para refrescar cualquier caché
+              cargarProductosOffline()
+            }
+          }]
+        )
+      } catch (error) {
+        console.error('❌ [SesionColaboradorScreen] Error sincronizando productos:', error)
+        Alert.alert(
+          'Error',
+          'No se pudo sincronizar el inventario. Por favor, intente nuevamente.',
+          [{ text: 'OK' }]
+        )
+      } finally {
+        processingInventoryRef.current.isProcessing = false
+        setIsSincronizandoInventario(false)
+      }
+    }
+
+    webSocketService.on('send_inventory', handleSendInventory)
+
     // Cleanup al desmontar
     return () => {
+      webSocketService.off('send_inventory', handleSendInventory)
       clearInterval(pingInterval)
       unsubscribe()
       unsubscribeSync()
@@ -443,8 +507,18 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
         }
       }
       
-      // Si no se encontró o no hay conexión, intentar buscar en caché local (si implementado)
-      // TODO: Implementar búsqueda local robusta
+      // Si no se encontró o no hay conexión, buscar en SQLite local
+      if (!producto) {
+        try {
+          console.log('🔍 [SesionColaborador] Buscando en SQLite local...')
+          producto = await localDb.buscarProductoPorCodigo(data)
+          if (producto) {
+            console.log('✅ [SesionColaborador] Producto encontrado en SQLite local')
+          }
+        } catch (error) {
+          console.warn('⚠️ [SesionColaborador] Error buscando en SQLite:', error.message)
+        }
+      }
       
       if (!producto) {
         Alert.alert(
@@ -502,18 +576,40 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
       // 2. Buscar en catálogo general (accesible para todos)
       try {
         // En modo colaborador, intentamos obtener productos generales desde el servidor
-        // si hay conexión, o usamos la caché local si no
-        const response = await productosApi.buscarPorNombre(busqueda.trim())
-        const lista = response.data.datos?.productos || []
+        // si hay conexión, o usamos SQLite local si no
+        if (isConnected) {
+          const response = await productosApi.buscarPorNombre(busqueda.trim())
+          const lista = response.data.datos?.productos || []
 
-        // Agregar productos generales que no estén ya en resultados
-        lista.forEach(prod => {
-          if (!resultados.find(r => r._id === prod._id)) {
-            resultados.push(prod)
-          }
-        })
+          // Agregar productos generales que no estén ya en resultados
+          lista.forEach(prod => {
+            if (!resultados.find(r => r._id === prod._id)) {
+              resultados.push(prod)
+            }
+          })
+        } else {
+          // Si no hay conexión, buscar en SQLite local
+          console.log('📴 [SesionColaborador] Modo offline - Buscando en SQLite local...')
+          const productosLocales = await localDb.obtenerProductos({ buscar: busqueda.trim() })
+          productosLocales.forEach(prod => {
+            if (!resultados.find(r => r._id === prod._id || r.id === prod._id)) {
+              resultados.push(prod)
+            }
+          })
+        }
       } catch (error) {
-        console.warn('⚠️ No se pudo buscar en catálogo general:', error.message)
+        console.warn('⚠️ No se pudo buscar en catálogo general, intentando local:', error.message)
+        // Si falla la API, intentar buscar en SQLite local como fallback
+        try {
+          const productosLocales = await localDb.obtenerProductos({ buscar: busqueda.trim() })
+          productosLocales.forEach(prod => {
+            if (!resultados.find(r => r._id === prod._id || r.id === prod._id)) {
+              resultados.push(prod)
+            }
+          })
+        } catch (localError) {
+          console.warn('⚠️ Error buscando en SQLite local:', localError.message)
+        }
       }
 
       setResultadosBusqueda(resultados.slice(0, 20)) // Limitar a 20 resultados
@@ -1129,6 +1225,10 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
         costoInicial={productoParaAgregar?.costo || productoParaAgregar?.costoBase || ''}
         cantidadInicial="1"
       />
+
+      {/* Modal de sincronización de inventario */}
+      <ModalSincronizacionInventario visible={isSincronizandoInventario} />
+
       {/* Modal Historial / Agenda */}
       <Modal visible={modalHistorial} animationType="slide" transparent>
         <View style={styles.modalOverlay}>

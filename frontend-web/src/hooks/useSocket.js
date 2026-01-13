@@ -31,10 +31,8 @@ export const useSocket = () => {
     // Escuchar actualizaciones de contador de colaboradores
     const handleOnlineCount = (data) => {
       console.log('📊 [useSocket] Recibido contador de colaboradores:', data.count, data)
-      if (data.detalles && data.detalles.length > 0) {
-        console.log('📋 [useSocket] Detalles de colaboradores:', data.detalles)
-      } else {
-        console.log('⚠️ [useSocket] No hay detalles de colaboradores en la respuesta')
+      if (data.detalles) {
+        console.log('📋 [useSocket] Detalles de colaboradores recibidos:', data.detalles)
       }
       setOnlineColaboradores(data.count || 0)
     }
@@ -146,19 +144,19 @@ export const useSocket = () => {
     return () => clearInterval(interval)
   }, [isAuthenticated, token])
 
-    // Función para enviar inventario a colaboradores
-    const enviarInventarioAColaboradores = useCallback((productos) => {
-      if (!isConnected) {
-        throw new Error('No hay conexión con el servidor')
-      }
+  // Función para enviar inventario a colaboradores
+  const enviarInventarioAColaboradores = useCallback((productos) => {
+    if (!isConnected) {
+      throw new Error('No hay conexión con el servidor')
+    }
 
-      if (user?.rol !== 'administrador') {
-        throw new Error('Solo los administradores pueden enviar inventario')
-      }
+    if (user?.rol !== 'administrador') {
+      throw new Error('Solo los administradores pueden enviar inventario')
+    }
 
-      // Emitir evento de envío de inventario (nuevo evento send_inventory)
-      webSocketService.emit('send_inventory', { productos })
-    }, [isConnected, user?.rol])
+    // Emitir evento de envío de inventario (nuevo evento send_inventory)
+    webSocketService.emit('send_inventory', { productos })
+  }, [isConnected, user?.rol])
 
   return {
     isConnected,
@@ -170,3 +168,4 @@ export const useSocket = () => {
     off: webSocketService.off.bind(webSocketService)
   }
 }
+

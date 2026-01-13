@@ -357,6 +357,90 @@ const localDb = {
         }
     },
 
+    // Sincronizar productos masivamente desde el servidor (para uso con send_inventory)
+    sincronizarProductosMasivo: async (productos) => {
+        try {
+            const database = await getDatabase();
+            console.log(`🔄 [localDb] Iniciando sincronización masiva de ${productos.length} productos...`);
+            
+            // Iniciar transacción
+            await database.execAsync('BEGIN TRANSACTION');
+
+            try {
+                // 1. Vaciar la tabla de productos actual
+                await database.execAsync('DELETE FROM productos');
+                console.log('✅ [localDb] Tabla de productos vaciada');
+
+                // 2. Insertar productos en bloques de 50
+                const BATCH_SIZE = 50;
+                const batches = [];
+                
+                for (let i = 0; i < productos.length; i += BATCH_SIZE) {
+                    batches.push(productos.slice(i, i + BATCH_SIZE));
+                }
+
+                console.log(`📦 [localDb] Insertando ${productos.length} productos en ${batches.length} lotes...`);
+
+                for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+                    const batch = batches[batchIndex];
+                    
+                    // Insertar cada producto del lote
+                    for (const producto of batch) {
+                        const id = producto._id || producto.id || `prod_${Date.now()}_${Math.random()}`;
+                        const uuid = producto.id_uuid || id;
+                        const timestamp = Date.now();
+
+                        try {
+                            await database.runAsync(
+                                `INSERT INTO productos(
+                                    _id, id_uuid, nombre, codigoBarras, precioVenta, stock,
+                                    descripcion, categoria, unidad, costo, sku,
+                                    imagen, activo, is_dirty, last_updated, deleted
+                                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, 0)`,
+                                [
+                                    id,
+                                    uuid,
+                                    producto.nombre || '',
+                                    producto.codigoBarras || producto.codigo_barra || '',
+                                    producto.precioVenta || 0,
+                                    0, // stock
+                                    producto.descripcion || '',
+                                    producto.categoria || '',
+                                    producto.unidad || '',
+                                    producto.costo || 0,
+                                    producto.sku || '',
+                                    '', // imagen
+                                    timestamp
+                                ]
+                            );
+                        } catch (error) {
+                            console.warn(`⚠️ [localDb] Error insertando producto ${id}:`, error.message);
+                            // Continuar con el siguiente producto
+                        }
+                    }
+                    
+                    console.log(`✅ [localDb] Lote ${batchIndex + 1}/${batches.length} insertado`);
+                }
+
+                // Commit transacción
+                await database.execAsync('COMMIT');
+                console.log('✅ [localDb] Sincronización masiva completada exitosamente');
+                return { success: true, total: productos.length };
+            } catch (error) {
+                // Rollback en caso de error
+                await database.execAsync('ROLLBACK');
+                console.error('❌ [localDb] Error en transacción, haciendo rollback:', error);
+                throw error;
+            }
+        } catch (error) {
+            console.error('❌ [localDb] Error en sincronización masiva:', error);
+            throw error;
+        }
+    },
+
+    // Método auxiliar para obtener la instancia de la base de datos (para uso externo)
+    getDatabase: getDatabase,
+
     buscarProductoPorCodigo: async (codigo) => {
         try {
             const database = await getDatabase();

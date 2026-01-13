@@ -61,15 +61,20 @@ class WebSocketService {
   setupEventListeners() {
     if (!this.socket) return
 
+    // Remover todos los listeners anteriores antes de agregar nuevos
+    this.socket.removeAllListeners()
+
     this.socket.on('connect', () => {
-      console.log('🔌 Conectado al servidor WebSocket')
+      console.log('🔌 Conectado al servidor WebSocket, ID:', this.socket.id)
       this.isConnected = true
       this.reconnectAttempts = 0
+      this.emitLocal('connected', { socketId: this.socket.id })
     })
 
     this.socket.on('disconnect', (reason) => {
       console.log('🔌 Desconectado del servidor WebSocket:', reason)
       this.isConnected = false
+      this.emitLocal('disconnected', { reason })
       
       if (reason === 'io server disconnect') {
         // El servidor desconectó, intentar reconectar
@@ -124,6 +129,30 @@ class WebSocketService {
     this.socket.on('usuario_desconectado', (data) => {
       console.log('👤 Usuario desconectado:', data)
       this.emitLocal('usuario_desconectado', data)
+    })
+
+    // Eventos de colaboradores en línea
+    this.socket.on('online_colaboradores_count', (data) => {
+      console.log('👥 [WebSocket Web] Colaboradores en línea recibido:', data.count, data)
+      this.emitLocal('online_colaboradores_count', data)
+    })
+
+    this.socket.on('colaborador_conectado', (data) => {
+      console.log('👥 [WebSocket Web] Colaborador conectado recibido:', data)
+      console.log(`👥 [WebSocket Web] Total colaboradores ahora: ${data.totalColaboradores}`)
+      this.emitLocal('colaborador_conectado', data)
+    })
+
+    this.socket.on('colaborador_desconectado', (data) => {
+      console.log('👥 [WebSocket Web] Colaborador desconectado recibido:', data)
+      console.log(`👥 [WebSocket Web] Total colaboradores ahora: ${data.totalColaboradores}`)
+      this.emitLocal('colaborador_desconectado', data)
+    })
+
+    // Resultado de envío de inventario
+    this.socket.on('sync_finished_ok', (data) => {
+      console.log('📦 Resultado de envío de inventario:', data)
+      this.emitLocal('sync_finished_ok', data)
     })
 
     this.socket.on('error', (error) => {
