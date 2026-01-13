@@ -8,6 +8,7 @@ import {
   Alert,
   TextInput,
   Modal,
+  Switch,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -21,15 +22,22 @@ import ModalSincronizacionBLE from '../components/ModalSincronizacionBLE'
 import BLEService from '../services/BLEService'
 import SincronizacionRedModal from '../components/modals/SincronizacionRedModal'
 import ImportarConGeminiModal from '../components/modals/ImportarConGeminiModal'
+import BarcodeProductModal from '../components/modals/BarcodeProductModal'
 import syncService from '../services/syncService'
+import { useAuth } from '../context/AuthContext'
+import webSocketService from '../services/websocket'
+import { getInternetCredentials, setInternetCredentials } from '../services/secureStorage'
+import { config } from '../config/env'
 
 const SesionColaboradorScreen = ({ route, navigation }) => {
   const { solicitudId, sesionInventario } = route.params || {}
+  const { loginAsCollaborator } = useAuth()
 
   const [productos, setProductos] = useState([])
   const [productosOffline, setProductosOffline] = useState([])
   const [isConnected, setIsConnected] = useState(true)
   const [hasPermission, setHasPermission] = useState(null)
+  const [envioTiempoReal, setEnvioTiempoReal] = useState(true) // Checkbox para envío en tiempo real
 
   const [showScanner, setShowScanner] = useState(false)
   const [modalBuscar, setModalBuscar] = useState(false)
@@ -38,6 +46,9 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
   const [modalBLE, setModalBLE] = useState(false)
   const [modalRedLocal, setModalRedLocal] = useState(false)
   const [modalImportarIA, setModalImportarIA] = useState(false)
+  const [showBarcodeProductModal, setShowBarcodeProductModal] = useState(false)
+  const [productoParaAgregar, setProductoParaAgregar] = useState(null)
+  const [codigoBarrasEscaneado, setCodigoBarrasEscaneado] = useState(null)
   const [estadisticasSync, setEstadisticasSync] = useState({ pendientes: 0, completadas: 0, errores: 0 })
 
   const [barcode, setBarcode] = useState('')
@@ -95,11 +106,73 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
     // Actualizar estadísticas iniciales
     actualizarEstadisticasSync()
 
+    // Conectar colaborador cuando se monta el componente
+    const conectarColaborador = async () => {
+      try {
+        await solicitudesConexionApi.conectar(solicitudId)
+        
+        // Generar token local para WebSocket si no existe
+        console.log('🔐 [SesionColaborador] Verificando credenciales para WebSocket...')
+        const tokenCredentials = await getInternetCredentials('auth_token')
+        const userCredentials = await getInternetCredentials('user_data')
+        
+        if (!tokenCredentials?.password || !userCredentials?.password) {
+          console.log('🔐 [SesionColaborador] No hay credenciales, generando token local para colaborador...')
+          const localToken = `colaborador-token-${solicitudId}-${Date.now()}`
+          const colaboradorUser = {
+            nombre: 'Colaborador',
+            rol: 'colaborador',
+            tipo: 'colaborador_sesion',
+            solicitudId: solicitudId
+          }
+          
+          await Promise.all([
+            setInternetCredentials('auth_token', 'token', localToken),
+            setInternetCredentials('user_data', 'user', JSON.stringify(colaboradorUser))
+          ])
+          
+          console.log('✅ [SesionColaborador] Credenciales guardadas, conectando WebSocket...')
+          
+          // Conectar WebSocket con el token local
+          if (!config.isOffline) {
+            webSocketService.connect(localToken)
+          }
+        } else {
+          console.log('✅ [SesionColaborador] Credenciales existentes, verificando conexión WebSocket...')
+          const token = tokenCredentials.password
+          
+          // Verificar si el WebSocket está conectado
+          const wsStatus = webSocketService.getConnectionStatus()
+          if (!wsStatus.isConnected && !wsStatus.isConnecting && !config.isOffline) {
+            console.log('🔌 [SesionColaborador] WebSocket no conectado, intentando conectar...')
+            webSocketService.connect(token)
+          }
+        }
+      } catch (error) {
+        console.error('❌ [SesionColaborador] Error al conectar colaborador:', error)
+        // Silencioso - puede fallar si ya está conectado
+      }
+    }
+    conectarColaborador()
+
+    // Sistema de ping periódico para mantener conexión activa (cada 20 segundos)
+    const pingInterval = setInterval(async () => {
+      if (isConnected) {
+        try {
+          await solicitudesConexionApi.ping(solicitudId)
+        } catch (error) {
+          // Silencioso - si falla el ping, no es crítico
+        }
+      }
+    }, 20000) // 20 segundos
+
     const unsubscribe = NetInfo.addEventListener((state) => {
       setIsConnected(Boolean(state.isConnected))
 
       if (state.isConnected) {
         showMessage({ message: '✅ Conectado - Sincronizando...', type: 'success' })
+        // Conectar cuando se detecta conexión
+        conectarColaborador()
         // Forzar sincronización cuando se detecta conexión
         syncService.forzarSincronizacion()
       } else {
@@ -115,9 +188,15 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
 
     // Cleanup al desmontar
     return () => {
+      clearInterval(pingInterval)
       unsubscribe()
       unsubscribeSync()
       syncService.stop()
+      
+      // Desconectar colaborador al salir
+      solicitudesConexionApi.cerrarSesion(solicitudId).catch(() => {
+        // Silencioso
+      })
       
       // Limpiar recursos de BLE si estaban en uso
       if (BLEService.isInitialized && !BLEService.isDestroyed) {
@@ -128,7 +207,7 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
         }
       }
     }
-  }, [])
+  }, [solicitudId])
 
   const cargarProductosOffline = async () => {
     try {
@@ -186,12 +265,11 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
       origen: 'colaborador',
     }
 
-    if (isConnected) {
-      // Si hay conexión, intentar enviar directamente
+    // Si envío en tiempo real está activado y hay conexión, enviar inmediatamente
+    if (envioTiempoReal && isConnected) {
       try {
         await solicitudesConexionApi.agregarProductoOffline(solicitudId, payload)
         showMessage({ message: '✅ Producto enviado', type: 'success' })
-        await localDb.eliminarProductoColaborador(item.temporalId)
         cargarProductosOffline()
       } catch (error) {
         console.error('Error al enviar producto:', error)
@@ -199,16 +277,20 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
         await syncService.agregarTarea('enviar_producto', { solicitudId, producto: payload })
         showMessage({ message: '📦 Guardado en cola de sincronización', type: 'info' })
         await guardarItemOffline({ ...item, offline: true })
+        cargarProductosOffline()
       }
     } else {
-      // Sin conexión: agregar directamente a cola
+      // Si envío en tiempo real está desactivado o no hay conexión: agregar a cola
       await syncService.agregarTarea('enviar_producto', { solicitudId, producto: payload })
       showMessage({
-        message: '📦 Guardado offline',
-        description: 'Se sincronizará automáticamente cuando haya conexión',
+        message: '📦 Producto guardado',
+        description: envioTiempoReal 
+          ? 'Se enviará cuando haya conexión' 
+          : 'Se enviará cuando sincronices manualmente',
         type: 'info',
       })
       await guardarItemOffline({ ...item, offline: true })
+      cargarProductosOffline()
     }
     
     await actualizarEstadisticasSync()
@@ -219,26 +301,44 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
     await guardarItemOffline({ ...item, offline: !isConnected })
   }
 
-  const handleAgregarDesdeBase = async (baseProducto, cantidadInicial = 1, costoInicial = 0) => {
+  // Manejar confirmación del modal de producto
+  const handleBarcodeProductConfirm = async ({ cantidad: cantidadConfirmada, costo: costoConfirmado }) => {
+    if (!productoParaAgregar) return
+
+    setShowBarcodeProductModal(false)
+
     const item = crearItemColaborador({
-      nombre: baseProducto.nombre,
-      sku: baseProducto.sku,
-      codigoBarras: baseProducto.codigoBarras || baseProducto.codigo,
-      cantidad: cantidadInicial,
-      costo: costoInicial || baseProducto.costo || baseProducto.costoBase || 0,
+      nombre: productoParaAgregar.nombre,
+      sku: productoParaAgregar.sku,
+      codigoBarras: codigoBarrasEscaneado || productoParaAgregar.codigoBarras || productoParaAgregar.codigo,
+      cantidad: cantidadConfirmada,
+      costo: costoConfirmado,
     })
 
     agregarOActualizarEnListas(item)
 
-    if (isConnected) {
+    // Si envío en tiempo real está activado, enviar inmediatamente
+    if (envioTiempoReal && isConnected) {
       await enviarProductoServidor(item)
     } else {
       showMessage({
-        message: '📦 Producto guardado offline',
-        description: 'Se sincronizará cuando haya conexión',
+        message: '📦 Producto guardado',
+        description: envioTiempoReal 
+          ? 'Se enviará cuando haya conexión' 
+          : 'Se enviará cuando sincronices manualmente',
         type: 'success',
       })
     }
+
+    setProductoParaAgregar(null)
+    setCodigoBarrasEscaneado(null)
+  }
+
+  const handleAgregarDesdeBase = async (baseProducto, cantidadInicial = 1, costoInicial = 0) => {
+    // Abrir modal para confirmar cantidad y costo
+    setProductoParaAgregar(baseProducto)
+    setCodigoBarrasEscaneado(null)
+    setShowBarcodeProductModal(true)
   }
 
   const handleAgregarManual = async () => {
@@ -270,12 +370,15 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
 
     agregarOActualizarEnListas(item)
 
-    if (isConnected) {
+    // Si envío en tiempo real está activado, enviar inmediatamente
+    if (envioTiempoReal && isConnected) {
       await enviarProductoServidor(item)
     } else {
       showMessage({
-        message: '📦 Producto guardado offline',
-        description: 'Se sincronizará cuando haya conexión',
+        message: '📦 Producto guardado',
+        description: envioTiempoReal 
+          ? 'Se enviará cuando haya conexión' 
+          : 'Se enviará cuando sincronices manualmente',
         type: 'success',
       })
     }
@@ -365,7 +468,10 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
         return
       }
 
-      await handleAgregarDesdeBase(producto, 1, producto.costoBase || producto.costo || 0)
+      // Abrir modal para confirmar cantidad y costo
+      setProductoParaAgregar(producto)
+      setCodigoBarrasEscaneado(data)
+      setShowBarcodeProductModal(true)
     } catch (error) {
       console.error('Error al buscar por código de barras:', error)
       Alert.alert('Error', 'No se pudo buscar el producto por código de barras')
@@ -682,6 +788,19 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
               value={clienteNombre}
               onChangeText={setClienteNombre}
             />
+            {/* Switch para envío en tiempo real */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+              <Switch
+                value={envioTiempoReal}
+                onValueChange={setEnvioTiempoReal}
+                trackColor={{ false: '#767577', true: '#81b5ff' }}
+                thumbColor={envioTiempoReal ? '#fff' : '#f4f3f4'}
+                style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+              />
+              <Text style={{ color: '#e0f2fe', fontSize: 11, marginLeft: 6 }}>
+                Envío en tiempo real
+              </Text>
+            </View>
           </View>
           <View style={styles.headerRight}>
             <TouchableOpacity onPress={() => setModalHistorial(true)} style={{ marginRight: 8 }}>
@@ -840,9 +959,11 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.resultItem}
-                  onPress={async () => {
-                    await handleAgregarDesdeBase(item, 1, item.costo || item.costoBase || 0)
+                  onPress={() => {
+                    setProductoParaAgregar(item)
+                    setCodigoBarrasEscaneado(null)
                     setModalBuscar(false)
+                    setShowBarcodeProductModal(true)
                   }}
                 >
                   <Text style={styles.resultNombre}>{item.nombre}</Text>
@@ -992,6 +1113,21 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
         onClose={() => setModalImportarIA(false)}
         onProductosImportados={handleProductosImportados}
         solicitudId={solicitudId}
+      />
+
+      {/* Modal de confirmación de producto */}
+      <BarcodeProductModal
+        visible={showBarcodeProductModal}
+        onClose={() => {
+          setShowBarcodeProductModal(false)
+          setProductoParaAgregar(null)
+          setCodigoBarrasEscaneado(null)
+        }}
+        producto={productoParaAgregar}
+        codigoBarras={codigoBarrasEscaneado}
+        onConfirm={handleBarcodeProductConfirm}
+        costoInicial={productoParaAgregar?.costo || productoParaAgregar?.costoBase || ''}
+        cantidadInicial="1"
       />
       {/* Modal Historial / Agenda */}
       <Modal visible={modalHistorial} animationType="slide" transparent>

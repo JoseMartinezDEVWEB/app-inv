@@ -289,3 +289,4 @@ async pullUpdates() {
 - `src/services/SyncService.js` (nuevo)
 - `src/services/api.js`
 
+

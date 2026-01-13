@@ -959,6 +959,53 @@ const localDb = {
     },
 
     /**
+     * Guardar producto de colaborador localmente
+     */
+    guardarProductoColaborador: async (item, solicitudId) => {
+        try {
+            const database = await getDatabase();
+            const timestamp = new Date().toISOString();
+            
+            await database.runAsync(
+                `INSERT OR REPLACE INTO productos_colaborador 
+                (temporalId, solicitudId, nombre, sku, codigoBarras, cantidad, costo, timestamp, sincronizado) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+                [
+                    item.temporalId || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    solicitudId,
+                    item.nombre || '',
+                    item.sku || '',
+                    item.codigoBarras || '',
+                    item.cantidad || 1,
+                    item.costo || 0,
+                    timestamp
+                ]
+            );
+            return true;
+        } catch (e) {
+            console.error('Error guardando producto colaborador:', e);
+            throw e;
+        }
+    },
+
+    /**
+     * Eliminar producto de colaborador por temporalId
+     */
+    eliminarProductoColaborador: async (temporalId) => {
+        try {
+            const database = await getDatabase();
+            await database.runAsync(
+                'DELETE FROM productos_colaborador WHERE temporalId = ?',
+                [temporalId]
+            );
+            return true;
+        } catch (e) {
+            console.error('Error eliminando producto colaborador:', e);
+            throw e;
+        }
+    },
+
+    /**
      * Limpiar productos de colaborador después de sincronizar
      */
     limpiarProductosColaborador: async (solicitudId) => {

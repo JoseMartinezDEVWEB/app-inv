@@ -244,7 +244,20 @@ export const AuthProvider = ({ children }) => {
           }
 
           // Token válido - continuar normalmente
-          if (isTempCollaborator || (access && refresh)) {
+          console.log('🔍 [AuthContext] ===== INICIO VERIFICACIÓN WEBSOCKET =====')
+          console.log('🔍 [AuthContext] Verificando condiciones para conectar WebSocket:', {
+            isTempCollaborator,
+            hasAccess: !!access,
+            hasRefresh: !!refresh,
+            isOffline: config.isOffline,
+            userRol: userData?.rol,
+            tokenLength: access?.length,
+            tokenStartsWith: access?.substring(0, 20)
+          })
+          
+          // Si tiene token válido, continuar (incluso sin refresh token para colaboradores)
+          if (access) {
+            console.log('✅ [AuthContext] Token encontrado, procediendo con conexión WebSocket')
             const tokenInfo = getTokenInfo(access)
             if (tokenInfo) {
               console.log(`✅ Token válido - expira en ${Math.floor(tokenInfo.timeToExpire / 60)} minutos`)
@@ -259,22 +272,33 @@ export const AuthProvider = ({ children }) => {
               },
             })
 
-            // Conectar WebSocket solo si el token es válido y no estamos offline
+            // Conectar WebSocket si el token es válido y no estamos offline
+            // IMPORTANTE: Conectar siempre que haya token, especialmente para colaboradores
+            console.log(`🔌 [AuthContext] Intentando conectar WebSocket. isOffline: ${config.isOffline}`)
             if (!config.isOffline) {
+              console.log(`🔌 [AuthContext] Llamando a webSocketService.connect() con token de longitud: ${access?.length}`)
+              console.log(`🔌 [AuthContext] Usuario rol: ${userData?.rol}, es colaborador: ${isTempCollaborator || userData?.rol === 'colaborador'}`)
               webSocketService.connect(access)
+            } else {
+              console.warn('⚠️ [AuthContext] Modo offline activado - no se conectará al WebSocket')
             }
-          } else {
-            dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
+        } else {
+          console.warn('⚠️ [AuthContext] ===== NO HAY TOKEN DE ACCESO =====')
+          console.warn('⚠️ [AuthContext] No hay token de acceso - no se puede conectar WebSocket')
+          dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
           }
         } else {
+          console.warn('⚠️ [AuthContext] ===== NO HAY TOKEN NI USERDATA =====')
+          console.warn('⚠️ [AuthContext] No hay credenciales guardadas')
           dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
         }
       } catch (error) {
-        console.error('Error verificando autenticación:', error)
+        console.error('❌ [AuthContext] Error verificando autenticación:', error)
         dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
       }
     }
 
+    console.log('🚀 [AuthContext] Ejecutando checkAuth() al montar componente')
     checkAuth()
   }, [])
 
@@ -351,7 +375,13 @@ export const AuthProvider = ({ children }) => {
           })
 
           // Conectar WebSocket
-          webSocketService.connect(accessToken)
+          console.log(`🔌 [AuthContext Login] Conectando WebSocket después de login exitoso. isOffline: ${config.isOffline}`)
+          if (!config.isOffline) {
+            console.log(`🔌 [AuthContext Login] Llamando a webSocketService.connect() con token de longitud: ${accessToken?.length}`)
+            webSocketService.connect(accessToken)
+          } else {
+            console.warn('⚠️ [AuthContext Login] Modo offline activado - no se conectará al WebSocket')
+          }
 
           showMessage({
             message: '¡Bienvenido!',
@@ -456,7 +486,13 @@ export const AuthProvider = ({ children }) => {
         },
       })
 
-      webSocketService.connect(accessToken)
+      console.log(`🔌 [AuthContext loginAsCollaborator] Conectando WebSocket para colaborador temporal`)
+      console.log(`🔌 [AuthContext loginAsCollaborator] Token longitud: ${accessToken?.length}, isOffline: ${config.isOffline}`)
+      if (!config.isOffline) {
+        webSocketService.connect(accessToken)
+      } else {
+        console.warn('⚠️ [AuthContext loginAsCollaborator] Modo offline - no se conectará WebSocket')
+      }
 
       showMessage({
         message: '¡Conectado como colaborador!',
@@ -540,6 +576,106 @@ export const AuthProvider = ({ children }) => {
     webSocketService.on('auth_error', handleWsAuthError)
     return () => webSocketService.off('auth_error', handleWsAuthError)
   }, [logout, state.token, state.user])
+
+  // Verificar y reconectar WebSocket si es necesario
+  useEffect(() => {
+    if (!state.isAuthenticated || !state.token || config.isOffline) return
+
+    const checkWebSocketConnection = () => {
+      const wsStatus = webSocketService.getConnectionStatus()
+      console.log('🔍 [AuthContext] Verificando estado WebSocket:', {
+        isAuthenticated: state.isAuthenticated,
+        hasToken: !!state.token,
+        wsConnected: wsStatus.isConnected,
+        wsConnecting: wsStatus.isConnecting
+      })
+
+      // Si no está conectado ni intentando conectar, intentar conectar
+      if (!wsStatus.isConnected && !wsStatus.isConnecting && state.token) {
+        console.log('🔌 [AuthContext] WebSocket no conectado, intentando conectar...')
+        webSocketService.connect(state.token)
+      }
+    }
+
+    // Verificar inmediatamente
+    checkWebSocketConnection()
+
+    // Verificar cada 5 segundos
+    const interval = setInterval(checkWebSocketConnection, 5000)
+
+    return () => clearInterval(interval)
+  }, [state.isAuthenticated, state.token])
+
+  // Escuchar evento de inventario recibido del admin
+  useEffect(() => {
+    if (!state.isAuthenticated) return
+
+    const handleInventarioRecibido = async (data) => {
+      try {
+        console.log('📦 Inventario recibido del admin:', data.productos?.length || 0, 'productos')
+        
+        const productos = data.productos || []
+        
+        if (productos.length === 0) {
+          console.warn('⚠️ Inventario recibido sin productos')
+          return
+        }
+
+        // Formatear productos para guardarlos en SQLite local
+        // El formato debe coincidir con la estructura de la tabla productos
+        const productosFormateados = productos.map(producto => ({
+          _id: producto.id || producto._id || `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id_uuid: producto.id_uuid || producto.id || `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          nombre: producto.nombre || '',
+          codigoBarras: producto.codigo_barra || producto.codigoBarras || '',
+          precioVenta: producto.precioVenta || producto.costo || 0,
+          stock: producto.cantidad || producto.stock || 0,
+          costo: producto.costo || producto.precioVenta || 0,
+          categoria: producto.categoria || '',
+          unidad: producto.unidad || '',
+          descripcion: producto.descripcion || '',
+          sku: producto.sku || producto.codigoBarras || '',
+          activo: 1,
+          is_dirty: 0, // No necesita sincronización ya que viene del servidor
+          last_updated: Date.now()
+        }))
+
+        // Guardar productos en SQLite local (usando transacción para sobrescribir)
+        console.log('💾 Guardando productos en base de datos local...')
+        const resultado = await localDb.guardarProductos(productosFormateados)
+        
+        console.log(`✅ Inventario guardado: ${resultado.count || productosFormateados.length} productos`)
+
+        // Mostrar notificación al usuario
+        showMessage({
+          message: 'Inventario actualizado',
+          description: `El admin envió ${productosFormateados.length} productos`,
+          type: 'success',
+          duration: 4000,
+        })
+
+        // Emitir evento local para que otros componentes puedan actualizar
+        webSocketService.emitLocal('inventario_actualizado', {
+          productos: productosFormateados,
+          timestamp: Date.now()
+        })
+      } catch (error) {
+        console.error('❌ Error guardando inventario recibido:', error)
+        showMessage({
+          message: 'Error al guardar inventario',
+          description: error.message || 'No se pudo guardar el inventario recibido',
+          type: 'danger',
+          duration: 5000,
+        })
+      }
+    }
+
+    webSocketService.on('dispatch_inventory', handleInventarioRecibido)
+    
+    return () => {
+      webSocketService.off('dispatch_inventory', handleInventarioRecibido)
+    }
+  }, [state.isAuthenticated])
 
   // Función para actualizar datos del usuario
   const updateUser = async (userData) => {

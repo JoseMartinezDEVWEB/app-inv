@@ -71,6 +71,20 @@ const AppContent = () => {
     return () => clearTimeout(timer)
   }, [])
 
+  // Manejar F5 para refrescar la aplicación
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      // F5 o Ctrl+R para refrescar
+      if (event.key === 'F5' || (event.ctrlKey && event.key === 'r')) {
+        event.preventDefault()
+        window.location.reload()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   if (showSplash) {
     return <SplashScreen onComplete={() => setShowSplash(false)} />
   }

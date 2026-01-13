@@ -166,18 +166,43 @@ class SolicitudConexion {
     const {
       nombre,
       costo = 0,
+      cantidad = 1,
       unidad = 'unidad',
       categoria = 'General',
+      sku = null,
+      codigoBarras = null,
     } = productoData
 
-    const stmt = db.prepare(`
-      INSERT INTO productos_offline (solicitudConexionId, nombre, costo, unidad, categoria)
-      VALUES (?, ?, ?, ?, ?)
-    `)
+    // Verificar si las columnas existen (para compatibilidad con migraciones)
+    const tableInfo = db.prepare("PRAGMA table_info(productos_offline)").all()
+    const hasCantidad = tableInfo.some(col => col.name === 'cantidad')
+    const hasSku = tableInfo.some(col => col.name === 'sku')
+    const hasCodigoBarras = tableInfo.some(col => col.name === 'codigoBarras')
 
-    const info = stmt.run(solicitudId, nombre, costo, unidad, categoria)
-
-    return info.lastInsertRowid
+    let stmt
+    if (hasCantidad && hasSku && hasCodigoBarras) {
+      stmt = db.prepare(`
+        INSERT INTO productos_offline (solicitudConexionId, nombre, costo, cantidad, unidad, categoria, sku, codigoBarras)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      const info = stmt.run(solicitudId, nombre, costo, cantidad, unidad, categoria, sku, codigoBarras)
+      return info.lastInsertRowid
+    } else if (hasCantidad) {
+      stmt = db.prepare(`
+        INSERT INTO productos_offline (solicitudConexionId, nombre, costo, cantidad, unidad, categoria)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `)
+      const info = stmt.run(solicitudId, nombre, costo, cantidad, unidad, categoria)
+      return info.lastInsertRowid
+    } else {
+      // Fallback para tablas antiguas sin cantidad
+      stmt = db.prepare(`
+        INSERT INTO productos_offline (solicitudConexionId, nombre, costo, unidad, categoria)
+        VALUES (?, ?, ?, ?, ?)
+      `)
+      const info = stmt.run(solicitudId, nombre, costo, unidad, categoria)
+      return info.lastInsertRowid
+    }
   }
 
   // Obtener productos offline
@@ -198,16 +223,24 @@ class SolicitudConexion {
   }
 
   // Sincronizar productos offline
-  static sincronizarProductos(solicitudId, mapeoIds) {
+  static sincronizarProductos(solicitudId, temporalIds) {
     const db = dbManager.getDatabase()
 
-    for (const [temporalId, productoClienteId] of Object.entries(mapeoIds)) {
-      const stmt = db.prepare(`
-        UPDATE productos_offline
-        SET sincronizado = 1, productoClienteId = ?
-        WHERE id = ? AND solicitudConexionId = ?
-      `)
-      stmt.run(productoClienteId, temporalId, solicitudId)
+    // Aceptar tanto array como objeto
+    const ids = Array.isArray(temporalIds) ? temporalIds : Object.keys(temporalIds)
+    
+    if (ids.length === 0) {
+      return true
+    }
+
+    const stmt = db.prepare(`
+      UPDATE productos_offline
+      SET sincronizado = 1
+      WHERE id = ? AND solicitudConexionId = ?
+    `)
+
+    for (const id of ids) {
+      stmt.run(id, solicitudId)
     }
 
     return true

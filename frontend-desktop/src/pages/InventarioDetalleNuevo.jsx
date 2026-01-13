@@ -339,8 +339,27 @@ const InventarioDetalleNuevo = () => {
           const prodResponse = await solicitudesConexionApi.obtenerProductosOffline(colab._id)
           const productosOffline = prodResponse.data?.datos || []
           if (productosOffline.length > 0) {
-            productosPorColaborador[colab._id] = productosOffline
-            totalPendientes += productosOffline.length
+            // Transformar productos del backend a estructura esperada por el frontend
+            // El backend devuelve: { id, nombre, costo, unidad, categoria, sincronizado, ... }
+            // El frontend espera: { temporalId, productoData: { nombre, cantidad, costo, ... } }
+            const productosTransformados = productosOffline
+              .filter(p => !p.sincronizado) // Solo productos no sincronizados
+              .map(p => ({
+                temporalId: p.id, // Usar el ID del backend como temporalId
+                productoData: {
+                  nombre: p.nombre || 'Sin nombre',
+                  cantidad: p.cantidad || 1, // Default a 1 si no hay cantidad
+                  costo: Number(p.costo || 0),
+                  unidad: p.unidad || 'unidad',
+                  categoria: p.categoria || 'General',
+                  sku: p.sku || '',
+                  codigoBarras: p.codigoBarras || ''
+                }
+              }))
+            if (productosTransformados.length > 0) {
+              productosPorColaborador[colab._id] = productosTransformados
+              totalPendientes += productosTransformados.length
+            }
           }
         } catch (error) {
           // Solo mostrar error si no es 401 (no autenticado)
@@ -476,7 +495,10 @@ const InventarioDetalleNuevo = () => {
           }
         }
         
-        refetch() // Refrescar datos de la sesión
+        // Invalidar queries y refrescar datos
+        queryClient.invalidateQueries(['sesion-inventario', id])
+        await refetch()
+        queryClient.refetchQueries(['sesion-inventario', id])
         toast.success('Producto agregado')
         setSelectedProducto(null)
         setCantidad('')
@@ -607,10 +629,12 @@ const InventarioDetalleNuevo = () => {
     setColaboradorSeleccionado(colaborador)
     setProductosParaRevisar(productos)
 
-    // Inicializar cantidades editadas
+    // Inicializar cantidades editadas con los valores correctos del backend
     const cantidades = {}
     productos.forEach(p => {
-      cantidades[p.temporalId] = p.productoData?.cantidad || 1
+      // Asegurar que la cantidad sea numérica y use el valor del backend
+      const cantidadBackend = Number(p.productoData?.cantidad) || 1
+      cantidades[p.temporalId] = cantidadBackend > 0 ? cantidadBackend : 1
     })
     setCantidadesEditadas(cantidades)
 
@@ -671,8 +695,11 @@ const InventarioDetalleNuevo = () => {
     try {
       // Agregar cada producto a la sesión de inventario
       for (const productoOffline of productosSeleccionados) {
+        if (!productoOffline || !productoOffline.productoData) {
+          continue // Saltar productos inválidos
+        }
         const productoData = productoOffline.productoData
-        const cantidadEditada = cantidadesEditadas[productoOffline.temporalId] || productoData.cantidad
+        const cantidadEditada = cantidadesEditadas[productoOffline.temporalId] || productoData.cantidad || 1
 
         // Buscar si el producto ya existe en la sesión
         const productoExistente = productosContados.find(p =>
@@ -693,42 +720,81 @@ const InventarioDetalleNuevo = () => {
         } else {
           // Buscar o crear el producto en ProductoCliente
           let productoClienteId
+          const clienteId = obtenerClienteId(sesion)
+          
+          if (!clienteId) {
+            console.error('No se pudo obtener el ID del cliente')
+            continue
+          }
+
           try {
-            const busqueda = await productosApi.buscarPorNombre(productoData.nombre)
+            // Buscar primero en productos del cliente
+            const busqueda = await productosApi.getByCliente(clienteId, { 
+              buscar: productoData.nombre, 
+              limite: 1 
+            })
             const encontrado = busqueda.data?.datos?.productos?.[0]
-            if (encontrado) {
+            if (encontrado && encontrado._id) {
               productoClienteId = encontrado._id
             }
           } catch (error) {
-            // Si no existe, crear uno nuevo
-            const nuevoProducto = await productosApi.createForCliente(obtenerClienteId(sesion), {
-              nombre: productoData.nombre,
-              costo: Number(productoData.costo) || 0,
-              unidad: 'unidad',
-              sku: productoData.sku || ''
-            })
-            productoClienteId = nuevoProducto.data?.datos?.producto?._id
+            console.log('Error buscando producto en cliente:', error)
+          }
+
+          // Si no se encontró, crear uno nuevo
+          if (!productoClienteId) {
+            try {
+              const nuevoProducto = await productosApi.createForCliente(clienteId, {
+                nombre: productoData.nombre,
+                costo: Number(productoData.costo) || 0,
+                unidad: productoData.unidad || 'unidad',
+                sku: productoData.sku || '',
+                categoria: productoData.categoria || 'General'
+              })
+              productoClienteId = nuevoProducto.data?.datos?.producto?._id || nuevoProducto.data?.datos?._id
+            } catch (error) {
+              console.error('Error creando producto:', error)
+              toast.error(`Error al crear producto ${productoData.nombre}: ${error.response?.data?.mensaje || error.message}`)
+              continue
+            }
           }
 
           // Agregar a la sesión
           if (productoClienteId) {
-            await sesionesApi.addProduct(id, {
-              productoClienteId: productoClienteId,
-              cantidadContada: Number(cantidadEditada),
-              costoProducto: Number(productoData.costo) || 0
-            })
+            try {
+              await sesionesApi.addProduct(id, {
+                productoClienteId: productoClienteId,
+                cantidadContada: Number(cantidadEditada),
+                costoProducto: Number(productoData.costo) || 0
+              })
+            } catch (error) {
+              console.error('Error agregando producto a sesión:', error)
+              toast.error(`Error al agregar producto ${productoData.nombre}: ${error.response?.data?.mensaje || error.message}`)
+            }
+          } else {
+            console.error('No se pudo obtener el ID del producto cliente')
+            toast.error(`No se pudo procesar el producto ${productoData.nombre}`)
           }
         }
       }
 
       // Marcar productos como sincronizados en el backend
+      // El backend espera un array de IDs, no un objeto
       const temporalIds = productosSeleccionados.map(p => p.temporalId)
       await solicitudesConexionApi.sincronizar(colaboradorSeleccionado._id, temporalIds)
 
       toast.success(`${productosSeleccionados.length} producto(s) sincronizado(s) exitosamente`)
 
-      // Refrescar datos
+      // Invalidar queries y refrescar datos - hacer múltiples invalidaciones para asegurar actualización
+      queryClient.invalidateQueries(['sesion-inventario', id])
+      
+      // Esperar un poco para asegurar que el backend haya procesado los cambios
+      await new Promise(resolve => setTimeout(resolve, 800))
+      
+      // Forzar refetch completo de la sesión
       await refetch()
+      queryClient.invalidateQueries(['sesion-inventario', id])
+      queryClient.refetchQueries(['sesion-inventario', id])
 
       // Cerrar modal y limpiar estado
       setShowRevisarProductosModal(false)
@@ -739,6 +805,11 @@ const InventarioDetalleNuevo = () => {
       // Recargar colaboradores para actualizar conteo
       const response = await solicitudesConexionApi.listarConectados(id)
       setColaboradoresConectados(response.data?.datos || [])
+      
+      // Recargar productos pendientes después de un breve delay
+      setTimeout(async () => {
+        await cargarColaboradoresConectados()
+      }, 500)
     } catch (error) {
       console.error('Error al aceptar productos:', error)
       toast.error('Error al sincronizar productos')
@@ -2962,10 +3033,19 @@ const InventarioDetalleNuevo = () => {
                     </p>
                   </div>
 
-                  {productosParaRevisar.map((productoOffline, index) => {
-                    const productoData = productoOffline.productoData
-                    const temporalId = productoOffline.temporalId
-                    const cantidadActual = cantidadesEditadas[temporalId] || productoData.cantidad
+                  {productosParaRevisar
+                    .filter(productoOffline => productoOffline && productoOffline.productoData)
+                    .map((productoOffline, index) => {
+                    const productoData = productoOffline.productoData || {}
+                    const temporalId = productoOffline.temporalId || `temp-${index}`
+                    // Usar cantidad del estado editado o la cantidad original del backend
+                    const cantidadOriginal = Number(productoData.cantidad) || 1
+                    const cantidadActual = Number(cantidadesEditadas[temporalId]) || cantidadOriginal
+
+                    // Validar que productoData tenga los campos necesarios
+                    if (!productoData.nombre) {
+                      return null
+                    }
 
                     return (
                       <div
@@ -2974,13 +3054,13 @@ const InventarioDetalleNuevo = () => {
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <h4 className="font-semibold text-gray-900 text-lg">{productoData.nombre}</h4>
+                            <h4 className="font-semibold text-gray-900 text-lg">{productoData.nombre || 'Sin nombre'}</h4>
                             {productoData.sku && (
                               <p className="text-sm text-gray-500 mt-1">SKU: {productoData.sku}</p>
                             )}
                             <div className="flex items-center space-x-4 mt-2">
                               <div className="text-sm">
-                                <span className="text-gray-600">Costo:</span>
+                                <span className="text-gray-600">Costo unitario:</span>
                                 <span className="ml-2 font-semibold text-gray-900">
                                   RD$ {Number(productoData.costo || 0).toFixed(2)}
                                 </span>
@@ -2988,7 +3068,13 @@ const InventarioDetalleNuevo = () => {
                               <div className="text-sm">
                                 <span className="text-gray-600">Cantidad original:</span>
                                 <span className="ml-2 font-semibold text-gray-900">
-                                  {productoData.cantidad}
+                                  {cantidadOriginal}
+                                </span>
+                              </div>
+                              <div className="text-sm">
+                                <span className="text-gray-600">Total:</span>
+                                <span className="ml-2 font-semibold text-green-600">
+                                  RD$ {Number((productoData.cantidad || 1) * (productoData.costo || 0)).toFixed(2)}
                                 </span>
                               </div>
                             </div>

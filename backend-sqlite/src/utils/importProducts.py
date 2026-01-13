@@ -53,9 +53,9 @@ def procesar_excel(archivo_path: str) -> List[Dict[str, Any]]:
         mapa_columnas = {
             'nombre': ['nombre', 'producto', 'descripción', 'descripcion', 'articulo', 'item'],
             'codigo_barras': ['codigo', 'código', 'barras', 'barcode', 'ean', 'sku', 'referencia'],
-            'precio': ['precio', 'costo', 'valor', 'pvp', 'precio venta', 'precio_venta'],
+            'precio': ['precio', 'costo', 'valor', 'pvp', 'precio venta', 'precio_venta', 'costobase'],
             'categoria': ['categoria', 'categoría', 'grupo', 'familia', 'departamento'],
-            'stock': ['stock', 'cantidad', 'existencia', 'inventario', 'unidades']
+            'cantidad': ['cantidad', 'stock', 'existencia', 'inventario', 'unidades']
         }
         
         # Identificar columnas
@@ -83,20 +83,18 @@ def procesar_excel(archivo_path: str) -> List[Dict[str, Any]]:
             # Saltar filas vacías
             if not nombre:
                 continue
+            
+            precio = parsear_numero(row.get(columnas_encontradas.get('precio'))) if 'precio' in columnas_encontradas else 0
+            cantidad = int(parsear_numero(row.get(columnas_encontradas.get('cantidad')))) if 'cantidad' in columnas_encontradas else 1
                 
             producto = {
                 'nombre': nombre,
-                'codigo_barras': limpiar_texto(row.get(columnas_encontradas.get('codigo_barras'))) if 'codigo_barras' in columnas_encontradas else '',
-                'precio': parsear_numero(row.get(columnas_encontradas.get('precio'))) if 'precio' in columnas_encontradas else 0,
-                'categoria': limpiar_texto(row.get(columnas_encontradas.get('categoria'))) if 'categoria' in columnas_encontradas else 'General',
-                'stock': int(parsear_numero(row.get(columnas_encontradas.get('stock')))) if 'stock' in columnas_encontradas else 0,
-                'descripcion': '' # Opcional
+                'codigoBarras': limpiar_texto(row.get(columnas_encontradas.get('codigo_barras'))) if 'codigo_barras' in columnas_encontradas else '',
+                'cantidad': cantidad,
+                'precio': precio,
+                'costoBase': precio,  # Mapear precio a costoBase para el backend
+                'categoria': limpiar_texto(row.get(columnas_encontradas.get('categoria'))) if 'categoria' in columnas_encontradas else 'General'
             }
-            
-            # Generar código de barras si no existe (usando nombre o aleatorio es responsabilidad del backend, aquí lo dejamos vacío o limpio)
-            if not producto['codigo_barras']:
-                 # Si no tiene código, usamos algo derivado del nombre o vacío para que el backend decida
-                 pass 
 
             productos.append(producto)
             
@@ -105,15 +103,121 @@ def procesar_excel(archivo_path: str) -> List[Dict[str, Any]]:
     except Exception as e:
         return {'error': f'Error procesando Excel: {str(e)}'}
 
-def procesar_pdf(archivo_path: str) -> List[Dict[str, Any]]:
+def procesar_pdf_con_gemini(archivo_path: str, api_key: str) -> List[Dict[str, Any]]:
     """
-    Procesamiento básico de PDF (extracción de texto)
-    Nota: Para PDFs complejos se recomienda usar servicios de IA o librerías más avanzadas.
-    Esta es una implementación básica compatible.
+    Procesa un PDF usando Gemini AI para extraer productos con prompt estricto JSON
     """
     try:
         import pdfplumber
+        import google.generativeai as genai
+        
+        # Extraer texto del PDF primero
         texto_completo = ""
+        with pdfplumber.open(archivo_path) as pdf:
+            for page in pdf.pages:
+                texto_pagina = page.extract_text()
+                if texto_pagina:
+                    texto_completo += texto_pagina + "\n"
+        
+        if not texto_completo or len(texto_completo.strip()) < 10:
+            return {'error': 'No se pudo extraer texto del PDF. El archivo podría estar escaneado o protegido.'}
+        
+        # Configurar Gemini
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-pro')
+        
+        # Prompt estricto para obtener solo JSON
+        system_prompt = """Eres un asistente que extrae información de inventarios de documentos. 
+Analiza el siguiente texto de un inventario y extrae todos los productos listados.
+
+IMPORTANTE: Debes responder ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, sin explicaciones.
+
+El formato de respuesta debe ser exactamente:
+[
+  {
+    "nombre": "Nombre del producto",
+    "codigoBarras": "código o SKU si está disponible",
+    "cantidad": número,
+    "precio": número
+  }
+]
+
+Si no encuentras información completa para algún campo, usa valores por defecto:
+- codigoBarras: "" (string vacío)
+- cantidad: 1
+- precio: 0
+
+Responde SOLO con el array JSON, sin texto adicional."""
+        
+        prompt = f"{system_prompt}\n\nTexto del documento:\n{texto_completo[:8000]}"  # Limitar a 8000 chars
+        
+        # Llamar a Gemini
+        response = model.generate_content(prompt)
+        
+        # Extraer JSON de la respuesta (puede venir con markdown code blocks)
+        respuesta_texto = response.text.strip()
+        
+        # Eliminar markdown code blocks si existen
+        if respuesta_texto.startswith('```'):
+            # Remover ```json o ``` al inicio y ``` al final
+            lineas = respuesta_texto.split('\n')
+            lineas = [l for l in lineas if not l.strip().startswith('```')]
+            respuesta_texto = '\n'.join(lineas)
+        
+        # Parsear JSON
+        try:
+            productos = json.loads(respuesta_texto)
+            
+            # Validar que sea una lista
+            if not isinstance(productos, list):
+                return {'error': 'La respuesta de la IA no es un array válido'}
+            
+            # Normalizar productos al formato esperado
+            productos_normalizados = []
+            for p in productos:
+                producto_normalizado = {
+                    'nombre': limpiar_texto(p.get('nombre', '')),
+                    'codigoBarras': limpiar_texto(p.get('codigoBarras', '')),
+                    'cantidad': int(parsear_numero(p.get('cantidad', 1))),
+                    'precio': parsear_numero(p.get('precio', 0)),
+                    'categoria': 'General',
+                    'costoBase': parsear_numero(p.get('precio', 0))  # Mapear precio a costoBase
+                }
+                
+                if producto_normalizado['nombre']:
+                    productos_normalizados.append(producto_normalizado)
+            
+            if not productos_normalizados:
+                return {'error': 'No se encontraron productos válidos en el documento'}
+            
+            return productos_normalizados
+            
+        except json.JSONDecodeError as e:
+            return {'error': f'Error al parsear respuesta de la IA como JSON: {str(e)}. Respuesta recibida: {respuesta_texto[:200]}'}
+        
+    except ImportError as e:
+        if 'google.generativeai' in str(e):
+            return {'error': 'Librería google-generativeai no instalada. Instala con: pip install google-generativeai'}
+        return {'error': f'Librería requerida no instalada: {str(e)}'}
+    except Exception as e:
+        return {'error': f'Error procesando PDF con Gemini: {str(e)}'}
+
+def procesar_pdf(archivo_path: str, api_key: str = None) -> List[Dict[str, Any]]:
+    """
+    Procesamiento de PDF: Si hay API key, usa Gemini. Si no, usa extracción básica con pdfplumber.
+    """
+    # Si hay API key, usar Gemini
+    if api_key and api_key.strip():
+        resultado = procesar_pdf_con_gemini(archivo_path, api_key.strip())
+        if isinstance(resultado, list):
+            return resultado
+        # Si falló Gemini, intentar método básico como fallback
+        if 'error' in resultado:
+            pass  # Continuar con método básico
+    
+    # Método básico con pdfplumber (fallback o cuando no hay API key)
+    try:
+        import pdfplumber
         productos = []
         
         with pdfplumber.open(archivo_path) as pdf:
@@ -123,8 +227,6 @@ def procesar_pdf(archivo_path: str) -> List[Dict[str, Any]]:
                 
                 if tablas:
                     for tabla in tablas:
-                        # Asumir que la primera fila es encabezado si parece texto
-                        # Heurística simple: buscar columnas
                         if not tabla: continue
                         
                         header = [str(c).lower().strip() if c else '' for c in tabla[0]]
@@ -136,23 +238,21 @@ def procesar_pdf(archivo_path: str) -> List[Dict[str, Any]]:
                         
                         for i, col in enumerate(header):
                             if 'nombre' in col or 'descrip' in col or 'articulo' in col: idx_nombre = i
-                            elif 'precio' in col or 'valor' in col: idx_precio = i
-                            elif 'cod' in col or 'ref' in col: idx_codigo = i
+                            elif 'precio' in col or 'valor' in col or 'costo' in col: idx_precio = i
+                            elif 'cod' in col or 'ref' in col or 'sku' in col: idx_codigo = i
                         
-                        # Procesar filas de datos (saltando encabezado si se detectó)
                         start_idx = 1 if (idx_nombre != -1 or idx_precio != -1) else 0
                         
                         for fila in tabla[start_idx:]:
                             if not fila: continue
                             
-                            # Si no detectamos encabezados, asumir orden común: Codigo, Nombre, ..., Precio
                             p_nombre = ""
                             p_precio = 0
                             p_codigo = ""
                             
                             if idx_nombre != -1 and len(fila) > idx_nombre:
                                 p_nombre = limpiar_texto(fila[idx_nombre])
-                            elif len(fila) >= 2: # Fallback: segunda columna suele ser nombre
+                            elif len(fila) >= 2:
                                 p_nombre = limpiar_texto(fila[1])
                             elif len(fila) == 1:
                                 p_nombre = limpiar_texto(fila[0])
@@ -161,8 +261,7 @@ def procesar_pdf(archivo_path: str) -> List[Dict[str, Any]]:
 
                             if idx_precio != -1 and len(fila) > idx_precio:
                                 p_precio = parsear_numero(fila[idx_precio])
-                            elif len(fila) >= 3: # Fallback: última o tercera columna suele ser precio
-                                # Intentar buscar un número en las columnas restantes
+                            elif len(fila) >= 3:
                                 for cell in reversed(fila):
                                     try:
                                         val = parsear_numero(cell)
@@ -173,21 +272,22 @@ def procesar_pdf(archivo_path: str) -> List[Dict[str, Any]]:
                             
                             if idx_codigo != -1 and len(fila) > idx_codigo:
                                 p_codigo = limpiar_texto(fila[idx_codigo])
-                            elif len(fila) >= 1: # Fallback: primera columna suele ser código
+                            elif len(fila) >= 1:
                                 possible_code = limpiar_texto(fila[0])
                                 if len(possible_code) < 20 and any(c.isdigit() for c in possible_code):
                                     p_codigo = possible_code
 
                             productos.append({
                                 'nombre': p_nombre,
-                                'codigo_barras': p_codigo,
+                                'codigoBarras': p_codigo,
+                                'cantidad': 1,
                                 'precio': p_precio,
                                 'categoria': 'General',
-                                'stock': 0
+                                'costoBase': p_precio  # Mapear precio a costoBase
                             })
 
         if not productos:
-            return {'error': 'No se pudieron extraer productos del PDF de forma estructurada. Intente convertirlo a Excel.'}
+            return {'error': 'No se pudieron extraer productos del PDF. Intenta usar una API Key de Gemini para PDFs complejos.'}
             
         return productos
 
@@ -199,15 +299,16 @@ def procesar_pdf(archivo_path: str) -> List[Dict[str, Any]]:
 def main():
     """Función principal de entrada"""
     if len(sys.argv) < 3:
-        print(json.dumps({'error': 'Argumentos insuficientes'}))
+        print(json.dumps({'exito': False, 'mensaje': 'Argumentos insuficientes'}))
         sys.exit(1)
         
     tipo = sys.argv[1].lower()
     archivo = sys.argv[2]
+    api_key = sys.argv[3] if len(sys.argv) > 3 else None
     
     # Validar archivo
     if not os.path.exists(archivo):
-        print(json.dumps({'error': f'Archivo no encontrado: {archivo}'}))
+        print(json.dumps({'exito': False, 'mensaje': f'Archivo no encontrado: {archivo}'}))
         sys.exit(1)
         
     resultado = []
@@ -216,15 +317,20 @@ def main():
         if tipo in ['xlsx', 'xls']:
             resultado = procesar_excel(archivo)
         elif tipo == 'pdf':
-            resultado = procesar_pdf(archivo)
+            resultado = procesar_pdf(archivo, api_key)
         else:
-            resultado = {'error': 'Formato no soportado'}
+            resultado = {'error': 'Formato no soportado. Use XLSX, XLS o PDF'}
             
         # Verificar si el resultado es un dict de error
         if isinstance(resultado, dict) and 'error' in resultado:
             # Imprimir JSON de error
             print(json.dumps({'exito': False, 'mensaje': resultado['error']}))
         else:
+            # Validar que sea una lista
+            if not isinstance(resultado, list):
+                print(json.dumps({'exito': False, 'mensaje': 'Formato de respuesta inválido'}))
+                sys.exit(1)
+            
             # Imprimir JSON de éxito
             print(json.dumps({'exito': True, 'productos': resultado}, ensure_ascii=False))
             

@@ -5,6 +5,8 @@ import Usuario from '../models/Usuario.js'
 import logger from '../utils/logger.js'
 
 let io = null
+// Estado en memoria para colaboradores conectados
+const colaboradoresConectados = new Map() // socketId -> { usuarioId, nombre, timestamp }
 
 // Inicializar Socket.IO con configuración mejorada
 export const initializeSocket = (server) => {
@@ -26,45 +28,83 @@ export const initializeSocket = (server) => {
   io.use((socket, next) => {
     const token = socket.handshake.auth.token
     const clientType = socket.handshake.auth.clientType || 'unknown'
+    const ip = socket.handshake.address
+
+    logger.info(`🔐 Intento de conexión WebSocket desde ${clientType} (IP: ${ip})`)
 
     if (!token) {
-      logger.warn(`Intento de conexión sin token desde ${clientType}`)
+      logger.warn(`❌ Intento de conexión sin token desde ${clientType}`)
       return next(new Error('Token requerido'))
     }
 
     try {
+      // Si es un token local de colaborador (empieza con "colaborador-token-")
+      if (token.startsWith('colaborador-token-')) {
+        logger.info(`🔐 Token local de colaborador detectado`)
+        
+        // Extraer solicitudId del token (formato: colaborador-token-{solicitudId}-{timestamp})
+        const parts = token.split('-')
+        const solicitudId = parts.length >= 3 ? parts[2] : null
+        
+        if (!solicitudId) {
+          logger.warn(`❌ Token de colaborador sin solicitudId válido`)
+          return next(new Error('Token de colaborador inválido'))
+        }
+        
+        // Crear usuario temporal para el colaborador
+        const usuarioTemporal = {
+          id: `colaborador_${solicitudId}`,
+          nombre: 'Colaborador',
+          rol: 'colaborador',
+          activo: true,
+          contablePrincipalId: null,
+          configuracion: {
+            tipo: 'colaborador_sesion',
+            solicitudId: solicitudId
+          }
+        }
+        
+        logger.info(`✅ Colaborador temporal autenticado: ${usuarioTemporal.nombre} (Solicitud: ${solicitudId})`)
+        socket.usuario = usuarioTemporal
+        socket.clientType = clientType
+        next()
+        return
+      }
+      
+      // Token JWT normal
       const decoded = jwt.verify(token, config.jwt.secret)
       
       // Verificar si el token ha expirado
       if (decoded.exp && decoded.exp * 1000 < Date.now()) {
-        logger.warn(`Token expirado para usuario ID: ${decoded.id}`)
+        logger.warn(`❌ Token expirado para usuario ID: ${decoded.id}`)
         return next(new Error('Token expirado'))
       }
 
       const usuario = Usuario.buscarPorId(decoded.id)
 
       if (!usuario) {
-        logger.warn(`Usuario no encontrado con ID: ${decoded.id}`)
+        logger.warn(`❌ Usuario no encontrado con ID: ${decoded.id}`)
         return next(new Error('Usuario no encontrado'))
       }
 
       if (!usuario.activo) {
-        logger.warn(`Usuario inactivo intentó conectar: ${usuario.nombre} (${usuario.id})`)
+        logger.warn(`❌ Usuario inactivo intentó conectar: ${usuario.nombre} (${usuario.id})`)
         return next(new Error('Usuario inactivo'))
       }
 
+      logger.info(`✅ Autenticación exitosa: ${usuario.nombre} (ID: ${usuario.id}, Rol: ${usuario.rol}, ClientType: ${clientType})`)
       socket.usuario = usuario
       socket.clientType = clientType
       next()
     } catch (error) {
       if (error.name === 'TokenExpiredError') {
-        logger.warn('Token expirado en WebSocket')
+        logger.warn('❌ Token expirado en WebSocket')
         return next(new Error('Token expirado'))
       } else if (error.name === 'JsonWebTokenError') {
-        logger.warn('Token JWT inválido en WebSocket')
+        logger.warn('❌ Token JWT inválido en WebSocket:', error.message)
         return next(new Error('Token inválido'))
       } else {
-        logger.error('Error verificando token en WebSocket:', error)
+        logger.error('❌ Error verificando token en WebSocket:', error)
         return next(new Error('Error de autenticación'))
       }
     }
@@ -72,7 +112,7 @@ export const initializeSocket = (server) => {
 
   // Manejo de conexiones
   io.on('connection', (socket) => {
-    logger.info(`✅ WebSocket conectado: ${socket.usuario.nombre} (${socket.usuario.id}) [${socket.clientType}]`)
+    logger.info(`✅ WebSocket conectado: ${socket.usuario.nombre} (${socket.usuario.id}) [${socket.clientType}] Rol: ${socket.usuario.rol}`)
 
     // Unirse a sala del contable con manejo de errores
     try {
@@ -83,6 +123,92 @@ export const initializeSocket = (server) => {
       }
     } catch (error) {
       logger.error('Error al unirse a sala de contable:', error)
+    }
+
+    // Determinar si es colaborador (por rol o por tipo de cliente)
+    // IMPORTANTE: Si es mobile, siempre es colaborador (incluso si el rol en BD es otro)
+    const esColaborador = socket.clientType === 'mobile' || 
+                          socket.usuario.rol === 'colaborador' ||
+                          (socket.usuario.configuracion && socket.usuario.configuracion.tipo === 'colaborador_temporal')
+    
+    logger.info(`🔍 Verificando si es colaborador:`, {
+      clientType: socket.clientType,
+      rol: socket.usuario.rol,
+      esColaborador,
+      configuracion: socket.usuario.configuracion
+    })
+    
+    // Log detallado para debugging
+    if (socket.clientType === 'mobile') {
+      logger.info(`📱 Cliente mobile detectado - será tratado como colaborador`)
+    }
+    
+    // Si es colaborador, unirse a la sala de colaboradores
+    if (esColaborador) {
+      socket.join('colaboradores_room')
+      colaboradoresConectados.set(socket.id, {
+        usuarioId: socket.usuario.id,
+        nombre: socket.usuario.nombre,
+        rol: socket.usuario.rol,
+        clientType: socket.clientType,
+        timestamp: Date.now()
+      })
+      const totalColaboradores = colaboradoresConectados.size
+      const roomSize = io.sockets.adapter.rooms.get('colaboradores_room')?.size || 0
+      logger.info(`👥 Colaborador ${socket.usuario.nombre} (${socket.usuario.rol}) se unió a colaboradores_room.`)
+      logger.info(`📊 Total colaboradores en Map: ${totalColaboradores}, Total en room: ${roomSize}`)
+      logger.info(`🆔 Socket ID: ${socket.id}, Usuario ID: ${socket.usuario.id}`)
+      
+      // Notificar a TODOS los administradores en admin_room sobre el nuevo colaborador
+      const adminRoomSize = io.sockets.adapter.rooms.get('admin_room')?.size || 0
+      logger.info(`📢 Notificando a ${adminRoomSize} admin(s) en admin_room sobre nuevo colaborador`)
+      
+      io.to('admin_room').emit('colaborador_conectado', {
+        totalColaboradores,
+        colaborador: {
+          id: socket.usuario.id,
+          nombre: socket.usuario.nombre,
+          rol: socket.usuario.rol
+        },
+        timestamp: new Date().toISOString()
+      })
+      
+      // También enviar el contador actualizado a todos los admins
+      const adminRoom = io.sockets.adapter.rooms.get('admin_room')
+      const adminSockets = adminRoom ? Array.from(adminRoom) : []
+      logger.info(`📤 Enviando eventos a ${adminSockets.length} admin(s) en admin_room:`, adminSockets)
+      
+      io.to('admin_room').emit('online_colaboradores_count', {
+        count: totalColaboradores,
+        timestamp: new Date().toISOString()
+      })
+      
+      logger.info(`✅ Eventos enviados a admin_room. Total colaboradores: ${totalColaboradores}`)
+      
+      // Verificar que los eventos se enviaron correctamente
+      setTimeout(() => {
+        const currentRoomSize = io.sockets.adapter.rooms.get('colaboradores_room')?.size || 0
+        const currentMapSize = colaboradoresConectados.size
+        logger.info(`🔍 Verificación post-envío - Room size: ${currentRoomSize}, Map size: ${currentMapSize}`)
+      }, 100)
+    }
+
+    // Si es admin, unirse a la sala de admin para recibir notificaciones
+    if (socket.usuario.rol === 'administrador') {
+      socket.join('admin_room')
+      const adminRoomSize = io.sockets.adapter.rooms.get('admin_room')?.size || 0
+      logger.info(`👑 Admin ${socket.usuario.nombre} se unió a admin_room. Total admins: ${adminRoomSize}`)
+      
+      // Enviar el conteo actual de colaboradores al admin inmediatamente
+      const count = colaboradoresConectados.size
+      const colaboradoresList = Array.from(colaboradoresConectados.values()).map(c => `${c.nombre} (${c.rol})`)
+      logger.info(`📊 Enviando contador inicial a admin: ${count} colaboradores`)
+      logger.info(`📋 Lista de colaboradores conectados:`, colaboradoresList)
+      socket.emit('online_colaboradores_count', {
+        count,
+        timestamp: new Date().toISOString()
+      })
+      logger.info(`✅ Contador inicial enviado al admin ${socket.usuario.nombre}`)
     }
 
     // Unirse a sesión de inventario
@@ -163,9 +289,97 @@ export const initializeSocket = (server) => {
       })
     })
 
+    // Obtener cantidad de colaboradores en línea (para admins)
+    socket.on('get_online_users', () => {
+      if (socket.usuario.rol === 'administrador') {
+        const count = colaboradoresConectados.size
+        const detalles = Array.from(colaboradoresConectados.entries()).map(([socketId, info]) => ({
+          socketId,
+          ...info
+        }))
+        
+        logger.info(`📊 Admin ${socket.usuario.nombre} consultó colaboradores en línea: ${count}`)
+        logger.info(`📋 Detalle de colaboradores conectados:`, JSON.stringify(detalles, null, 2))
+        logger.info(`🏠 Admin está en admin_room: ${socket.rooms.has('admin_room')}`)
+        logger.info(`👥 Colaboradores en colaboradores_room: ${io.sockets.adapter.rooms.get('colaboradores_room')?.size || 0}`)
+        
+        socket.emit('online_colaboradores_count', {
+          count,
+          detalles: detalles, // Enviar detalles para debug
+          timestamp: new Date().toISOString()
+        })
+      } else {
+        logger.warn(`⚠️ Usuario no admin intentó consultar colaboradores: ${socket.usuario.nombre} (${socket.usuario.rol})`)
+      }
+    })
+
+    // Enviar inventario a colaboradores (solo admins)
+    socket.on('dispatch_inventory', (data) => {
+      if (socket.usuario.rol !== 'administrador') {
+        logger.warn(`⚠️ Usuario no admin intentó enviar inventario: ${socket.usuario.nombre}`)
+        socket.emit('error', { message: 'Solo administradores pueden enviar inventario' })
+        return
+      }
+
+      const { productos } = data
+      const count = colaboradoresConectados.size
+
+      if (count === 0) {
+        socket.emit('dispatch_inventory_result', {
+          success: false,
+          message: 'No hay colaboradores en línea',
+          count: 0
+        })
+        logger.warn(`⚠️ Admin ${socket.usuario.nombre} intentó enviar inventario pero no hay colaboradores conectados`)
+        return
+      }
+
+      // Enviar inventario a todos los colaboradores en la sala
+      io.to('colaboradores_room').emit('dispatch_inventory', {
+        productos,
+        enviadoPor: {
+          id: socket.usuario.id,
+          nombre: socket.usuario.nombre
+        },
+        timestamp: new Date().toISOString()
+      })
+
+      socket.emit('dispatch_inventory_result', {
+        success: true,
+        message: `Inventario enviado a ${count} colaborador(es)`,
+        count
+      })
+
+      logger.info(`📦 Admin ${socket.usuario.nombre} envió inventario a ${count} colaborador(es)`)
+    })
+
     // Desconexión
     socket.on('disconnect', (reason) => {
       logger.info(`❌ WebSocket desconectado: ${socket.usuario.nombre} (${socket.usuario.id}) - Razón: ${reason}`)
+      
+      // Si era un colaborador, removerlo del estado
+      if (colaboradoresConectados.has(socket.id)) {
+        const colaboradorInfo = colaboradoresConectados.get(socket.id)
+        colaboradoresConectados.delete(socket.id)
+        const newCount = colaboradoresConectados.size
+        logger.info(`👥 Colaborador ${socket.usuario.nombre} salió. Total conectados: ${newCount}`)
+        
+        // Notificar a los administradores
+        io.to('admin_room').emit('colaborador_desconectado', {
+          totalColaboradores: newCount,
+          colaborador: {
+            id: socket.usuario.id,
+            nombre: socket.usuario.nombre
+          },
+          timestamp: new Date().toISOString()
+        })
+      }
+      
+      // Si era un admin, salir de la sala de admin
+      if (socket.usuario.rol === 'administrador') {
+        socket.leave('admin_room')
+        logger.info(`👑 Admin ${socket.usuario.nombre} salió de admin_room`)
+      }
     })
 
     // Manejo de errores

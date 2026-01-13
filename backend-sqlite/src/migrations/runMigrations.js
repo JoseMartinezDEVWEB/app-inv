@@ -2,12 +2,14 @@ import dbManager from '../config/database.js'
 import * as migration001 from './001_initial_schema.js'
 import * as migration002 from './002_connection_states.js'
 import * as migration003 from './003_sync_fields.js'
+import * as migration004 from './004_productos_offline_cantidad.js'
 
 // Lista de migraciones en orden
 const migrations = [
   { name: '001_initial_schema', module: migration001 },
   { name: '002_connection_states', module: migration002 },
   { name: '003_sync_fields', module: migration003 },
+  { name: '004_productos_offline_cantidad', module: migration004 },
 ]
 
 // Tabla de control de migraciones

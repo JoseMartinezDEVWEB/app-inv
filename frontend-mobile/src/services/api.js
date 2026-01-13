@@ -15,12 +15,10 @@ const ROUTES_PREFER_REMOTE = [
   '/sync',       // Nueva ruta de sincronización
   '/salud',
   '/importar',   // Importación de archivos requiere servidor (procesamiento Python/IA)
+  '/productos/generales/importar', // Importación de productos requiere servidor
 ];
 
 const API_BASE_URL = config.apiUrl
-
-console.log('🌐 API Service (Offline-First Architecture)')
-console.log('   URL Base:', API_BASE_URL)
 
 // Crear instancia de Axios
 const api = axios.create({
@@ -125,11 +123,88 @@ api.interceptors.request.use(
         return requestConfig;
     }
 
-    // Si es ruta remota, inyectar token
+    // Siempre inyectar token si existe (para rutas remotas)
+    // IMPORTANTE: Para FormData, debemos asegurarnos de que el token se inyecte ANTES
+    // de que Axios procese el FormData, y NO debemos sobrescribir Content-Type
     try {
         const token = await storage.getItem('auth_token');
-        if (token) requestConfig.headers.Authorization = `Bearer ${token}`;
-    } catch (e) {}
+        
+        // Rutas que pueden funcionar sin token (públicas o que manejan su propia autenticación)
+        const publicRoutes = [
+            '/auth/login',
+            '/auth/registro',
+            '/salud',
+            '/solicitudes-conexion/solicitar',
+            '/solicitudes-conexion/estado/',
+            '/solicitudes-conexion/', // Rutas de ping, conectar, cerrar-sesion son públicas
+        ];
+        
+        // Verificar si es una ruta pública (puede ser parte de una URL más larga)
+        const isPublicRoute = publicRoutes.some(route => {
+            // Para rutas con /, verificar que no esté en una ruta protegida
+            if (route === '/solicitudes-conexion/') {
+                // Permitir ping, conectar, cerrar-sesion, enviar-productos (son públicas)
+                const publicSubRoutes = ['/ping', '/conectar', '/cerrar-sesion', '/productos-offline'];
+                return publicSubRoutes.some(subRoute => requestConfig.url.includes(subRoute));
+            }
+            return requestConfig.url.includes(route);
+        });
+        
+        if (token) {
+            // Asegurar que los headers existan
+            if (!requestConfig.headers) {
+                requestConfig.headers = {};
+            }
+            
+            // Inyectar token siempre
+            requestConfig.headers.Authorization = `Bearer ${token}`;
+            
+            // Verificar si es FormData (en React Native, FormData puede no ser instanceof)
+            const isFormData = requestConfig.data instanceof FormData || 
+                             (requestConfig.data && 
+                              typeof requestConfig.data === 'object' && 
+                              requestConfig.data.constructor && 
+                              requestConfig.data.constructor.name === 'FormData');
+            
+            if (isFormData) {
+                // Para FormData, NO establecer Content-Type manualmente
+                // Axios lo establece automáticamente con el boundary correcto
+                // Si ya está establecido, eliminarlo para que Axios lo maneje
+                if (requestConfig.headers['Content-Type'] === 'multipart/form-data') {
+                    delete requestConfig.headers['Content-Type'];
+                }
+            }
+        } else if (!isPublicRoute) {
+            // No mostrar advertencia para rutas de sync que pueden funcionar sin token
+            const isSyncRoute = requestConfig.url.includes('/sync/');
+            
+            // Solo mostrar advertencia en desarrollo para rutas que requieren autenticación
+            // y que no son rutas de sync (que pueden funcionar en modo offline)
+            if (__DEV__ && !isSyncRoute) {
+                console.warn('⚠️ No se encontró token de autenticación para la petición:', requestConfig.url);
+            }
+            // Para /sync/batch y otras rutas de sync, si no hay token, simplemente continuar (modo offline)
+            // En otros casos, dejar que el servidor responda 401
+        }
+    } catch (e) {
+        // Silencioso - si no hay token, continuar sin él
+        // Solo mostrar error en desarrollo
+        if (__DEV__) {
+            console.error('Error al obtener token:', e);
+        }
+    }
+
+    // Log de depuración para peticiones de importación
+    if (requestConfig.url && requestConfig.url.includes('/importar')) {
+        console.log('🔍 Debug importación:', {
+            url: requestConfig.url,
+            hasToken: !!requestConfig.headers?.Authorization,
+            isFormData: requestConfig.data instanceof FormData || 
+                       (requestConfig.data && typeof requestConfig.data === 'object' && 
+                        requestConfig.data.constructor?.name === 'FormData'),
+            contentType: requestConfig.headers?.['Content-Type']
+        });
+    }
 
     return requestConfig;
   },
@@ -203,9 +278,48 @@ export const sesionesApi = {
 export const productosApi = { 
     getAll: (p) => api.get('/productos/generales', { params: p }),
     getById: (id) => api.get(`/productos/generales/${id}`),
-    create: (d) => api.post('/productos/generales', d),
+    create: async (d) => {
+        const response = await api.post('/productos/generales', d);
+        // Después de crear en servidor, guardar también en local
+        if (response.data?.exito && response.data?.datos) {
+            try {
+                await localDb.guardarProductos([response.data.datos]);
+            } catch (e) {
+                // Silencioso - si falla guardar local, no es crítico
+            }
+        }
+        return response;
+    },
     update: (id, d) => api.put(`/productos/generales/${id}`, d),
     delete: (id) => api.delete(`/productos/generales/${id}`),
+    buscarPorNombre: async (nombre) => {
+        // Offline-first: buscar en localDb primero
+        try {
+            const productosLocales = await localDb.obtenerProductos({ buscar: nombre });
+            if (productosLocales && productosLocales.length > 0) {
+                return { data: { exito: true, datos: { productos: productosLocales } } };
+            }
+        } catch (e) {
+            // Continuar con búsqueda en servidor si falla local
+        }
+        
+        // Si no se encuentra localmente y hay conexión, buscar en servidor
+        try {
+            const response = await api.get('/productos/generales', { params: { buscar: nombre, limite: 50, pagina: 1 } });
+            // Guardar productos encontrados en local para próximas búsquedas
+            if (response.data?.exito && response.data?.datos?.productos) {
+                try {
+                    await localDb.guardarProductos(response.data.datos.productos);
+                } catch (e) {
+                    // Silencioso
+                }
+            }
+            return response;
+        } catch (e) {
+            // Si falla el servidor, retornar respuesta vacía en lugar de lanzar error
+            return { data: { exito: true, datos: { productos: [] } } };
+        }
+    },
     getByBarcode: async (codigo) => {
         // Offline-first: buscar en localDb primero
         try {
@@ -214,18 +328,20 @@ export const productosApi = {
                 return { data: { exito: true, datos: productoLocal } };
             }
         } catch (e) {
-            console.log('Error buscando localmente:', e);
+            // Continuar con búsqueda en servidor
         }
         // Si no se encuentra localmente y hay conexión, buscar en servidor
         try {
             return await api.get(`/productos/generales/buscar/codigo/${codigo}`);
         } catch (e) {
-            // Si falla, retornar null
+            // Si falla, retornar respuesta vacía
             return { data: { exito: false, datos: null } };
         }
     },
     getByClient: (clienteId, params) => api.get(`/productos/cliente/${clienteId}`, { params }),
+    getByCliente: (clienteId, params) => api.get(`/productos/cliente/${clienteId}`, { params }),
     createForClient: (clienteId, data) => api.post(`/productos/cliente/${clienteId}`, data),
+    createForCliente: (clienteId, data) => api.post(`/productos/cliente/${clienteId}`, data),
 };
 
 export const reportesApi = {
@@ -279,7 +395,7 @@ export const solicitudesConexionApi = {
   // Públicas (sin auth) - Colaboradores
   solicitar: (data) => api.post('/solicitudes-conexion/solicitar', data),
   verificarEstado: (solicitudId) => api.get(`/solicitudes-conexion/estado/${solicitudId}`),
-  agregarProductoOffline: (solicitudId, productoData) => api.post(`/solicitudes-conexion/${solicitudId}/productos-offline`, { productoData }),
+  agregarProductoOffline: (solicitudId, productoData) => api.post(`/solicitudes-conexion/${solicitudId}/productos-offline`, productoData),
   
   // Estados de conexión (colaboradores)
   ping: (solicitudId) => api.post(`/solicitudes-conexion/${solicitudId}/ping`),

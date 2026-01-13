@@ -158,10 +158,20 @@ const Invitaciones = () => {
 
   const handleSincronizarProductos = async () => {
     try {
-      const temporalIds = productosOffline.map(p => p.temporalId);
-      await solicitudesConexionApi.sincronizar(solicitudSeleccionada, temporalIds);
-      toast.success(`${temporalIds.length} productos sincronizados exitosamente`);
+      // Crear mapeo de IDs: los productos offline tienen 'id', no 'temporalId'
+      const mapeoIds = {};
+      productosOffline.forEach(p => {
+        if (p.id) {
+          // Por ahora, usar el mismo ID como valor (el backend puede requerir productoClienteId)
+          // Esto necesita ser ajustado según la lógica del backend
+          mapeoIds[p.id] = p.id;
+        }
+      });
+      
+      await solicitudesConexionApi.sincronizar(solicitudSeleccionada, Object.keys(mapeoIds));
+      toast.success(`${Object.keys(mapeoIds).length} productos sincronizados exitosamente`);
       setModalProductosOffline(false);
+      setProductosOffline([]);
       cargarColaboradoresConectados();
     } catch (err) {
       console.error('Error al sincronizar:', err);
@@ -524,8 +534,8 @@ const Invitaciones = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {colab.ultimaConexion
-                          ? new Date(colab.ultimaConexion).toLocaleString('es-MX', {
+                        {colab.ultimoPing || colab.ultimaConexion
+                          ? new Date(colab.ultimoPing || colab.ultimaConexion).toLocaleString('es-MX', {
                               dateStyle: 'short',
                               timeStyle: 'short'
                             })
@@ -751,21 +761,29 @@ const Invitaciones = () => {
               <div className="max-h-96 overflow-y-auto">
                 <div className="space-y-2">
                   {productosOffline.map((item, index) => (
-                    <div key={item.temporalId} className="bg-white border border-gray-200 rounded-lg p-4">
+                    <div key={item.id || item.temporalId || index} className="bg-white border border-gray-200 rounded-lg p-4">
                       <div className="flex justify-between items-start">
-                        <div>
+                        <div className="flex-1">
                           <p className="font-semibold text-gray-900">
-                            Producto #{index + 1}
+                            {item.nombre || `Producto #${index + 1}`}
                           </p>
-                          <p className="text-sm text-gray-600 mt-1">
-                            {JSON.stringify(item.productoData).slice(0, 100)}...
-                          </p>
+                          <div className="text-sm text-gray-600 mt-1 space-y-1">
+                            {item.costo !== undefined && (
+                              <p>Costo: ${Number(item.costo || 0).toFixed(2)}</p>
+                            )}
+                            {item.unidad && (
+                              <p>Unidad: {item.unidad}</p>
+                            )}
+                            {item.categoria && (
+                              <p>Categoría: {item.categoria}</p>
+                            )}
+                          </div>
                           <p className="text-xs text-gray-500 mt-2">
-                            Agregado: {new Date(item.timestamp).toLocaleString('es-MX')}
+                            Agregado: {item.createdAt ? new Date(item.createdAt).toLocaleString('es-MX') : 'Fecha no disponible'}
                           </p>
                         </div>
-                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full">
-                          Pendiente
+                        <span className={`px-2 py-1 text-xs rounded-full ml-4 ${item.sincronizado ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                          {item.sincronizado ? 'Sincronizado' : 'Pendiente'}
                         </span>
                       </div>
                     </div>

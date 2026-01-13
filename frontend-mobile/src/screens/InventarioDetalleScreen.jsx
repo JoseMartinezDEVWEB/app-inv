@@ -96,6 +96,8 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
   const [showBarcodeProductModal, setShowBarcodeProductModal] = useState(false)
   const [scannedProduct, setScannedProduct] = useState(null)
   const [scannedBarcode, setScannedBarcode] = useState(null)
+  const [searchedProduct, setSearchedProduct] = useState(null)
+  const [showSearchedProductModal, setShowSearchedProductModal] = useState(false)
   const [activeFinancialModal, setActiveFinancialModal] = useState(null)
   const [showFinancialModal, setShowFinancialModal] = useState(false)
   const [showDistribucionModal, setShowDistribucionModal] = useState(false)
@@ -323,9 +325,26 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
       for (const colab of colaboradores) {
         try {
           const prodResponse = await solicitudesConexionApi.obtenerProductosOffline(colab._id)
-          const productos = prodResponse.data?.datos || []
-          if (productos.length > 0) {
-            productosPorColaborador[colab._id] = productos
+          const productosOffline = prodResponse.data?.datos || []
+          if (productosOffline.length > 0) {
+            // Transformar productos del backend a estructura esperada
+            const productosTransformados = productosOffline
+              .filter(p => !p.sincronizado) // Solo productos no sincronizados
+              .map(p => ({
+                temporalId: p.id, // Usar el ID del backend como temporalId
+                productoData: {
+                  nombre: p.nombre || 'Sin nombre',
+                  cantidad: p.cantidad || 1, // Default a 1 si no hay cantidad
+                  costo: Number(p.costo || 0),
+                  unidad: p.unidad || 'unidad',
+                  categoria: p.categoria || 'General',
+                  sku: p.sku || '',
+                  codigoBarras: p.codigoBarras || ''
+                }
+              }))
+            if (productosTransformados.length > 0) {
+              productosPorColaborador[colab._id] = productosTransformados
+            }
           }
         } catch (e) {
           console.log('Error productos colab', e)
@@ -373,34 +392,70 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
               costoProducto: Number(pData.costo) || 0
             })
           } else {
-            // Crear/Buscar producto cliente
+            // Buscar o crear el producto en ProductoCliente
             let productoClienteId
-            try {
-              // Intentar buscar por nombre primero
-              const busqueda = await productosApi.getByClient(sesionData?.clienteNegocio?._id, { buscar: pData.nombre })
-              const encontrado = busqueda.data?.datos?.productos?.[0]
-              if (encontrado) {
-                productoClienteId = encontrado._id
-              } else {
-                // Crear
-                const nuevo = await productosApi.createForClient(sesionData?.clienteNegocio?._id, {
-                  nombre: pData.nombre,
-                  costo: Number(pData.costo) || 0,
-                  unidad: 'unidad',
-                  sku: pData.sku || ''
-                })
-                productoClienteId = nuevo.data?.datos?.producto?._id
-              }
-            } catch (e) {
-              console.log('Error creando producto', e)
+            const clienteId = sesionData?.clienteNegocio?._id
+            
+            if (!clienteId) {
+              console.error('No se pudo obtener el ID del cliente')
               continue
             }
 
+            try {
+              // Buscar primero en productos del cliente
+              const busqueda = await productosApi.getByCliente(clienteId, { 
+                buscar: pData.nombre, 
+                limite: 1 
+              })
+              const encontrado = busqueda.data?.datos?.productos?.[0]
+              if (encontrado && encontrado._id) {
+                productoClienteId = encontrado._id
+              }
+            } catch (error) {
+              console.log('Error buscando producto en cliente:', error)
+            }
+
+            // Si no se encontró, crear uno nuevo
+            if (!productoClienteId) {
+              try {
+                const nuevoProducto = await productosApi.createForCliente(clienteId, {
+                  nombre: pData.nombre,
+                  costo: Number(pData.costo) || 0,
+                  unidad: pData.unidad || 'unidad',
+                  sku: pData.sku || '',
+                  categoria: pData.categoria || 'General'
+                })
+                productoClienteId = nuevoProducto.data?.datos?.producto?._id || nuevoProducto.data?.datos?._id
+              } catch (error) {
+                console.error('Error creando producto:', error)
+                showMessage({
+                  message: `Error al crear producto ${pData.nombre}`,
+                  type: 'danger'
+                })
+                continue
+              }
+            }
+
+            // Agregar a la sesión
             if (productoClienteId) {
-              await sesionesApi.addProduct(sesionId, {
-                producto: productoClienteId,
-                cantidadContada: Number(pData.cantidad || 1),
-                costoProducto: Number(pData.costo) || 0
+              try {
+                await sesionesApi.addProduct(sesionId, {
+                  productoClienteId: productoClienteId,
+                  cantidadContada: Number(pData.cantidad || 1),
+                  costoProducto: Number(pData.costo) || 0
+                })
+              } catch (error) {
+                console.error('Error agregando producto a sesión:', error)
+                showMessage({
+                  message: `Error al agregar producto ${pData.nombre}`,
+                  type: 'danger'
+                })
+              }
+            } else {
+              console.error('No se pudo obtener el ID del producto cliente')
+              showMessage({
+                message: `No se pudo procesar el producto ${pData.nombre}`,
+                type: 'danger'
               })
             }
           }
@@ -732,6 +787,84 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
     }
   };
 
+
+  // Manejar confirmación desde el modal de producto buscado
+  const handleSearchedProductConfirm = async ({ cantidad, costo }) => {
+    if (!searchedProduct) return;
+
+    setShowSearchedProductModal(false);
+
+    try {
+      const clienteId = sesionData?.clienteNegocio?._id;
+      let productoId = searchedProduct._id || searchedProduct.id;
+
+      // Si el producto es general y no está asignado al cliente, asignarlo primero
+      if (clienteId && !searchedProduct.isClientProduct && !searchedProduct.costo) {
+        try {
+          const clientProductsResponse = await productosApi.getByClient(clienteId, { buscar: searchedProduct.nombre, limite: 1 });
+          const clientProducts = clientProductsResponse?.data?.datos?.productos || [];
+
+          if (clientProducts.length === 0) {
+            // El cliente no tiene este producto, crearlo
+            const nuevoProducto = await productosApi.createForClient(clienteId, {
+              nombre: searchedProduct.nombre,
+              costo: costo,
+              unidad: searchedProduct.unidad || 'unidad',
+              sku: searchedProduct.sku || '',
+              codigoBarras: searchedProduct.codigoBarras || '',
+              descripcion: searchedProduct.descripcion || '',
+              categoria: searchedProduct.categoria || 'General'
+            });
+            productoId = nuevoProducto?.data?.datos?.producto?._id || nuevoProducto?.data?.producto?._id;
+          } else {
+            productoId = clientProducts[0]._id;
+          }
+        } catch (error) {
+          console.log('Error creando producto para cliente:', error);
+          // Continuar con el producto general si falla
+        }
+      } else if (searchedProduct.isClientProduct) {
+        // Ya es un producto del cliente, usar directamente
+        productoId = searchedProduct._id || searchedProduct.id;
+      }
+
+      // Agregar producto a la sesión
+      const productPayload = {
+        producto: productoId,
+        cantidadContada: cantidad,
+        costoProducto: costo,
+      };
+
+      // Guardar en local primero (UI instantánea)
+      const localId = await localDb.guardarConteoLocal({
+        sesionId,
+        productoId: productPayload.producto,
+        nombreProducto: searchedProduct.nombre,
+        skuProducto: searchedProduct.sku || '',
+        cantidad: cantidad,
+        costo: costo
+      });
+
+      showMessage({ message: 'Producto agregado', type: 'success' });
+      loadLocalProducts(); // Actualizar UI local
+
+      // Intentar enviar al servidor si está conectado y AutoSend está ON
+      if (autoSend && isConnected) {
+        try {
+          await sesionesApi.addProduct(sesionId, productPayload);
+          await localDb.marcarConteoSincronizado(localId);
+          queryClient.invalidateQueries(['sesion', sesionId]);
+        } catch (error) {
+          console.log('Fallo envío inmediato, encolando...', error);
+          // El producto ya está en local, se sincronizará después
+        }
+      }
+    } catch (error) {
+      handleApiError(error);
+    } finally {
+      setSearchedProduct(null);
+    }
+  };
 
   // Resetear formulario
   const resetForm = () => {
@@ -1590,11 +1723,9 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
         onClose={() => setShowSearchModal(false)}
         clienteId={sesionData?.clienteNegocio?._id}
         onSelectProduct={(product) => {
-          setSelectedProducto(product);
-          setCantidad('1');
-          // Use appropriate cost field based on product type
-          const cost = product.isClientProduct ? product.costo : product.costoBase;
-          setCosto(String(cost || ''));
+          // Abrir modal de confirmación antes de agregar
+          setSearchedProduct(product);
+          setShowSearchedProductModal(true);
         }}
       />
 
@@ -1610,6 +1741,20 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
         codigoBarras={scannedBarcode}
         onConfirm={handleBarcodeProductConfirm}
         costoInicial={scannedProduct?.costo || scannedProduct?.costoBase || ''}
+        cantidadInicial="1"
+      />
+
+      {/* Modal para producto buscado por nombre */}
+      <BarcodeProductModal
+        visible={showSearchedProductModal}
+        onClose={() => {
+          setShowSearchedProductModal(false);
+          setSearchedProduct(null);
+        }}
+        producto={searchedProduct}
+        codigoBarras={searchedProduct?.codigoBarras || ''}
+        onConfirm={handleSearchedProductConfirm}
+        costoInicial={searchedProduct?.isClientProduct ? (searchedProduct?.costo || '') : (searchedProduct?.costoBase || '')}
         cantidadInicial="1"
       />
 

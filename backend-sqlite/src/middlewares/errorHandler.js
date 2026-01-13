@@ -55,6 +55,19 @@ export const errorHandler = (err, req, res, next) => {
     return res.status(401).json(respuestaError('Token expirado'))
   }
 
+  // Errores de Multer (subida de archivos)
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json(respuestaError('El archivo es demasiado grande. Tamaño máximo: 10MB'))
+  }
+
+  if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+    return res.status(400).json(respuestaError('Campo de archivo inesperado'))
+  }
+
+  if (err.name === 'MulterError') {
+    return res.status(400).json(respuestaError(err.message || 'Error al procesar el archivo'))
+  }
+
   // Error personalizado con código de estado
   if (err.statusCode) {
     return res.status(err.statusCode).json(respuestaError(err.message))

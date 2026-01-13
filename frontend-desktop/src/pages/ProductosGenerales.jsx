@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import { productosApi, handleApiError, handleApiResponse } from '../services/api'
 import {
@@ -10,7 +10,9 @@ import {
   Package,
   DollarSign,
   Tag,
-  ShoppingCart
+  ShoppingCart,
+  Users,
+  Send
 } from 'lucide-react'
 import Button from '../components/ui/Button'
 import Card from '../components/ui/Card'
@@ -24,10 +26,13 @@ import { toast } from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import ImportModal from '../components/ui/ImportModal'
 import { Upload } from 'lucide-react'
+import { useSocket } from '../hooks/useSocket'
+import webSocketService from '../services/websocket'
 
 const ProductosGenerales = () => {
   const { user } = useAuth()
   const queryClient = useQueryClient()
+  const { onlineColaboradores, isConnected, enviarInventarioAColaboradores, obtenerColaboradoresEnLinea } = useSocket()
   const [showModal, setShowModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
@@ -35,6 +40,7 @@ const ProductosGenerales = () => {
   const [selectedCategory, setSelectedCategory] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage] = useState(5)
+  const [isEnviandoInventario, setIsEnviandoInventario] = useState(false)
 
   // Consulta de productos generales
   const { data: productosData, isLoading, error } = useQuery(
@@ -190,6 +196,103 @@ const ProductosGenerales = () => {
     setCurrentPage(1)
   }
 
+  // Función para enviar productos a colaboradores
+  const handleEnviarProductosAColaboradores = async () => {
+    if (!isConnected) {
+      toast.error('No hay conexión con el servidor')
+      return
+    }
+
+    if (onlineColaboradores === 0) {
+      toast.error('No hay colaboradores en línea')
+      return
+    }
+
+    setIsEnviandoInventario(true)
+    const toastId = toast.loading('Obteniendo productos...')
+
+    try {
+      // Obtener todos los productos (sin paginación)
+      const response = await productosApi.getAllGenerales({
+        pagina: 1,
+        limite: 10000, // Límite alto para obtener todos
+        buscar: '',
+        categoria: ''
+      })
+      
+      const data = handleApiResponse(response)
+      const todosLosProductos = data.productos || []
+
+      if (todosLosProductos.length === 0) {
+        toast.dismiss(toastId)
+        toast.error('No hay productos para enviar')
+        setIsEnviandoInventario(false)
+        return
+      }
+
+      // Formatear productos para enviar (solo campos necesarios: nombre, costo, codigo_barra, cantidad)
+      const productosFormateados = todosLosProductos.map(producto => ({
+        nombre: producto.nombre,
+        costo: producto.costoBase || 0,
+        codigo_barra: producto.codigoBarras || '',
+        cantidad: 0, // Por defecto 0, ya que esto es el inventario general
+        codigoBarras: producto.codigoBarras || '',
+        categoria: producto.categoria || '',
+        unidad: producto.unidad || '',
+        descripcion: producto.descripcion || ''
+      }))
+
+      toast.dismiss(toastId)
+      toast.loading(`Enviando inventario a ${onlineColaboradores} colaborador(es)...`, { id: toastId })
+
+      // Enviar a través de Socket.io
+      enviarInventarioAColaboradores(productosFormateados)
+
+      // Escuchar resultado (esto se maneja en el servicio de websocket)
+      setTimeout(() => {
+        toast.dismiss(toastId)
+        toast.success(`Inventario enviado a ${onlineColaboradores} colaborador(es)`)
+        setIsEnviandoInventario(false)
+      }, 500)
+
+    } catch (error) {
+      toast.dismiss(toastId)
+      handleApiError(error)
+      setIsEnviandoInventario(false)
+    }
+  }
+
+  // Escuchar resultado del envío de inventario
+  useEffect(() => {
+    if (user?.rol !== 'administrador' || !isConnected) return
+
+    const handleResultado = (data) => {
+      setIsEnviandoInventario(false)
+      if (data.success) {
+        toast.success(data.message || `Inventario enviado a ${data.count} colaborador(es)`)
+      } else {
+        toast.error(data.message || 'Error al enviar inventario')
+      }
+    }
+
+    webSocketService.on('dispatch_inventory_result', handleResultado)
+
+    return () => {
+      webSocketService.off('dispatch_inventory_result', handleResultado)
+    }
+  }, [user?.rol, isConnected])
+
+  // Debug: Log del estado de colaboradores
+  useEffect(() => {
+    if (user?.rol === 'administrador') {
+      console.log('🔍 [ProductosGenerales] Estado:', {
+        isConnected,
+        onlineColaboradores,
+        userRol: user?.rol
+      })
+    }
+  }, [isConnected, onlineColaboradores, user?.rol])
+
   // Columnas de la tabla
   const columns = [
     {
@@ -308,16 +411,52 @@ const ProductosGenerales = () => {
           <h1 className="text-2xl font-bold text-gray-900">Productos Generales</h1>
           <p className="text-gray-600">Gestiona la lista maestra de productos disponibles</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {/* Colaboradores en línea (solo para admins) */}
           {user?.rol === 'administrador' && (
-            <Button
-              onClick={() => setShowImportModal(true)}
-              variant="outline"
-              className="flex items-center space-x-2 bg-yellow-50 hover:bg-yellow-100 border-yellow-200 text-yellow-700"
+            <div 
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors"
+              onClick={() => {
+                if (isConnected) {
+                  console.log('🔄 Actualizando contador manualmente...')
+                  obtenerColaboradoresEnLinea()
+                }
+              }}
+              title={isConnected ? 'Click para actualizar' : 'Sin conexión WebSocket'}
             >
-              <Upload className="w-4 h-4" />
-              <span>Importar Lista</span>
-            </Button>
+              <Users className={`w-4 h-4 ${isConnected ? 'text-blue-600' : 'text-gray-400'}`} />
+              <span className="text-sm font-medium text-gray-700">
+                Colaboradores en línea:
+              </span>
+              <span className={`text-sm font-bold ${isConnected ? 'text-blue-600' : 'text-gray-400'}`}>
+                {isConnected ? (onlineColaboradores ?? 0) : '--'}
+              </span>
+              {!isConnected && (
+                <span className="text-xs text-gray-500 ml-1">(Sin conexión)</span>
+              )}
+            </div>
+          )}
+          {user?.rol === 'administrador' && (
+            <>
+              <Button
+                onClick={handleEnviarProductosAColaboradores}
+                disabled={!isConnected || onlineColaboradores === 0 || isEnviandoInventario}
+                variant="outline"
+                className="flex items-center space-x-2 bg-green-50 hover:bg-green-100 border-green-200 text-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={onlineColaboradores === 0 ? 'No hay colaboradores en línea' : 'Enviar inventario a colaboradores'}
+              >
+                <Send className="w-4 h-4" />
+                <span>{isEnviandoInventario ? 'Enviando...' : 'Enviar a Colaboradores'}</span>
+              </Button>
+              <Button
+                onClick={() => setShowImportModal(true)}
+                variant="outline"
+                className="flex items-center space-x-2 bg-yellow-50 hover:bg-yellow-100 border-yellow-200 text-yellow-700"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Importar Lista</span>
+              </Button>
+            </>
           )}
           <Button
             onClick={handleCreateProduct}

@@ -186,3 +186,4 @@ export const down = (db) => {
   console.log('  ⚠ Nota: Las columnas añadidas no se eliminan por seguridad')
 }
 
+

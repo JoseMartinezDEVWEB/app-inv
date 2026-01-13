@@ -63,9 +63,29 @@ export const verificarEstado = async (req, res) => {
 
 export const agregarProductoOffline = async (req, res) => {
   const { solicitudId } = req.params
-  const { productoData } = req.body
+  // Aceptar datos directamente del body o envueltos en productoData
+  const productoData = req.body.productoData || req.body
 
-  const productoId = SolicitudConexion.agregarProductoOffline(solicitudId, productoData)
+  // Validar que tenga al menos nombre
+  if (!productoData.nombre) {
+    throw new AppError('El nombre del producto es requerido', 400)
+  }
+
+  // Asegurar que cantidad sea un número válido
+  const cantidad = Number(productoData.cantidad) || 1
+  const costo = Number(productoData.costo) || 0
+
+  const datosProducto = {
+    nombre: productoData.nombre,
+    cantidad: cantidad,
+    costo: costo,
+    unidad: productoData.unidad || 'unidad',
+    categoria: productoData.categoria || 'General',
+    sku: productoData.sku || null,
+    codigoBarras: productoData.codigoBarras || null,
+  }
+
+  const productoId = SolicitudConexion.agregarProductoOffline(solicitudId, datosProducto)
 
   res.status(201).json(respuestaExito({ id: productoId }, 'Producto agregado'))
 }

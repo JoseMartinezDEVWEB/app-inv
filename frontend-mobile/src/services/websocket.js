@@ -64,6 +64,10 @@ class WebSocketService {
       forceNew: true,
     })
 
+    console.log(`📡 [WebSocket Mobile] Intentando conectar a: ${BACKEND_URL}`)
+    console.log(`📡 [WebSocket Mobile] Token presente: ${!!sanitizedToken}, Longitud: ${sanitizedToken.length}`)
+    console.log(`📡 [WebSocket Mobile] ClientType: mobile`)
+
     this.setupEventListeners()
     return this.socket
   }
@@ -73,11 +77,16 @@ class WebSocketService {
     if (!this.socket) return
 
     this.socket.on('connect', () => {
-      console.log('✅ WebSocket conectado')
+      console.log('✅ [WebSocket Mobile] WebSocket conectado exitosamente')
+      console.log(`🆔 [WebSocket Mobile] Socket ID: ${this.socket.id}`)
       this.isConnected = true
       this.isConnecting = false
       this.reconnectAttempts = 0
       this.lastConnectionTime = Date.now()
+      
+      // Unirse a la sala de colaboradores (automático si es móvil)
+      // El servidor automáticamente une a los colaboradores a 'colaboradores_room'
+      console.log('👥 [WebSocket Mobile] Colaborador conectado, esperando unión a colaboradores_room por el servidor')
       
       // Solo mostrar mensaje si es la primera conexión o después de desconexión prolongada
       if (this.shouldShowMessages) {
@@ -94,7 +103,7 @@ class WebSocketService {
     })
 
     this.socket.on('disconnect', (reason) => {
-      console.log(`❌ WebSocket desconectado: ${reason}`)
+      console.log(`❌ [WebSocket Mobile] WebSocket desconectado: ${reason}`)
       this.isConnected = false
       this.isConnecting = false
       this.emitLocal('disconnected', { reason })
@@ -103,6 +112,12 @@ class WebSocketService {
       if (reason !== 'io client disconnect') {
         this.scheduleReconnect()
       }
+    })
+
+    this.socket.on('connect_error', (error) => {
+      console.error(`❌ [WebSocket Mobile] Error de conexión:`, error.message)
+      console.error(`❌ [WebSocket Mobile] Error completo:`, error)
+      this.isConnecting = false
     })
 
     this.socket.on('connect_error', (error) => {
@@ -179,6 +194,12 @@ class WebSocketService {
     this.socket.on('colaborador_desconectado', (data) => {
       console.log('👥 Colaborador desconectado')
       this.emitLocal('colaborador_desconectado', data)
+    })
+
+    // Escuchar evento de inventario recibido del admin
+    this.socket.on('dispatch_inventory', (data) => {
+      console.log('📦 Inventario recibido del admin:', data.productos?.length || 0, 'productos')
+      this.emitLocal('dispatch_inventory', data)
     })
   }
 

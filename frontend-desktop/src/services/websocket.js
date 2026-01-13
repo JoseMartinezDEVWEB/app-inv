@@ -62,14 +62,16 @@ class WebSocketService {
     if (!this.socket) return
 
     this.socket.on('connect', () => {
-      console.log('🔌 Conectado al servidor WebSocket')
+      console.log('🔌 Conectado al servidor WebSocket, ID:', this.socket.id)
       this.isConnected = true
       this.reconnectAttempts = 0
+      this.emitLocal('connected', { socketId: this.socket.id })
     })
 
     this.socket.on('disconnect', (reason) => {
       console.log('🔌 Desconectado del servidor WebSocket:', reason)
       this.isConnected = false
+      this.emitLocal('disconnected', { reason })
       
       if (reason === 'io server disconnect') {
         // El servidor desconectó, intentar reconectar
@@ -124,6 +126,33 @@ class WebSocketService {
     this.socket.on('usuario_desconectado', (data) => {
       console.log('👤 Usuario desconectado:', data)
       this.emitLocal('usuario_desconectado', data)
+    })
+
+    // Eventos de colaboradores en línea
+    this.socket.on('online_colaboradores_count', (data) => {
+      console.log('👥 [WebSocket Desktop] Colaboradores en línea recibido:', data.count, data)
+      if (data.detalles) {
+        console.log('📋 [WebSocket Desktop] Detalles de colaboradores:', data.detalles)
+      }
+      this.emitLocal('online_colaboradores_count', data)
+    })
+
+    this.socket.on('colaborador_conectado', (data) => {
+      console.log('👥 [WebSocket Desktop] Colaborador conectado recibido:', data)
+      console.log(`👥 [WebSocket Desktop] Total colaboradores ahora: ${data.totalColaboradores}`)
+      this.emitLocal('colaborador_conectado', data)
+    })
+
+    this.socket.on('colaborador_desconectado', (data) => {
+      console.log('👥 [WebSocket Desktop] Colaborador desconectado recibido:', data)
+      console.log(`👥 [WebSocket Desktop] Total colaboradores ahora: ${data.totalColaboradores}`)
+      this.emitLocal('colaborador_desconectado', data)
+    })
+
+    // Resultado de envío de inventario
+    this.socket.on('dispatch_inventory_result', (data) => {
+      console.log('📦 Resultado de envío de inventario:', data)
+      this.emitLocal('dispatch_inventory_result', data)
     })
 
     this.socket.on('error', (error) => {

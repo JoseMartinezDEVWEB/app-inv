@@ -72,10 +72,42 @@ router.delete(
 )
 
 // ===== IMPORTACIÓN DE PRODUCTOS =====
+// Middleware wrapper para manejar errores de Multer
+const handleFileUpload = (req, res, next) => {
+  upload.single('archivo')(req, res, (err) => {
+    if (err) {
+      // Multer error
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          exito: false,
+          mensaje: 'El archivo es demasiado grande. Tamaño máximo: 10MB'
+        })
+      }
+      if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+        return res.status(400).json({
+          exito: false,
+          mensaje: 'Campo de archivo inesperado. Use el campo "archivo"'
+        })
+      }
+      if (err.message) {
+        return res.status(400).json({
+          exito: false,
+          mensaje: err.message
+        })
+      }
+      return res.status(400).json({
+        exito: false,
+        mensaje: 'Error al procesar el archivo'
+      })
+    }
+    next()
+  })
+}
+
 router.post(
   '/generales/importar',
   validarRol('contable', 'contador', 'administrador'),
-  upload.single('archivo'),
+  handleFileUpload,
   importController.importarProductosDesdeArchivo
 )
 

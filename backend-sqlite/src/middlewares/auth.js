@@ -13,14 +13,36 @@ export const validarJWT = async (req, res, next) => {
     // Obtener el token del header
     const authHeader = req.headers.authorization
     
+    // Log de depuración para peticiones de importación
+    if (req.path && req.path.includes('/importar')) {
+      console.log('🔍 Debug auth importación:', {
+        path: req.path,
+        hasAuthHeader: !!authHeader,
+        authHeaderStart: authHeader ? authHeader.substring(0, 20) + '...' : null,
+        contentType: req.headers['content-type']
+      })
+    }
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       throw new AppError('Token no proporcionado o formato inválido', 401)
     }
 
-    const token = authHeader.split(' ')[1]
+    // Extraer y limpiar el token
+    const token = authHeader.split(' ')[1]?.trim()
 
     if (!token) {
       throw new AppError('Token no proporcionado', 401)
+    }
+
+    // Validar formato básico de JWT (debe tener 3 partes separadas por puntos)
+    const tokenParts = token.split('.')
+    if (tokenParts.length !== 3) {
+      throw new AppError('Token mal formado', 401)
+    }
+
+    // Verificar que ninguna parte esté vacía
+    if (tokenParts.some(part => !part || part.length === 0)) {
+      throw new AppError('Token mal formado', 401)
     }
 
     // Verificar y decodificar el token
@@ -48,9 +70,15 @@ export const validarJWT = async (req, res, next) => {
     // Continuar al siguiente middleware
     next()
   } catch (error) {
-    // No mostrar error en consola si es simplemente que no hay token (evitar spam)
-    if (error.message !== 'Token no proporcionado o formato inválido' && 
-        error.message !== 'Token no proporcionado') {
+    // No mostrar error en consola si es un error esperado de autenticación (evitar spam)
+    const isExpectedAuthError = 
+      error.message === 'Token no proporcionado o formato inválido' ||
+      error.message === 'Token no proporcionado' ||
+      error.message === 'Token mal formado' ||
+      error.name === 'JsonWebTokenError' ||
+      error.name === 'TokenExpiredError'
+    
+    if (!isExpectedAuthError) {
       console.error('Error en validarJWT:', error)
     }
     

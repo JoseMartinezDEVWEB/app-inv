@@ -33,7 +33,7 @@ class SyncService {
    * Inicializar el servicio de sincronización
    */
   async initialize(userId, businessId) {
-    console.log('🔄 Inicializando SyncService Offline-First...')
+    console.group('🔄 SyncService: Inicializando')
     
     this.businessId = businessId
     
@@ -49,21 +49,16 @@ class SyncService {
     const lastSync = await AsyncStorage.getItem('last_sync_timestamp')
     this.lastSyncTimestamp = lastSync ? parseInt(lastSync) : 0
     
-    console.log(`   📱 Device ID: ${this.deviceId}`)
-    console.log(`   🏢 Business ID: ${this.businessId}`)
-    console.log(`   ⏰ Última sync: ${new Date(this.lastSyncTimestamp).toLocaleString()}`)
+    console.groupEnd()
   }
 
   /**
    * Iniciar el motor de sincronización
    */
   start() {
-    console.log('🚀 Iniciando motor de sincronización...')
-    
     // Escuchar cambios de red
     this.unsubscribeNetInfo = NetInfo.addEventListener(state => {
       if (state.isConnected && !this.isProcessing) {
-        console.log('📶 Conexión recuperada - Iniciando sincronización...')
         this.syncWithCloud()
       }
     })
@@ -86,8 +81,6 @@ class SyncService {
    * Detener el motor de sincronización
    */
   stop() {
-    console.log('⏹️ Deteniendo motor de sincronización...')
-    
     if (this.syncInterval) clearInterval(this.syncInterval)
     if (this.pullInterval) clearInterval(this.pullInterval)
     if (this.unsubscribeNetInfo) this.unsubscribeNetInfo()
@@ -98,18 +91,18 @@ class SyncService {
    */
   async syncWithCloud() {
     if (this.isProcessing) {
-      return // No mostrar mensajes repetitivos
+      return
     }
     
     const state = await NetInfo.fetch()
     if (!state.isConnected) {
-      return // No mostrar mensajes cuando no hay conexión
+      return
     }
 
     // Verificar cooldown después de error 401
     const now = Date.now()
     if (this.last401Timestamp > 0 && (now - this.last401Timestamp) < this.authCooldown) {
-      return // Estamos en cooldown después de un 401
+      return
     }
 
     this.isProcessing = true
@@ -120,7 +113,7 @@ class SyncService {
         await api.get('/salud', { timeout: 5000 })
       } catch (e) {
         this.isProcessing = false
-        return // No mostrar mensajes repetitivos
+        return
       }
 
       // 2. Obtener registros sucios de SQLite
@@ -129,10 +122,10 @@ class SyncService {
 
       if (tablas.length === 0) {
         this.isProcessing = false
-        return // No mostrar mensajes cuando no hay cambios
+        return
       }
 
-      // Contar total de cambios (sin logs repetitivos)
+      // Contar total de cambios
       let totalCambios = 0
       for (const tabla of tablas) {
         totalCambios += cambios[tabla].length
@@ -155,7 +148,7 @@ class SyncService {
         if (error.response?.status === 401) {
           this.last401Timestamp = Date.now()
           this.isProcessing = false
-          return // Silencioso - no mostrar mensajes repetitivos
+          return
         }
         // Para otros errores, re-lanzar
         throw error
@@ -181,17 +174,12 @@ class SyncService {
       }
 
     } catch (error) {
-      // Manejar errores silenciosamente - no mostrar mensajes repetitivos
+      // Manejar errores silenciosamente
       if (error.response?.status === 401) {
         this.last401Timestamp = Date.now()
-        // Silencioso - no mostrar mensajes
-      } else if (error.response?.status !== 401) {
-        // Solo notificar errores no-401 una vez
-        this.notificarListeners({ 
-          tipo: 'sync_error', 
-          direction: 'push',
-          error: error.message 
-        })
+      } else if (error.response?.status !== 401 && error.response?.status >= 500) {
+        // Solo loggear errores críticos del servidor (500+)
+        console.error('❌ Error crítico en sincronización:', error.message)
       }
     } finally {
       this.isProcessing = false
@@ -203,17 +191,21 @@ class SyncService {
    */
   async pullUpdates() {
     if (this.isPulling) {
-      console.log('⏳ Pull ya en progreso, omitiendo...')
-      return
+      return // Silencioso - ya está en progreso
     }
 
     const state = await NetInfo.fetch()
     if (!state.isConnected) {
-      return
+      return // Silencioso - pausar cuando está offline
+    }
+
+    // Verificar cooldown después de error 401
+    const now = Date.now()
+    if (this.last401Timestamp > 0 && (now - this.last401Timestamp) < this.authCooldown) {
+      return // Silencioso - pausar después de 401
     }
 
     this.isPulling = true
-    console.log('📥 Iniciando PULL de actualizaciones...')
 
     try {
       const response = await api.get('/sync/pull', {
@@ -231,42 +223,43 @@ class SyncService {
         if (updates.clientes && updates.clientes.length > 0) {
           await localDb.sincronizarClientesDesdeServidor(updates.clientes)
           totalUpdates += updates.clientes.length
-          console.log(`   📋 ${updates.clientes.length} clientes actualizados`)
         }
 
         // Aplicar actualizaciones de productos
         if (updates.productos && updates.productos.length > 0) {
           await localDb.guardarProductos(updates.productos)
           totalUpdates += updates.productos.length
-          console.log(`   📦 ${updates.productos.length} productos actualizados`)
         }
 
         // Aplicar actualizaciones de sesiones
         if (updates.sesiones && updates.sesiones.length > 0) {
           await localDb.guardarSesiones(updates.sesiones)
           totalUpdates += updates.sesiones.length
-          console.log(`   📊 ${updates.sesiones.length} sesiones actualizadas`)
         }
 
         // Actualizar timestamp
         this.lastSyncTimestamp = serverTimestamp
         await AsyncStorage.setItem('last_sync_timestamp', serverTimestamp.toString())
 
+        // Resetear cooldown de 401 si la operación fue exitosa
+        this.last401Timestamp = 0
+
         if (totalUpdates > 0) {
-          console.log(`✅ PULL completado: ${totalUpdates} registros recibidos`)
           this.notificarListeners({
             tipo: 'sync_success',
             direction: 'pull',
             count: totalUpdates
           })
-        } else {
-          console.log('✅ PULL completado: Sin cambios nuevos')
         }
       }
 
     } catch (error) {
-      console.error('❌ Error en PULL:', error.message)
-      // No notificamos errores de pull para no saturar la UI
+      // Manejar error 401 silenciosamente
+      if (error.response?.status === 401) {
+        this.last401Timestamp = Date.now()
+        // Silencioso - pausar PULL cuando hay error de autenticación
+      }
+      // No loggear otros errores de pull para no saturar la consola
     } finally {
       this.isPulling = false
     }
@@ -276,9 +269,10 @@ class SyncService {
    * Forzar sincronización completa (push + pull)
    */
   async forceFullSync() {
-    console.log('🔄 Forzando sincronización completa...')
+    console.group('🔄 SyncService: Sincronización manual')
     await this.syncWithCloud()
     await this.pullUpdates()
+    console.groupEnd()
   }
 
   /**
