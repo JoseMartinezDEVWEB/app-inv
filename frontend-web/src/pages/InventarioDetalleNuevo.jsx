@@ -572,13 +572,14 @@ const InventarioDetalleNuevo = () => {
               unidad: 'unidad',
               sku: productoData.sku || ''
             })
-            productoClienteId = nuevoProducto.data?.datos?.producto?._id
+            // El backend devuelve el producto directamente en datos, con campo id (no _id)
+            productoClienteId = nuevoProducto.data?.datos?.id || nuevoProducto.data?.datos?._id
           }
 
           // Agregar a la sesión
           if (productoClienteId) {
             await sesionesApi.addProduct(id, {
-              producto: productoClienteId,
+              productoClienteId: productoClienteId,
               cantidadContada: Number(cantidadEditada),
               costoProducto: Number(productoData.costo) || 0
             })
@@ -667,7 +668,8 @@ const InventarioDetalleNuevo = () => {
                 unidad: 'unidad',
                 sku: productoData.sku || ''
               })
-              productoClienteId = nuevo.data?.datos?.producto?._id
+              // El backend devuelve el producto directamente en datos, con campo id (no _id)
+              productoClienteId = nuevo.data?.datos?.id || nuevo.data?.datos?._id
             }
 
             if (productoClienteId) {
@@ -4065,11 +4067,12 @@ const InventarioDetalleNuevo = () => {
                             sku: item.producto.codigoBarras || ''
                           })
 
-                          const productoClienteCreado = nuevoProductoCliente.data.datos?.producto || nuevoProductoCliente.data.producto
+                          // El backend devuelve el producto directamente en datos, con campo id (no _id)
+                          const productoClienteCreado = nuevoProductoCliente.data?.datos || nuevoProductoCliente.data?.producto
 
                           // Agregar a la sesión
                           await sesionesApi.addProduct(id, {
-                            producto: productoClienteCreado._id,
+                            productoClienteId: productoClienteCreado?.id || productoClienteCreado?._id,
                             cantidadContada: Number(item.cantidad),
                             costoProducto: Number(item.costo)
                           })

@@ -751,7 +751,13 @@ const InventarioDetalleNuevo = () => {
                 sku: productoData.sku || '',
                 categoria: productoData.categoria || 'General'
               })
-              productoClienteId = nuevoProducto.data?.datos?.producto?._id || nuevoProducto.data?.datos?._id
+              // El backend devuelve el producto directamente en datos, no en datos.producto
+              productoClienteId = nuevoProducto.data?.datos?.id || nuevoProducto.data?.datos?._id
+              if (!productoClienteId) {
+                console.error('❌ No se pudo extraer el ID del producto creado:', nuevoProducto.data)
+                toast.error(`Error: No se pudo obtener el ID del producto ${productoData.nombre} después de crearlo`)
+                continue
+              }
             } catch (error) {
               console.error('Error creando producto:', error)
               toast.error(`Error al crear producto ${productoData.nombre}: ${error.response?.data?.mensaje || error.message}`)
@@ -877,7 +883,8 @@ const InventarioDetalleNuevo = () => {
                 unidad: 'unidad',
                 sku: productoData.sku || ''
               })
-              productoClienteId = nuevo.data?.datos?.producto?._id
+              // El backend devuelve el producto directamente en datos, con campo id (no _id)
+              productoClienteId = nuevo.data?.datos?.id || nuevo.data?.datos?._id
             }
 
             if (productoClienteId) {
@@ -4369,11 +4376,12 @@ const InventarioDetalleNuevo = () => {
                             sku: item.producto.codigoBarras || ''
                           })
 
-                          const productoClienteCreado = nuevoProductoCliente.data.datos?.producto || nuevoProductoCliente.data.producto
+                          // El backend devuelve el producto directamente en datos, con campo id (no _id)
+                          const productoClienteCreado = nuevoProductoCliente.data?.datos || nuevoProductoCliente.data?.producto
 
                           // Agregar a la sesión
                           await sesionesApi.addProduct(id, {
-                            producto: productoClienteCreado._id,
+                            productoClienteId: productoClienteCreado?.id || productoClienteCreado?._id,
                             cantidadContada: Number(item.cantidad),
                             costoProducto: Number(item.costo)
                           })
