@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { showMessage } from 'react-native-flash-message'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import storage from './storage'
 import { config, setOnlineStatus, isOnline } from '../config/env'
 import localDb from './localDb'
@@ -19,6 +20,44 @@ const ROUTES_PREFER_REMOTE = [
 ];
 
 const API_BASE_URL = config.apiUrl
+
+const getRuntimeApiBaseUrl = async () => {
+  try {
+    const stored = await AsyncStorage.getItem('apiUrl')
+    return stored || API_BASE_URL
+  } catch (e) {
+    return API_BASE_URL
+  }
+}
+
+/**
+ * Guardar y aplicar una nueva API URL en runtime.
+ * - Persiste en AsyncStorage (clave: apiUrl)
+ * - Actualiza defaults de Axios (instancia `api` y axios global, usado por websocket)
+ */
+export const setRuntimeApiBaseUrl = async (apiUrl) => {
+  if (!apiUrl || typeof apiUrl !== 'string') {
+    throw new Error('apiUrl inválida')
+  }
+  const clean = apiUrl.replace(/\/+$/, '')
+  await AsyncStorage.setItem('apiUrl', clean)
+  api.defaults.baseURL = clean
+  axios.defaults.baseURL = clean
+  return clean
+}
+
+/**
+ * Recibe la URL base del backend (sin /api) y deriva apiUrl.
+ * Ej: "http://192.168.1.10:4001" -> "http://192.168.1.10:4001/api"
+ */
+export const setRuntimeApiFromJ4ProUrl = async (j4proUrl) => {
+  if (!j4proUrl || typeof j4proUrl !== 'string') {
+    throw new Error('j4pro_url inválida')
+  }
+  const cleanBase = j4proUrl.replace(/\/+$/, '')
+  const apiUrl = cleanBase.endsWith('/api') ? cleanBase : `${cleanBase}/api`
+  return await setRuntimeApiBaseUrl(apiUrl)
+}
 
 // Crear instancia de Axios
 const api = axios.create({
@@ -115,6 +154,11 @@ const mockLocalResponse = async (config) => {
 // === INTERCEPTOR DE REQUESTS ===
 api.interceptors.request.use(
   async (requestConfig) => {
+    // Resolver baseURL en runtime (AsyncStorage) para soportar IP:PUERTO dinámicos
+    // (p.ej. Desktop cambia de puerto 4000 -> 4003)
+    const runtimeBaseUrl = await getRuntimeApiBaseUrl()
+    requestConfig.baseURL = runtimeBaseUrl
+
     // Verificar si es ruta remota obligatoria
     const isRemoteRoute = ROUTES_PREFER_REMOTE.some(r => requestConfig.url.includes(r));
 

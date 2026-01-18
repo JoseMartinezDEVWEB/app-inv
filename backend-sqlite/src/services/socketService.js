@@ -8,12 +8,33 @@ let io = null
 // Estado en memoria para colaboradores conectados
 const colaboradoresConectados = new Map() // socketId -> { usuarioId, nombre, timestamp }
 
+const isLocalNetworkOrigin = (origin) => {
+  if (!origin || typeof origin !== 'string') return false
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true
+  if (/^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/i.test(origin)) return true
+  if (/^https?:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/i.test(origin)) return true
+  if (/^https?:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?$/i.test(origin)) return true
+  return false
+}
+
 // Inicializar Socket.IO con configuración mejorada
 export const initializeSocket = (server) => {
   io = new Server(server, {
     cors: {
-      origin: config.cors.allowedOrigins,
-      methods: ['GET', 'POST'],
+      origin: (origin, callback) => {
+        // En desarrollo: permitir todo
+        if (config.isDevelopment) return callback(null, true)
+
+        // Permitir sin Origin (React Native / Postman)
+        if (!origin) return callback(null, true)
+
+        if (config.cors.allowedOrigins.includes(origin) || isLocalNetworkOrigin(origin)) {
+          return callback(null, true)
+        }
+
+        return callback(new Error('No permitido por CORS (socket)'))
+      },
+      methods: ['GET', 'POST', 'OPTIONS'],
       credentials: true,
     },
     pingTimeout: 60000, // 60 segundos

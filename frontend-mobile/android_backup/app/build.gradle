@@ -91,6 +91,17 @@ react {
 def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInReleaseBuilds') ?: false).toBoolean()
 
 /**
+ * Build separado por arquitectura (ABI).
+ * Requerido para builds más pequeños y distribución optimizada.
+ */
+def enableSeparateBuildPerCPUArchitecture = true
+
+def reactNativeArchitectures = (findProperty("reactNativeArchitectures") ?: "armeabi-v7a,arm64-v8a,x86,x86_64")
+        .split(",")
+        .collect { it.trim() }
+        .findAll { it }
+
+/**
  * The preferred build flavor of JavaScriptCore (JSC)
  *
  * For example, to use the international variant, you can use:
@@ -110,6 +121,14 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace 'com.j4pro.gestorinventario'
+    splits {
+        abi {
+            enable enableSeparateBuildPerCPUArchitecture
+            reset()
+            include(*reactNativeArchitectures)
+            universalApk false
+        }
+    }
     defaultConfig {
         applicationId 'com.j4pro.gestorinventario'
         minSdkVersion rootProject.ext.minSdkVersion
@@ -124,6 +143,19 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            // Para distribución real: define estas propiedades (por ejemplo en gradle.properties del usuario/CI)
+            // J4PRO_RELEASE_STORE_FILE=...
+            // J4PRO_RELEASE_STORE_PASSWORD=...
+            // J4PRO_RELEASE_KEY_ALIAS=...
+            // J4PRO_RELEASE_KEY_PASSWORD=...
+            if (project.hasProperty('J4PRO_RELEASE_STORE_FILE')) {
+                storeFile file(J4PRO_RELEASE_STORE_FILE)
+                storePassword J4PRO_RELEASE_STORE_PASSWORD
+                keyAlias J4PRO_RELEASE_KEY_ALIAS
+                keyPassword J4PRO_RELEASE_KEY_PASSWORD
+            }
+        }
     }
     buildTypes {
         debug {
@@ -132,7 +164,7 @@ android {
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release.storeFile != null ? signingConfigs.release : signingConfigs.debug
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"

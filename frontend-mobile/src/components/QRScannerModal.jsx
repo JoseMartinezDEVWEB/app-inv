@@ -14,8 +14,9 @@ import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
 import { invitacionesApi, handleApiError } from '../services/api'
 import { showMessage } from 'react-native-flash-message'
+import axios from 'axios'
 
-const QRScannerModal = ({ visible, onClose, onSuccess }) => {
+const QRScannerModal = ({ visible, onClose, onSuccess, mode = 'invitacion' }) => {
   const [hasPermission, setHasPermission] = useState(null)
   const [scanned, setScanned] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -35,7 +36,7 @@ const QRScannerModal = ({ visible, onClose, onSuccess }) => {
       if (status !== 'granted') {
         Alert.alert(
           'Permiso necesario',
-          'Se requiere acceso a la cámara para escanear códigos QR',
+          'Se requiere acceso a la cรกmara para escanear cรณdigos QR',
           [
             { text: 'Cancelar', onPress: onClose },
             { text: 'Reintentar', onPress: requestCameraPermission }
@@ -44,7 +45,7 @@ const QRScannerModal = ({ visible, onClose, onSuccess }) => {
       }
     } catch (error) {
       console.error('Error requesting camera permission:', error)
-      Alert.alert('Error', 'No se pudo obtener permiso para usar la cámara')
+      Alert.alert('Error', 'No se pudo obtener permiso para usar la cรกmara')
     }
   }
 
@@ -52,20 +53,58 @@ const QRScannerModal = ({ visible, onClose, onSuccess }) => {
     if (scanned || isProcessing) return
     
     setScanned(true)
-    Vibration.vibrate(100) // Vibración de feedback
+    Vibration.vibrate(100) // Vibraciรณn de feedback
     
     try {
       setIsProcessing(true)
       
-      // Parsear datos del QR
+      // Parsear datos del QR (siempre JSON)
       let qrData
       try {
         qrData = JSON.parse(data)
       } catch (e) {
-        throw new Error('Código QR inválido')
+        throw new Error('Código QR inválido (no es JSON)')
       }
 
-      // Validar que sea una invitación de J4
+      if (mode === 'conexion') {
+        const j4proUrl = (qrData?.j4pro_url || '').toString().trim().replace(/\/+$/, '')
+        if (!j4proUrl) {
+          throw new Error('Este QR no contiene j4pro_url')
+        }
+        if (!/^https?:\/\//i.test(j4proUrl)) {
+          throw new Error('j4pro_url inválida (debe iniciar con http:// o https://)')
+        }
+
+        // Validación robusta: verificar contra el endpoint del backend (identidad J4 Pro)
+        // Si responde correctamente, usamos la URL que el propio backend reporta.
+        const verifyUrl = `${j4proUrl}/api/red/info`
+        const verifyResp = await axios.get(verifyUrl, { timeout: 5000, validateStatus: () => true })
+        if (verifyResp.status !== 200 || !verifyResp.data?.ok || !verifyResp.data?.apiUrl) {
+          throw new Error('Este QR no corresponde a un servidor J4 Pro válido')
+        }
+
+        const canonicalBase = (verifyResp.data.url || j4proUrl).toString().replace(/\/+$/, '')
+        const canonicalApiUrl = (verifyResp.data.apiUrl || `${canonicalBase}/api`).toString().replace(/\/+$/, '')
+
+        Vibration.vibrate([0, 80, 80, 80])
+        showMessage({
+          message: 'Servidor configurado',
+          description: canonicalBase,
+          type: 'success',
+          duration: 2500,
+        })
+
+        onSuccess({
+          tipo: 'conexion_j4pro',
+          j4pro_url: canonicalBase,
+          apiUrl: canonicalApiUrl,
+        })
+
+        return
+      }
+
+      // === Modo invitación (legacy) ===
+      // Validar que sea una invitaciรณn de J4
       if (!qrData.tipo || qrData.tipo !== 'invitacion_j4') {
         throw new Error('Este código QR no es una invitación válida de J4 Pro')
       }
@@ -74,22 +113,22 @@ const QRScannerModal = ({ visible, onClose, onSuccess }) => {
         throw new Error('Código QR incompleto')
       }
 
-      // Consumir la invitación sin crear cuenta
+      // Consumir la invitaciรณn sin crear cuenta
       const response = await invitacionesApi.consumirSinCuenta(qrData.token)
-      
+
       if (response.data.exito) {
-        Vibration.vibrate([0, 100, 100, 100]) // Vibración de éxito
-        
-        // Guardar token de sesión temporal
+        Vibration.vibrate([0, 100, 100, 100]) // Vibraciรณn de รฉxito
+
+        // Guardar token de sesiรณn temporal
         const datos = response.data.datos
-        
+
         showMessage({
           message: '¡Conectado exitosamente!',
           description: `Acceso como ${qrData.rol}`,
           type: 'success',
           duration: 3000,
         })
-        
+
         onSuccess(datos)
       } else {
         throw new Error(response.data.mensaje || 'Error al conectar')
@@ -98,7 +137,7 @@ const QRScannerModal = ({ visible, onClose, onSuccess }) => {
     } catch (error) {
       console.error('Error al procesar QR:', error)
       
-      const errorMsg = error.response?.data?.mensaje || error.message || 'Error al procesar el código QR'
+      const errorMsg = error.response?.data?.mensaje || error.message || 'Error al procesar el cรณdigo QR'
       
       Alert.alert(
         'Error',
@@ -146,7 +185,7 @@ const QRScannerModal = ({ visible, onClose, onSuccess }) => {
           >
             <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Escanear Código QR</Text>
+          <Text style={styles.headerTitle}>Escanear Cรณdigo QR</Text>
           <View style={styles.placeholder} />
         </LinearGradient>
 
@@ -154,10 +193,12 @@ const QRScannerModal = ({ visible, onClose, onSuccess }) => {
         <View style={styles.instructionsContainer}>
           <Ionicons name="qr-code-outline" size={40} color="#8b5cf6" />
           <Text style={styles.instructionsTitle}>
-            Acceso como Colaborador
+            {mode === 'conexion' ? 'Configurar Conexión' : 'Acceso como Colaborador'}
           </Text>
           <Text style={styles.instructionsText}>
-            Pide al administrador que genere un código QR desde la sesión de inventario y escanéalo para conectarte
+            {mode === 'conexion'
+              ? 'Escanea el QR generado en Desktop para configurar automáticamente la conexión al backend (LAN)'
+              : 'Pide al administrador que genere un código QR desde la sesión de inventario y escanéalo para conectarte'}
           </Text>
         </View>
 
@@ -166,13 +207,13 @@ const QRScannerModal = ({ visible, onClose, onSuccess }) => {
           {hasPermission === null ? (
             <View style={styles.centerContent}>
               <ActivityIndicator size="large" color="#8b5cf6" />
-              <Text style={styles.loadingText}>Solicitando permiso de cámara...</Text>
+              <Text style={styles.loadingText}>Solicitando permiso de cรกmara...</Text>
             </View>
           ) : hasPermission === false ? (
             <View style={styles.centerContent}>
               <Ionicons name="camera-off-outline" size={60} color="#ef4444" />
               <Text style={styles.errorText}>
-                No hay acceso a la cámara
+                No hay acceso a la cรกmara
               </Text>
               <TouchableOpacity
                 style={styles.retryButton}
@@ -220,15 +261,15 @@ const QRScannerModal = ({ visible, onClose, onSuccess }) => {
           )}
         </View>
 
-        {/* Footer con información */}
+        {/* Footer con informaciรณn */}
         <View style={styles.footer}>
           <View style={styles.footerItem}>
             <Ionicons name="shield-checkmark-outline" size={24} color="#10b981" />
-            <Text style={styles.footerText}>Conexión segura</Text>
+            <Text style={styles.footerText}>Conexiรณn segura</Text>
           </View>
           <View style={styles.footerItem}>
             <Ionicons name="time-outline" size={24} color="#f59e0b" />
-            <Text style={styles.footerText}>Válido 24h</Text>
+            <Text style={styles.footerText}>Vรกlido 24h</Text>
           </View>
         </View>
       </View>

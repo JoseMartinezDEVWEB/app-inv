@@ -99,12 +99,22 @@ export const listarMisInvitaciones = async (req, res) => {
 }
 
 export const validarCodigo = async (req, res) => {
-  const { codigo } = req.body
+  const codigo = (req.body?.codigo || '').toString().trim()
+
+  if (!codigo) {
+    throw new AppError('Código inválido', 400)
+  }
 
   const invitacion = Invitacion.buscarPorCodigo(codigo)
 
   if (!invitacion) {
-    throw new AppError('Código inválido', 404)
+    throw new AppError('Código no válido o colaborador desactivado', 404)
+  }
+
+  // Verificar que el contable dueño de la invitación exista y esté activo
+  const contable = Usuario.buscarPorId(invitacion.contableId)
+  if (!contable || !contable.activo) {
+    throw new AppError('Código no válido o colaborador desactivado', 400)
   }
 
   if (invitacion.estado !== 'activa') {
@@ -119,12 +129,23 @@ export const validarCodigo = async (req, res) => {
 }
 
 export const usarInvitacion = async (req, res) => {
-  const { codigo, nombreColaborador } = req.body
+  const codigo = (req.body?.codigo || '').toString().trim()
+  const nombreColaborador = (req.body?.nombreColaborador || '').toString().trim()
+
+  if (!codigo) {
+    throw new AppError('Código inválido', 400)
+  }
 
   const invitacion = Invitacion.buscarPorCodigo(codigo)
 
   if (!invitacion || invitacion.estado !== 'activa') {
     throw new AppError('Invitación no válida', 400)
+  }
+
+  // Verificar que el contable dueño de la invitación exista y esté activo
+  const contable = Usuario.buscarPorId(invitacion.contableId)
+  if (!contable || !contable.activo) {
+    throw new AppError('Código no válido o colaborador desactivado', 400)
   }
 
   Invitacion.marcarComoUsada(invitacion.id, nombreColaborador)

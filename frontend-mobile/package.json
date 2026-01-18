@@ -10,6 +10,8 @@
     "web": "expo start --web",
     "build": "eas build --profile production-local --platform android",
     "build:production-local": "eas build --profile production-local --platform android",
+    "apk:test": "node scripts/build-apk.js test",
+    "apk:dist": "node scripts/build-apk.js dist",
     "expo-prebuild": "expo prebuild --clean",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "clean": "rm -rf node_modules package-lock.json && npm install"

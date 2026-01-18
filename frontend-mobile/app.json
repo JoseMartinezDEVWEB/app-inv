@@ -25,6 +25,7 @@
     },
     "android": {
       "package": "com.j4pro.gestorinventario",
+      "usesCleartextTraffic": true,
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",

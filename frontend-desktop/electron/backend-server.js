@@ -15,7 +15,8 @@ const __dirname = path.dirname(__filename)
 class BackendServer {
   constructor() {
     this.process = null
-    this.port = 4000
+    // Puerto estable para el backend embebido (debe ser fijo para QR/auto-conexión)
+    this.port = 4001
     // En Windows, `localhost` puede resolver a IPv6 (::1) y fallar si el backend
     // solo escucha en IPv4. Usamos loopback IPv4 explícito para checks internos.
     this.host = '127.0.0.1'
@@ -71,148 +72,95 @@ class BackendServer {
       return
     }
 
-    const maxRetries = 3
-    let retryCount = 0
-    let startPort = 4000
+    try {
+      const backendPath = this.getBackendPath()
 
-    while (retryCount < maxRetries) {
-      try {
-        const backendPath = this.getBackendPath()
-        this.port = await this.findAvailablePort(startPort)
+      // Validar disponibilidad del puerto fijo 4001 (no cambiarlo automáticamente)
+      const isAvailable = await this.checkPort(this.port)
+      if (!isAvailable) {
+        throw new Error(
+          `El puerto ${this.port} está ocupado. ` +
+          `J4 Pro requiere el backend en ${this.port} para conexión móvil automática. ` +
+          `Cierra la app/proceso que usa ese puerto y reintenta.`
+        )
+      }
 
-        console.log('🚀 Iniciando backend local...')
-        console.log('📂 Path:', backendPath)
-        console.log('🔌 Puerto:', this.port)
+      console.log('🚀 Iniciando backend local...')
+      console.log('📂 Path:', backendPath)
+      console.log('🔌 Puerto (fijo):', this.port)
 
-        // Señal de "backend listo" basada en logs del proceso hijo
-        this._backendReadyPromise = new Promise((resolve, reject) => {
-          this._resolveBackendReady = resolve
-          this._rejectBackendReady = reject
-        })
-        this._backendLogsBuffer = ''
-        this._backendLastLines = []
+      // Señal de "backend listo" basada en logs del proceso hijo
+      this._backendReadyPromise = new Promise((resolve, reject) => {
+        this._resolveBackendReady = resolve
+        this._rejectBackendReady = reject
+      })
+      this._backendLogsBuffer = ''
+      this._backendLastLines = []
 
-        // Iniciar servidor backend
-        this.process = spawn('node', ['src/server.js'], {
-          cwd: backendPath,
-          env: {
-            ...process.env,
-            PORT: String(this.port), // Asegurar que sea string
-            NODE_ENV: 'development',
-            DB_PATH: path.join(backendPath, 'database', 'inventario.db'),
-          },
-          // Usar pipes para poder parsear logs y detectar "Servidor iniciado..."
-          stdio: ['ignore', 'pipe', 'pipe'],
-        })
+      // Iniciar servidor backend
+      this.process = spawn('node', ['src/server.js'], {
+        cwd: backendPath,
+        env: {
+          ...process.env,
+          PORT: String(this.port), // Asegurar que sea string
+          NODE_ENV: 'development',
+          DB_PATH: path.join(backendPath, 'database', 'inventario.db'),
+        },
+        // Usar pipes para poder parsear logs y detectar "Servidor iniciado..."
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
 
-        let processExited = false
-        let exitCode = null
-        let processError = null
+      let processExited = false
+      let exitCode = null
+      let processError = null
 
-        // Capturar logs del backend y reenviarlos a la consola (mantiene DX),
-        // mientras detectamos el puerto real reportado por el backend.
-        this._attachBackendLogPipes()
+      // Capturar logs del backend y reenviarlos a la consola (mantiene DX).
+      this._attachBackendLogPipes()
 
-        this.process.on('error', (error) => {
-          console.error('❌ Error al iniciar backend:', error)
-          this.isRunning = false
-          processExited = true
-          processError = error
-          if (this._rejectBackendReady) this._rejectBackendReady(error)
-        })
+      this.process.on('error', (error) => {
+        console.error('❌ Error al iniciar backend:', error)
+        this.isRunning = false
+        processExited = true
+        processError = error
+        if (this._rejectBackendReady) this._rejectBackendReady(error)
+      })
 
-        this.process.on('exit', (code) => {
-          exitCode = code
-          processExited = true
-          if (code !== 0 && code !== null) {
-            console.log(`🛑 Backend detenido con código ${code}`)
-          }
-          this.isRunning = false
-          if (code !== 0 && this._rejectBackendReady) {
-            this._rejectBackendReady(new Error(`Backend salió con código ${code}`))
-          }
-        })
-
-        // Esperar un poco para que el proceso inicie y detectar fallos tempranos
-        await new Promise(resolve => setTimeout(resolve, 2000))
-
-        // Si el proceso ya falló, reintentar con otro puerto
-        if (processExited && exitCode !== 0) {
-          if (this.process) {
-            this.process.kill()
-            this.process = null
-          }
-          
-          retryCount++
-          if (retryCount < maxRetries) {
-            startPort = this.port + 1
-            console.log(`⚠️ Backend falló. Reintentando con puerto ${startPort}... (${retryCount}/${maxRetries})`)
-            await new Promise(resolve => setTimeout(resolve, 1000))
-            continue
-          } else {
-            throw new Error(`Backend falló con código ${exitCode} después de ${maxRetries} intentos`)
-          }
+      this.process.on('exit', (code) => {
+        exitCode = code
+        processExited = true
+        if (code !== 0 && code !== null) {
+          console.log(`🛑 Backend detenido con código ${code}`)
         }
-
-        // Si el proceso sigue corriendo, esperar a que el servidor esté listo
-        try {
-          await this.waitForServer({ initialTimeoutMs: 15000, extendedTimeoutMs: 60000 })
-          this.isRunning = true
-          console.log('✅ Backend local iniciado correctamente')
-          return // Éxito, salir del loop
-        } catch (waitError) {
-          // Verificar si el proceso falló mientras esperábamos
-          if (processExited && exitCode !== 0) {
-            // El proceso falló, limpiar y reintentar
-            if (this.process) {
-              this.process.kill()
-              this.process = null
-            }
-            
-            retryCount++
-            if (retryCount < maxRetries) {
-              startPort = this.port + 1
-              console.log(`⚠️ Backend falló mientras iniciaba. Reintentando con puerto ${startPort}... (${retryCount}/${maxRetries})`)
-              await new Promise(resolve => setTimeout(resolve, 1000))
-              continue
-            }
-          } else if (!processExited) {
-            // El proceso sigue corriendo pero waitForServer falló
-            // Verificar una vez más si el servidor está realmente funcionando
-            console.log(`⚠️ waitForServer falló pero el proceso sigue corriendo. Verificando servidor en puerto ${this.port}...`)
-            try {
-              const healthCheck = await this.checkHealth(this._getHealthUrl(), { logErrors: true })
-              if (healthCheck) {
-                this.isRunning = true
-                console.log('✅ Backend local iniciado correctamente (verificado después de waitForServer)')
-                return // Éxito, el servidor está funcionando
-              }
-            } catch (checkError) {
-              // El servidor realmente no está respondiendo, continuar con el error
-            }
-          }
-          
-          // Si llegamos aquí, el servidor realmente no está respondiendo
-          throw waitError
+        this.isRunning = false
+        if (code !== 0 && this._rejectBackendReady) {
+          this._rejectBackendReady(new Error(`Backend salió con código ${code}`))
         }
-      } catch (error) {
-        // Limpiar proceso si existe
+      })
+
+      // Esperar un poco para que el proceso inicie y detectar fallos tempranos
+      await new Promise(resolve => setTimeout(resolve, 2000))
+
+      // Si el proceso ya falló, abortar (no cambiar puerto automáticamente)
+      if (processExited && exitCode !== 0) {
         if (this.process) {
           this.process.kill()
           this.process = null
         }
-
-        // Si no hay más reintentos, lanzar el error
-        if (retryCount >= maxRetries - 1) {
-          console.error('❌ Error al iniciar backend después de múltiples intentos:', error)
-          throw error
-        }
-        
-        retryCount++
-        startPort = (this.port || 4000) + retryCount
-        console.log(`⚠️ Error al iniciar backend. Reintentando con puerto ${startPort}... (${retryCount}/${maxRetries})`)
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        throw processError || new Error(`Backend falló con código ${exitCode}`)
       }
+
+      // Si el proceso sigue corriendo, esperar a que el servidor esté listo
+      await this.waitForServer({ initialTimeoutMs: 15000, extendedTimeoutMs: 60000 })
+      this.isRunning = true
+      console.log('✅ Backend local iniciado correctamente')
+    } catch (error) {
+      // Limpiar proceso si existe
+      if (this.process) {
+        this.process.kill()
+        this.process = null
+      }
+      console.error('❌ Error al iniciar backend:', error)
+      throw error
     }
   }
 

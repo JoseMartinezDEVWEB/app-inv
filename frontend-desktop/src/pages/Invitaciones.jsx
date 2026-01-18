@@ -20,8 +20,11 @@ const Invitaciones = () => {
   const [loadingSolicitudes, setLoadingSolicitudes] = useState(true);
   const [modalGenerar, setModalGenerar] = useState(false);
   const [modalQR, setModalQR] = useState(false);
+  const [modalQRConexion, setModalQRConexion] = useState(false);
   const [modalProductosOffline, setModalProductosOffline] = useState(false);
   const [qrData, setQrData] = useState(null);
+  const [qrConexionData, setQrConexionData] = useState(null);
+  const [loadingQRConexion, setLoadingQRConexion] = useState(false);
   const [productosOffline, setProductosOffline] = useState([]);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState(null);
   const [formData, setFormData] = useState({
@@ -221,6 +224,39 @@ const Invitaciones = () => {
     toast.success('QR descargado exitosamente');
   };
 
+  const handleGenerarQRConexion = async () => {
+    try {
+      setLoadingQRConexion(true);
+      const response = await api.get('/red/info');
+      const data = response?.data;
+
+      if (!data?.ok || !data?.qrDataUrl || !data?.qrPayload) {
+        throw new Error('No se pudo generar el QR de conexión (respuesta inválida)');
+      }
+
+      setQrConexionData(data);
+      setModalQRConexion(true);
+      toast.success('QR de conexión móvil generado');
+    } catch (err) {
+      console.error('Error al generar QR de conexión:', err);
+      toast.error(err.response?.data?.mensaje || err.message || 'Error al generar QR de conexión');
+    } finally {
+      setLoadingQRConexion(false);
+    }
+  };
+
+  const handleDescargarQRConexion = () => {
+    if (!qrConexionData?.qrDataUrl) return;
+
+    const link = document.createElement('a');
+    link.href = qrConexionData.qrDataUrl;
+    link.download = `j4pro-conexion-${Date.now()}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('QR de conexión descargado');
+  };
+
   const resetForm = () => {
     setFormData({
       rol: 'colaborador',
@@ -269,13 +305,24 @@ const Invitaciones = () => {
             Genera invitaciones por código QR para vincular usuarios
           </p>
         </div>
-        <Button
-          onClick={() => setModalGenerar(true)}
-          className="flex items-center gap-2"
-        >
-          <QrCode className="w-5 h-5" />
-          Generar Invitación
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleGenerarQRConexion}
+            className="flex items-center gap-2"
+            disabled={loadingQRConexion}
+            title="Genera un QR para que la app móvil configure la URL del backend automáticamente"
+          >
+            <Wifi className="w-5 h-5" />
+            {loadingQRConexion ? 'Generando...' : 'QR Conexión Móvil'}
+          </Button>
+          <Button
+            onClick={() => setModalGenerar(true)}
+            className="flex items-center gap-2"
+          >
+            <QrCode className="w-5 h-5" />
+            Generar Invitación
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -726,6 +773,68 @@ const Invitaciones = () => {
                   onClick={() => {
                     setModalQR(false);
                     setQrData(null);
+                  }}
+                >
+                  Cerrar
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* Modal QR Conexión Móvil */}
+      <Modal
+        isOpen={modalQRConexion}
+        onClose={() => {
+          setModalQRConexion(false);
+          setQrConexionData(null);
+        }}
+        title="QR de Conexión Móvil (Auto-config)"
+      >
+        <div className="text-center space-y-4">
+          {qrConexionData && (
+            <>
+              <div className="bg-white p-4 rounded-lg inline-block">
+                <img
+                  src={qrConexionData.qrDataUrl}
+                  alt="QR conexión móvil"
+                  className="w-64 h-64 mx-auto"
+                />
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-lg text-left border border-slate-200">
+                <h3 className="font-semibold text-slate-900 mb-2">
+                  URL detectada (LAN)
+                </h3>
+                <p className="font-mono text-sm text-slate-700 break-all">
+                  {qrConexionData.url}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  La app móvil guardará automáticamente <span className="font-mono">apiUrl</span> como <span className="font-mono">{qrConexionData.apiUrl}</span>.
+                </p>
+              </div>
+
+              <div className="bg-white p-4 rounded-lg text-left border border-slate-200">
+                <h3 className="font-semibold text-slate-900 mb-2">Payload del QR</h3>
+                <pre className="text-xs bg-slate-900 text-slate-100 p-3 rounded overflow-auto">
+{qrConexionData.qrPayload}
+                </pre>
+              </div>
+
+              <div className="flex justify-center gap-2 pt-4">
+                <Button
+                  onClick={handleDescargarQRConexion}
+                  className="flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Descargar QR
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setModalQRConexion(false);
+                    setQrConexionData(null);
                   }}
                 >
                   Cerrar

@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '../context/AuthContext'
 import { useLoader } from '../context/LoaderContext'
 import QRScannerModal from '../components/QRScannerModal'
-import { solicitudesConexionApi } from '../services/api'
+import { solicitudesConexionApi, setRuntimeApiBaseUrl } from '../services/api'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Device from 'expo-device'
 
@@ -86,8 +86,23 @@ const LoginScreen = ({ navigation }) => {
   // Manejar éxito del escáner QR
   const handleQRSuccess = async (data) => {
     setShowQRScanner(false)
-    showAnimation('login', 1200)
-    await loginAsCollaborator(data)
+    try {
+      // Modo conexión (auto-config backend LAN)
+      if (data?.tipo === 'conexion_j4pro' && data?.apiUrl) {
+        await setRuntimeApiBaseUrl(data.apiUrl)
+        Alert.alert(
+          'Conexión configurada',
+          `Servidor configurado:\n${data.j4pro_url}\n\nYa puedes iniciar sesión.`,
+        )
+        return
+      }
+
+      // Modo invitación (legacy)
+      showAnimation('login', 1200)
+      await loginAsCollaborator(data)
+    } catch (e) {
+      Alert.alert('Error', e.message || 'No se pudo configurar la conexión')
+    }
   }
 
   // Manejar código de 6 dígitos - Nueva versión con solicitud (compatible Android/iOS)
@@ -190,13 +205,21 @@ const LoginScreen = ({ navigation }) => {
 
           {/* Formulario */}
           <View style={styles.formContainer}>
-            {/* Botón de Configuración */}
-            <TouchableOpacity
-              style={styles.settingsButton}
-              onPress={() => navigation.navigate('Configuracion')}
-            >
-              <Ionicons name="settings-outline" size={24} color="#64748b" />
-            </TouchableOpacity>
+            {/* Botones (QR + Configuración) */}
+            <View style={styles.topRightButtons}>
+              <TouchableOpacity
+                style={styles.iconTopButton}
+                onPress={() => setShowQRScanner(true)}
+              >
+                <Ionicons name="qr-code-outline" size={22} color="#64748b" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.iconTopButton}
+                onPress={() => navigation.navigate('Configuracion')}
+              >
+                <Ionicons name="settings-outline" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
 
             <Text style={styles.formTitle}>Iniciar Sesión</Text>
             
@@ -324,6 +347,7 @@ const LoginScreen = ({ navigation }) => {
         visible={showQRScanner}
         onClose={() => setShowQRScanner(false)}
         onSuccess={handleQRSuccess}
+        mode="conexion"
       />
     </LinearGradient>
   )
@@ -385,12 +409,16 @@ const styles = StyleSheet.create({
     elevation: 8,
     position: 'relative', // Para posicionar el botón de configuración
   },
-  settingsButton: {
+  topRightButtons: {
     position: 'absolute',
     top: 15,
     right: 15,
-    padding: 10,
+    flexDirection: 'row',
+    gap: 6,
     zIndex: 1,
+  },
+  iconTopButton: {
+    padding: 10,
   },
   formTitle: {
     fontSize: 24,

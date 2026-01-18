@@ -15,7 +15,8 @@ const CLOUD_API_URL = 'https://appj4-hlqj.onrender.com/api';
 // Si quieres usar un backend LOCAL en vez de la nube, configura aqui:
 // (Dejar en null para usar la nube o detectar automaticamente)
 const CUSTOM_BACKEND_IP = null;  // Ejemplo: '192.168.1.100'
-const CUSTOM_BACKEND_PORT = '4000';
+// Puerto estable LAN del backend J4 Pro
+const CUSTOM_BACKEND_PORT = '4001';
 // =============================================
 
 // Funcion para detectar tipo de dispositivo

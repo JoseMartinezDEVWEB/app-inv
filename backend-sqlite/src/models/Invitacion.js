@@ -48,8 +48,13 @@ class Invitacion {
   // Buscar por código
   static buscarPorCodigo(codigo) {
     const db = dbManager.getDatabase()
-    const stmt = db.prepare('SELECT * FROM invitaciones WHERE codigoQR = ?')
-    const invitacion = stmt.get(codigo)
+    const codigoLimpio = (codigo || '').toString().trim()
+    if (!codigoLimpio) return null
+
+    // Importante: NOCASE para evitar sensibilidad a mayúsculas/minúsculas
+    // (útil si algún cliente serializa el token en mayúsculas)
+    const stmt = db.prepare('SELECT * FROM invitaciones WHERE codigoQR = ? COLLATE NOCASE')
+    const invitacion = stmt.get(codigoLimpio)
 
     if (invitacion) {
       invitacion.metadata = JSON.parse(invitacion.metadata || '{}')

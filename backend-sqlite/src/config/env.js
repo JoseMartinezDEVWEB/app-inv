@@ -11,7 +11,8 @@ dotenv.config({ path: path.join(__dirname, '../../.env') })
 export const config = {
   // Servidor
   nodeEnv: process.env.NODE_ENV || 'development',
-  port: parseInt(process.env.PORT, 10) || 4000,
+  // Puerto estable por defecto (J4 Pro LAN): 4001
+  port: parseInt(process.env.PORT, 10) || 4001,
   isDevelopment: process.env.NODE_ENV === 'development',
   isProduction: process.env.NODE_ENV === 'production',
 

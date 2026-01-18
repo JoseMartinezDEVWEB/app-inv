@@ -31,6 +31,7 @@ import syncRoutes from './routes/sync.js'
 // Services
 import { initializeSocket } from './services/socketService.js'
 import os from 'os'
+import QRCode from 'qrcode'
 
 // Migraciones
 import { runMigrations } from './migrations/runMigrations.js'
@@ -38,6 +39,36 @@ import { runMigrations } from './migrations/runMigrations.js'
 // Crear aplicación Express
 const app = express()
 const server = http.createServer(app)
+
+// ===== FUNCIÓN UTILITARIA: Obtener IP local =====
+// Definida aquí arriba para que esté disponible en todo el archivo
+const getLocalIpAddress = () => {
+  const interfaces = os.networkInterfaces()
+  const candidates = []
+
+  for (const name of Object.keys(interfaces)) {
+    for (const net of interfaces[name] || []) {
+      if (net.family !== 'IPv4' || net.internal) continue
+
+      const ip = net.address
+      // Evitar APIPA (sin DHCP)
+      if (ip.startsWith('169.254.')) continue
+
+      candidates.push({ name, ip })
+    }
+  }
+
+  const scoreIp = (ip) => {
+    // Preferir 192.168.x.x, luego 10.x.x.x, luego 172.16-31.x.x
+    if (ip.startsWith('192.168.')) return 30
+    if (ip.startsWith('10.')) return 20
+    if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(ip)) return 10
+    return 1
+  }
+
+  candidates.sort((a, b) => scoreIp(b.ip) - scoreIp(a.ip))
+  return candidates[0]?.ip || '0.0.0.0'
+}
 
 // ===== INICIALIZACIÓN =====
 
@@ -59,19 +90,44 @@ const io = initializeSocket(server)
 app.use(helmet())
 
 // CORS
-app.use(cors({
+const isLocalNetworkOrigin = (origin) => {
+  if (!origin || typeof origin !== 'string') return false
+
+  // Permitir localhost y loopback
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true
+
+  // Permitir redes privadas típicas (LAN)
+  // 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12
+  if (/^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/i.test(origin)) return true
+  if (/^https?:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/i.test(origin)) return true
+  if (/^https?:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?$/i.test(origin)) return true
+
+  return false
+}
+
+const corsOptions = {
   origin: (origin, callback) => {
+    // En desarrollo: permitir TODO (incluye apps móviles y orígenes variables)
+    if (config.isDevelopment) return callback(null, true)
+
     // Permitir requests sin origin (mobile apps, postman, etc)
     if (!origin) return callback(null, true)
-    
-    if (config.cors.allowedOrigins.indexOf(origin) !== -1 || config.isDevelopment) {
-      callback(null, true)
-    } else {
-      callback(new Error('No permitido por CORS'))
+
+    // Producción: permitir lista explícita + LAN
+    if (config.cors.allowedOrigins.includes(origin) || isLocalNetworkOrigin(origin)) {
+      return callback(null, true)
     }
+
+    return callback(new Error('No permitido por CORS'))
   },
   credentials: true,
-}))
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Type', 'X-App-Version'],
+}
+
+app.use(cors(corsOptions))
+// Preflight (importante para algunos clientes / proxies)
+app.options('*', cors(corsOptions))
 
 // Compresión
 app.use(compression())
@@ -124,6 +180,61 @@ app.get('/', (req, res) => {
   })
 })
 
+// ===== ENDPOINT PÚBLICO DE INFO DE CONEXIÓN (LAN) =====
+// Devuelve IP local detectada + puerto REAL (por si Electron cambió el puerto)
+app.get('/api/info-conexion', (req, res) => {
+  const addr = server.address()
+  const activePort = addr && typeof addr === 'object' ? addr.port : config.port
+  const localIp = getLocalIpAddress()
+
+  return res.status(200).json({
+    ok: true,
+    ipLocal: localIp,
+    puerto: activePort,
+    apiUrl: `http://${localIp}:${activePort}/api`,
+    wsUrl: `http://${localIp}:${activePort}`,
+    hostname: os.hostname(),
+    nodeEnv: config.nodeEnv,
+    timestamp: new Date().toISOString(),
+  })
+})
+
+// ===== INFO DE RED PARA CONEXIÓN AUTOMÁTICA (QR) =====
+// Devuelve IP local + URL completa (sin /api) para apps móviles.
+// Incluye un QR con el JSON exacto esperado por el cliente:
+//   {"j4pro_url":"http://IP:4001"}
+app.get('/api/red/info', async (req, res) => {
+  const addr = server.address()
+  const activePort = addr && typeof addr === 'object' ? addr.port : config.port
+  const localIp = getLocalIpAddress()
+
+  const baseUrl = `http://${localIp}:${activePort}`
+  const qrPayloadObj = { j4pro_url: baseUrl }
+  const qrPayload = JSON.stringify(qrPayloadObj)
+
+  let qrDataUrl = null
+  try {
+    qrDataUrl = await QRCode.toDataURL(qrPayload)
+  } catch (e) {
+    // No es crítico: devolver info sin QR si falla la generación
+    qrDataUrl = null
+  }
+
+  return res.status(200).json({
+    ok: true,
+    ipLocal: localIp,
+    puerto: activePort,
+    url: baseUrl,
+    apiUrl: `${baseUrl}/api`,
+    wsUrl: baseUrl,
+    qrPayload,
+    qrDataUrl,
+    hostname: os.hostname(),
+    nodeEnv: config.nodeEnv,
+    timestamp: new Date().toISOString(),
+  })
+})
+
 // API Routes
 app.use('/api/auth', authRoutes)
 app.use('/api/clientes-negocios', clientesRoutes)
@@ -148,41 +259,11 @@ app.use(errorHandler)
 
 // ===== INICIAR SERVIDOR =====
 
-const PORT = config.port
-// No forzar solo IPv4. En Windows `localhost` puede resolver a ::1 (IPv6),
-// y si escuchamos solo en 0.0.0.0, los checks a localhost fallan con ECONNREFUSED.
-// Omitiendo HOST dejamos que Node escuche en todas las interfaces disponibles (dual-stack cuando aplique).
+// Puerto estable por defecto (LAN): 4001
+const PORT = Number(process.env.PORT) || 4001
 
-// Función para obtener la IP local
-const getLocalIpAddress = () => {
-  const interfaces = os.networkInterfaces()
-  for (const name of Object.keys(interfaces)) {
-    for (const net of interfaces[name]) {
-      // Omitir direcciones internas (como 127.0.0.1) y no-ipv4
-      if (net.family === 'IPv4' && !net.internal) {
-        return net.address
-      }
-    }
-  }
-  return '0.0.0.0'
-}
-
-// Health público y simple (sin auth) para validación rápida desde Electron/clients.
-// Si el cliente pide texto plano, devolvemos "OK"; si no, devolvemos JSON (compatibilidad).
-app.get('/api/salud', (req, res) => {
-  const accept = (req.headers.accept || '').toLowerCase()
-  const wantsText = accept.includes('text/plain')
-  if (wantsText) return res.status(200).type('text/plain').send('OK')
-
-  return res.status(200).json({
-    ok: true,
-    estado: 'OK',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-  })
-})
-
-server.listen(PORT, () => {
+// Escuchar en 0.0.0.0 para ser visible desde dispositivos en la misma red Wi‑Fi
+server.listen(PORT, '0.0.0.0', () => {
   const localIp = getLocalIpAddress()
   logger.info(`✅ Servidor iniciado en puerto ${PORT}`)
   logger.info(`🌍 Entorno: ${config.nodeEnv}`)
@@ -193,13 +274,14 @@ server.listen(PORT, () => {
   console.log('\n' + '='.repeat(60))
   console.log(`✅ Backend SQLite - Gestor de Inventario J4 Pro`)
   console.log('='.repeat(60))
-  console.log('Servidor escuchando en TODAS las interfaces de red (host por defecto)')
+  console.log('Servidor escuchando en: 0.0.0.0 (LAN habilitada)')
   console.log(`\nPara conectar desde un dispositivo en la misma red, usa esta IP:`)
   console.log(`\n\x1b[1m\x1b[32m➡️  http://${localIp}:${PORT}  ⬅️\x1b[0m\n`)
   console.log('='.repeat(60))
   console.log(`🌐 Servidor Local: http://localhost:${PORT}`)
   console.log(`📡 API Local:      http://localhost:${PORT}/api`)
   console.log(`📊 Salud:          http://localhost:${PORT}/api/salud`)
+  console.log(`📶 Red:            http://localhost:${PORT}/api/red/info`)
   console.log(`💾 Base de datos:  ${config.database.path}`)
   console.log('='.repeat(60) + '\n')
 })

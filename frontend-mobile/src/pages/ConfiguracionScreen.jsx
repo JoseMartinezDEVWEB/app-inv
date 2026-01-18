@@ -15,6 +15,15 @@ const ConfiguracionScreen = ({ navigation }) => {
 
   const [ip, setIp] = useState(extractIpAndPort(apiUrl));
 
+  const normalizeHostPort = (value) => {
+    if (!value) return '';
+    return value
+      .trim()
+      .replace(/^https?:\/\//i, '')
+      .replace(/\/api\/?$/i, '')
+      .replace(/\/+$/g, '');
+  };
+
   const handleSave = async () => {
     Keyboard.dismiss();
     if (!ip || ip.trim() === '') {
@@ -23,7 +32,8 @@ const ConfiguracionScreen = ({ navigation }) => {
     }
 
     // Reconstruir la URL completa con /api al final
-    const newApiUrl = `http://${ip.trim()}/api`;
+    const hostPort = normalizeHostPort(ip);
+    const newApiUrl = `http://${hostPort}/api`;
     
     const success = await updateApiUrl(newApiUrl);
     if (success) {

@@ -1,9 +1,15 @@
 import { io } from 'socket.io-client'
 import { showMessage } from 'react-native-flash-message'
 import { config } from '../config/env'
+import axios from 'axios'
 
-// Usar la configuración centralizada
-const BACKEND_URL = config.wsUrl
+const getRuntimeWsUrl = () => {
+  // ApiContext actualiza axios.defaults.baseURL al guardar IP:PUERTO.
+  // Usamos eso como fuente de verdad en runtime para evitar quedarnos con un puerto viejo.
+  const apiBase = axios?.defaults?.baseURL || config.apiUrl
+  if (!apiBase || typeof apiBase !== 'string') return config.wsUrl
+  return apiBase.replace(/\/api\/?$/i, '')
+}
 
 class WebSocketService {
   constructor() {
@@ -20,6 +26,7 @@ class WebSocketService {
     this.reconnectTimeout = null
     this.lastConnectionTime = null
     this.shouldShowMessages = true
+    this.backendUrl = null
   }
 
   // Conectar al servidor WebSocket
@@ -46,6 +53,8 @@ class WebSocketService {
     this.currentToken = sanitizedToken
     this.isConnecting = true
 
+    const BACKEND_URL = getRuntimeWsUrl()
+    this.backendUrl = BACKEND_URL
     console.log(`🔌 Conectando WebSocket: ${BACKEND_URL}`)
     
     // Desconectar socket anterior si existe
@@ -363,7 +372,7 @@ class WebSocketService {
       isConnecting: this.isConnecting,
       reconnectAttempts: this.reconnectAttempts,
       socketId: this.socket?.id || null,
-      url: BACKEND_URL,
+      url: this.backendUrl || getRuntimeWsUrl(),
       lastError: this.lastErrorMessage,
       lastConnectionTime: this.lastConnectionTime,
     }

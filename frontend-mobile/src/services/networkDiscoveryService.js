@@ -41,7 +41,9 @@ class NetworkDiscoveryService {
    * Escanear red local en busca del servidor
    * Busca en el rango 192.168.x.1-254 en los puertos comunes
    */
-  async escanearRedLocal(puertos = [3000, 3001, 5000, 8000, 8080]) {
+  async escanearRedLocal(
+    puertos = [4000, 4001, 4002, 4003, 4004, 4005, 4006, 4007, 4008, 4009, 4010, 3000, 3001, 5000, 8000, 8080, 8081]
+  ) {
     if (this.isScanning) {
       console.log('⚠️ Ya hay un escaneo en curso')
       return this.servidoresEncontrados
@@ -100,7 +102,7 @@ class NetworkDiscoveryService {
       if (!this.isScanning) break
 
       try {
-        const url = `http://${ip}:${puerto}/api/salud`
+        const url = `http://${ip}:${puerto}/api/info-conexion`
         
         // Timeout corto para no esperar mucho
         const response = await axios.get(url, {
@@ -108,15 +110,17 @@ class NetworkDiscoveryService {
           validateStatus: () => true, // Aceptar cualquier status
         })
 
-        if (response.status === 200 && response.data) {
-          console.log(`✅ Servidor encontrado: ${ip}:${puerto}`)
+        if (response.status === 200 && response.data?.ok) {
+          const info = response.data || {}
+          const puertoReal = Number(info.puerto) || puerto
+          console.log(`✅ Servidor encontrado: ${ip}:${puertoReal}`)
           
           this.servidoresEncontrados.push({
             ip,
-            puerto,
-            url: `http://${ip}:${puerto}`,
-            nombre: response.data.nombre || 'Servidor J4 Pro',
-            version: response.data.version || 'Desconocida',
+            puerto: puertoReal,
+            url: `http://${ip}:${puertoReal}`,
+            nombre: 'Servidor J4 Pro (Desktop)',
+            version: info.nodeEnv || 'Desconocida',
             timestamp: new Date().toISOString(),
           })
           
@@ -147,22 +151,23 @@ class NetworkDiscoveryService {
    */
   async probarConexionDirecta(ip, puerto = 3000) {
     try {
-      const url = `http://${ip}:${puerto}/api/salud`
+      const url = `http://${ip}:${puerto}/api/info-conexion`
       
       const response = await axios.get(url, {
         timeout: 5000,
       })
 
-      if (response.status === 200 && response.data) {
-        console.log(`✅ Conexión exitosa a ${ip}:${puerto}`)
+      if (response.status === 200 && response.data?.ok) {
+        const puertoReal = Number(response.data.puerto) || puerto
+        console.log(`✅ Conexión exitosa a ${ip}:${puertoReal}`)
         return {
           exito: true,
           servidor: {
             ip,
-            puerto,
-            url: `http://${ip}:${puerto}`,
-            nombre: response.data.nombre || 'Servidor J4 Pro',
-            version: response.data.version || 'Desconocida',
+            puerto: puertoReal,
+            url: `http://${ip}:${puertoReal}`,
+            nombre: 'Servidor J4 Pro (Desktop)',
+            version: response.data.nodeEnv || 'Desconocida',
           },
         }
       }
