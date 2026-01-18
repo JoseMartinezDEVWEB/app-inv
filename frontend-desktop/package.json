@@ -8,8 +8,8 @@
   "homepage": "./",
   "scripts": {
     "dev": "concurrently \"npm run dev:react\" \"npm run dev:electron\"",
-    "dev:react": "vite",
-    "dev:electron": "wait-on http://localhost:3000 && electron .",
+    "dev:react": "vite --port 5173 --strictPort",
+    "dev:electron": "wait-on http://localhost:5173 && electron .",
     "prebuild": "node scripts/package-backend.js",
     "build": "npm run build:react && npm run build:installer",
     "build:react": "vite build",

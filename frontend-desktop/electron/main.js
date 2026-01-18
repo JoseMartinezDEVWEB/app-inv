@@ -36,8 +36,10 @@ function createWindow() {
 
   // Cargar la aplicación
   if (isDev) {
-    // Vite usa puerto 3000 (configurado en vite.config.js)
-    mainWindow.loadURL('http://localhost:3000')
+    // En dev, Vite corre en 5173 (ver `vite.config.js` / scripts).
+    // Permitimos override por env para casos especiales.
+    const devUrl = process.env.ELECTRON_START_URL || 'http://localhost:5173'
+    mainWindow.loadURL(devUrl)
     // No abrir DevTools automáticamente a menos que sea necesario para debugging
     // mainWindow.webContents.openDevTools()
   } else {

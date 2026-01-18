@@ -30,6 +30,7 @@ import syncRoutes from './routes/sync.js'
 
 // Services
 import { initializeSocket } from './services/socketService.js'
+import os from 'os'
 
 // Migraciones
 import { runMigrations } from './migrations/runMigrations.js'
@@ -148,23 +149,74 @@ app.use(errorHandler)
 // ===== INICIAR SERVIDOR =====
 
 const PORT = config.port
+// No forzar solo IPv4. En Windows `localhost` puede resolver a ::1 (IPv6),
+// y si escuchamos solo en 0.0.0.0, los checks a localhost fallan con ECONNREFUSED.
+// Omitiendo HOST dejamos que Node escuche en todas las interfaces disponibles (dual-stack cuando aplique).
+
+// Función para obtener la IP local
+const getLocalIpAddress = () => {
+  const interfaces = os.networkInterfaces()
+  for (const name of Object.keys(interfaces)) {
+    for (const net of interfaces[name]) {
+      // Omitir direcciones internas (como 127.0.0.1) y no-ipv4
+      if (net.family === 'IPv4' && !net.internal) {
+        return net.address
+      }
+    }
+  }
+  return '0.0.0.0'
+}
+
+// Health público y simple (sin auth) para validación rápida desde Electron/clients.
+// Si el cliente pide texto plano, devolvemos "OK"; si no, devolvemos JSON (compatibilidad).
+app.get('/api/salud', (req, res) => {
+  const accept = (req.headers.accept || '').toLowerCase()
+  const wantsText = accept.includes('text/plain')
+  if (wantsText) return res.status(200).type('text/plain').send('OK')
+
+  return res.status(200).json({
+    ok: true,
+    estado: 'OK',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  })
+})
 
 server.listen(PORT, () => {
+  const localIp = getLocalIpAddress()
   logger.info(`✅ Servidor iniciado en puerto ${PORT}`)
   logger.info(`🌍 Entorno: ${config.nodeEnv}`)
   logger.info(`📁 Base de datos: ${config.database.path}`)
-  logger.info(`🚀 API: http://localhost:${PORT}/api`)
-  logger.info(`🔌 WebSocket: http://localhost:${PORT}`)
+  logger.info(`🚀 API disponible en: http://${localIp}:${PORT}/api`)
+  logger.info(`🔌 WebSocket disponible en: http://${localIp}:${PORT}`)
   
   console.log('\n' + '='.repeat(60))
   console.log(`✅ Backend SQLite - Gestor de Inventario J4 Pro`)
   console.log('='.repeat(60))
-  console.log(`🌐 Servidor:     http://localhost:${PORT}`)
-  console.log(`📡 API:          http://localhost:${PORT}/api`)
-  console.log(`🔌 WebSockets:   http://localhost:${PORT}`)
-  console.log(`📊 Salud:        http://localhost:${PORT}/api/salud`)
-  console.log(`💾 Base de datos: ${config.database.path}`)
+  console.log('Servidor escuchando en TODAS las interfaces de red (host por defecto)')
+  console.log(`\nPara conectar desde un dispositivo en la misma red, usa esta IP:`)
+  console.log(`\n\x1b[1m\x1b[32m➡️  http://${localIp}:${PORT}  ⬅️\x1b[0m\n`)
+  console.log('='.repeat(60))
+  console.log(`🌐 Servidor Local: http://localhost:${PORT}`)
+  console.log(`📡 API Local:      http://localhost:${PORT}/api`)
+  console.log(`📊 Salud:          http://localhost:${PORT}/api/salud`)
+  console.log(`💾 Base de datos:  ${config.database.path}`)
   console.log('='.repeat(60) + '\n')
+})
+
+// Manejar errores de listen (puerto ocupado, permisos, etc.)
+server.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    logger.error(`❌ El puerto ${PORT} ya está en uso. Por favor, usa otro puerto o cierra la aplicación que lo está usando.`)
+    logger.error(`💡 Puedes cambiar el puerto estableciendo la variable de entorno PORT`)
+    console.error(`\n❌ Error: El puerto ${PORT} ya está en uso`)
+    console.error(`💡 Solución: Establece PORT en el entorno o cierra la aplicación que usa el puerto\n`)
+    process.exit(1)
+  } else {
+    logger.error('Error al iniciar el servidor:', error)
+    console.error('\n❌ Error al iniciar el servidor:', error.message, '\n')
+    process.exit(1)
+  }
 })
 
 // Manejo de señales de terminación

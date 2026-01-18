@@ -6,11 +6,16 @@ export default defineConfig({
   plugins: [react()],
   base: './',
   server: {
-    port: 3000,
+    port: 5173,
+    // Importante para Electron en dev: si Vite cambia de puerto por estar ocupado,
+    // Electron seguirá intentando cargar el puerto configurado y verás ventana en blanco.
+    strictPort: true,
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        // Backend local por defecto (cuando se prueba en navegador).
+        // En Electron se usa el backend embebido y NO depende de este proxy.
+        target: 'http://127.0.0.1:4000',
         changeOrigin: true,
         secure: false,
       },

@@ -190,6 +190,14 @@ const LoginScreen = ({ navigation }) => {
 
           {/* Formulario */}
           <View style={styles.formContainer}>
+            {/* Botón de Configuración */}
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => navigation.navigate('Configuracion')}
+            >
+              <Ionicons name="settings-outline" size={24} color="#64748b" />
+            </TouchableOpacity>
+
             <Text style={styles.formTitle}>Iniciar Sesión</Text>
             
             {/* Email */}
@@ -375,6 +383,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 8,
+    position: 'relative', // Para posicionar el botón de configuración
+  },
+  settingsButton: {
+    position: 'absolute',
+    top: 15,
+    right: 15,
+    padding: 10,
+    zIndex: 1,
   },
   formTitle: {
     fontSize: 24,
