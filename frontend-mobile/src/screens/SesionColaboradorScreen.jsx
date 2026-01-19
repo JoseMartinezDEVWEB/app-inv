@@ -9,6 +9,9 @@ import {
   TextInput,
   Modal,
   Switch,
+  ScrollView,
+  Animated,
+  Easing,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -22,8 +25,8 @@ import ModalSincronizacionBLE from '../components/ModalSincronizacionBLE'
 import ModalSincronizacionInventario from '../components/ModalSincronizacionInventario'
 import BLEService from '../services/BLEService'
 import SincronizacionRedModal from '../components/modals/SincronizacionRedModal'
-import ImportarConGeminiModal from '../components/modals/ImportarConGeminiModal'
 import BarcodeProductModal from '../components/modals/BarcodeProductModal'
+import ZeroCostProductsColaboradorModal from '../components/modals/ZeroCostProductsColaboradorModal'
 import syncService from '../services/syncService'
 import { useAuth } from '../context/AuthContext'
 import webSocketService from '../services/websocket'
@@ -46,8 +49,18 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
   const [modalEditar, setModalEditar] = useState(false)
   const [modalBLE, setModalBLE] = useState(false)
   const [modalRedLocal, setModalRedLocal] = useState(false)
-  const [modalImportarIA, setModalImportarIA] = useState(false)
   const [showBarcodeProductModal, setShowBarcodeProductModal] = useState(false)
+  const [modalSincronizar, setModalSincronizar] = useState(false)
+  const [modalZeroCost, setModalZeroCost] = useState(false)
+  const [modalAgendaDetalle, setModalAgendaDetalle] = useState(false)
+  const [envioSeleccionado, setEnvioSeleccionado] = useState(null)
+  const [modalConfirmarEnvio, setModalConfirmarEnvio] = useState(false)
+  const [modalAnimacionEnvio, setModalAnimacionEnvio] = useState(false)
+  
+  // Animaciones para el modal de envío
+  const sendAnimation = useRef(new Animated.Value(0)).current
+  const scaleAnimation = useRef(new Animated.Value(1)).current
+  const checkmarkAnimation = useRef(new Animated.Value(0)).current
   const [productoParaAgregar, setProductoParaAgregar] = useState(null)
   const [codigoBarrasEscaneado, setCodigoBarrasEscaneado] = useState(null)
   const [estadisticasSync, setEstadisticasSync] = useState({ pendientes: 0, completadas: 0, errores: 0 })
@@ -81,17 +94,36 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
     }
   }
 
-  const guardarEnHistorial = async (conteoProductos) => {
+  const guardarEnHistorial = async (conteoProductos, productosEnviados) => {
     const nuevoEnvio = {
       id: Date.now().toString(),
       fecha: new Date().toISOString(),
       cliente: clienteNombre || 'Cliente General',
       cantidadProductos: conteoProductos,
+      productos: productosEnviados || [], // Guardar lista de productos
       status: 'Enviado'
     }
     const nuevoHistorial = [nuevoEnvio, ...historialEnvios]
     setHistorialEnvios(nuevoHistorial)
     await AsyncStorage.setItem('historial_envios_colaborador', JSON.stringify(nuevoHistorial))
+  }
+
+  // Agrupar historial por día
+  const agruparHistorialPorDia = () => {
+    const grupos = {}
+    historialEnvios.forEach(envio => {
+      const fecha = new Date(envio.fecha).toLocaleDateString('es-ES', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      })
+      if (!grupos[fecha]) {
+        grupos[fecha] = []
+      }
+      grupos[fecha].push(envio)
+    })
+    return grupos
   }
 
   useEffect(() => {
@@ -275,7 +307,9 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
 
   const cargarProductosOffline = async () => {
     try {
-      const lista = await localDb.obtenerProductosColaborador(solicitudId)
+      let lista = await localDb.obtenerProductosColaborador(solicitudId)
+      // Ordenar por timestamp (más reciente primero)
+      lista = lista.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
       setProductosOffline(lista)
       setProductos(lista)
     } catch (error) {
@@ -294,9 +328,39 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
 
   const guardarItemOffline = async (item) => {
     try {
-      await localDb.guardarProductoColaborador(item, solicitudId)
-      // Recargar lista para asegurar consistencia
-      const lista = await localDb.obtenerProductosColaborador(solicitudId)
+      // Buscar si ya existe un producto con el mismo código de barras o nombre
+      const productoExistente = productosOffline.find(p => 
+        (item.codigoBarras && p.codigoBarras && p.codigoBarras === item.codigoBarras) ||
+        (p.nombre.toLowerCase() === item.nombre.toLowerCase())
+      )
+
+      if (productoExistente) {
+        // Sumar cantidad al producto existente y moverlo al inicio
+        const productoActualizado = {
+          ...productoExistente,
+          cantidad: Number(productoExistente.cantidad) + Number(item.cantidad),
+          costo: Number(item.costo) || Number(productoExistente.costo), // Usar el nuevo costo si se proporciona
+          timestamp: new Date().toISOString(), // Actualizar timestamp para que aparezca primero
+          offline: !isConnected,
+        }
+        
+        // Eliminar el producto existente y guardar el actualizado
+        await localDb.eliminarProductoColaborador(productoExistente.temporalId)
+        await localDb.guardarProductoColaborador(productoActualizado, solicitudId)
+        
+        showMessage({
+          message: `Cantidad sumada a ${item.nombre}`,
+          description: `Nueva cantidad: ${productoActualizado.cantidad}`,
+          type: 'info',
+        })
+      } else {
+        // Guardar nuevo producto
+        await localDb.guardarProductoColaborador(item, solicitudId)
+      }
+      
+      // Recargar lista y ordenar por timestamp (más reciente primero)
+      let lista = await localDb.obtenerProductosColaborador(solicitudId)
+      lista = lista.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
       setProductosOffline(lista)
       setProductos(lista)
     } catch (error) {
@@ -633,26 +697,30 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
       return
     }
 
-    Alert.alert(
-      'Sincronizar Productos',
-      `${productosOffline.length} producto(s) pendiente(s)\n\n¿Cómo quieres sincronizar?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: '📡 Bluetooth',
-          onPress: () => setModalBLE(true),
-        },
-        {
-          text: '🌐 Red Local (WiFi)',
-          onPress: () => setModalRedLocal(true),
-        },
-        {
-          text: '☁️ Internet',
-          onPress: () => sincronizarViaInternet(),
-          style: isConnected ? 'default' : 'destructive',
-        },
-      ]
-    )
+    // Mostrar modal de sincronización
+    setModalSincronizar(true)
+  }
+
+  // Verificar si hay productos con costo 0
+  const productosConCostoZero = productos.filter(p => {
+    const costo = Number(p.costo) || 0
+    return costo === 0
+  })
+
+  // Función para actualizar productos con costo 0
+  const handleUpdateZeroCostProducts = async (productosActualizados) => {
+    try {
+      for (const productoActualizado of productosActualizados) {
+        await localDb.eliminarProductoColaborador(productoActualizado.temporalId)
+        await localDb.guardarProductoColaborador({
+          ...productoActualizado,
+          timestamp: new Date().toISOString()
+        }, solicitudId)
+      }
+      await cargarProductosOffline()
+    } catch (error) {
+      console.error('Error actualizando productos:', error)
+    }
   }
 
   const sincronizarViaInternet = async () => {
@@ -663,16 +731,18 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
 
     try {
       const cantidadTotal = productosOffline.length
+      const productosParaHistorial = [...productosOffline] // Copia para el historial
       
       for (const item of productosOffline) {
         await enviarProductoServidor(item)
       }
 
-      // Limpiar y guardar historial
+      // Limpiar y guardar historial con los productos
       await localDb.limpiarProductosColaborador(solicitudId)
       await cargarProductosOffline()
-      await guardarEnHistorial(cantidadTotal)
+      await guardarEnHistorial(cantidadTotal, productosParaHistorial)
 
+      setModalSincronizar(false)
       showMessage({
         message: '✅ Sincronización completada',
         type: 'success',
@@ -684,17 +754,96 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
   }
 
   const handleBLESuccess = async () => {
+    const cantidadTotal = productosOffline.length
+    const productosParaHistorial = [...productosOffline]
     await localDb.limpiarProductosColaborador(solicitudId)
     cargarProductosOffline()
     setModalBLE(false)
+    await guardarEnHistorial(cantidadTotal, productosParaHistorial)
     await actualizarEstadisticasSync()
   }
 
   const handleRedLocalSuccess = async () => {
+    const cantidadTotal = productosOffline.length
+    const productosParaHistorial = [...productosOffline]
     await localDb.limpiarProductosColaborador(solicitudId)
     cargarProductosOffline()
     setModalRedLocal(false)
+    await guardarEnHistorial(cantidadTotal, productosParaHistorial)
     await actualizarEstadisticasSync()
+  }
+
+  // Función para ejecutar la animación de envío
+  const ejecutarAnimacionEnvio = () => {
+    // Resetear animaciones
+    sendAnimation.setValue(0)
+    scaleAnimation.setValue(1)
+    checkmarkAnimation.setValue(0)
+    
+    setModalAnimacionEnvio(true)
+    
+    // Secuencia de animaciones
+    Animated.sequence([
+      // Animación de envío (paquete moviéndose)
+      Animated.timing(sendAnimation, {
+        toValue: 1,
+        duration: 1500,
+        easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        useNativeDriver: true,
+      }),
+      // Pequeña pausa
+      Animated.delay(200),
+      // Animación de escala del checkmark
+      Animated.parallel([
+        Animated.spring(scaleAnimation, {
+          toValue: 1.2,
+          friction: 3,
+          tension: 40,
+          useNativeDriver: true,
+        }),
+        Animated.timing(checkmarkAnimation, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      ]),
+      // Volver a escala normal
+      Animated.spring(scaleAnimation, {
+        toValue: 1,
+        friction: 3,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      // Cerrar modal después de la animación
+      setTimeout(() => {
+        setModalAnimacionEnvio(false)
+        showMessage({
+          message: '✅ Productos enviados correctamente',
+          description: `${productos.length} producto(s) sincronizado(s)`,
+          type: 'success',
+        })
+      }, 800)
+    })
+  }
+
+  // Función para confirmar envío desde el modal
+  const handleConfirmarEnvio = async () => {
+    setModalConfirmarEnvio(false)
+    setEnvioTiempoReal(true)
+    
+    // Ejecutar animación de envío
+    ejecutarAnimacionEnvio()
+    
+    // Enviar productos al servidor
+    if (isConnected && productos.length > 0) {
+      try {
+        for (const item of productos) {
+          await enviarProductoServidor(item)
+        }
+      } catch (error) {
+        console.error('Error enviando productos:', error)
+      }
+    }
   }
 
   const handleProductosImportados = async (productosImportados) => {
@@ -770,18 +919,57 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
     }
   }
 
-  const handleSalir = () => {
+  const handleSalir = async () => {
+    // Si hay productos sin sincronizar
     if (productosOffline.length > 0) {
+      // Verificar si tiene nombre de cliente
+      if (!clienteNombre || clienteNombre.trim() === '') {
+        Alert.alert(
+          '⚠️ Nombre de Cliente Requerido',
+          'Debes agregar el nombre del cliente antes de salir para guardar el listado en el historial.',
+          [
+            { text: 'Agregar Nombre', style: 'default' },
+          ]
+        )
+        return
+      }
+
       Alert.alert(
-        'Productos sin sincronizar',
-        `Tienes ${productosOffline.length} producto(s) sin sincronizar. Si sales, se mantendrán guardados localmente.`,
+        'Guardar y Salir',
+        `Se guardará el listado de ${productosOffline.length} producto(s) para el cliente "${clienteNombre}" en tu historial de envíos.`,
         [
           { text: 'Cancelar', style: 'cancel' },
-          { text: 'Salir', style: 'destructive', onPress: () => navigation.navigate('Login') },
+          { 
+            text: 'Guardar y Salir', 
+            style: 'default', 
+            onPress: async () => {
+              // Guardar en historial antes de salir
+              await guardarEnHistorial(productosOffline.length, [...productosOffline])
+              showMessage({
+                message: '✅ Listado guardado en historial',
+                description: `Cliente: ${clienteNombre}`,
+                type: 'success',
+              })
+              navigation.navigate('Login')
+            }
+          },
+          { 
+            text: 'Salir sin guardar', 
+            style: 'destructive', 
+            onPress: () => navigation.navigate('Login') 
+          },
         ]
       )
     } else {
-      navigation.navigate('Login')
+      // Si no hay productos, mostrar mensaje de confirmación
+      Alert.alert(
+        'Salir de Sesión',
+        '¿Estás seguro que deseas salir?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Salir', onPress: () => navigation.navigate('Login') },
+        ]
+      )
     }
   }
 
@@ -888,7 +1076,14 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
               <Switch
                 value={envioTiempoReal}
-                onValueChange={setEnvioTiempoReal}
+                onValueChange={(value) => {
+                  if (value && productos.length > 0) {
+                    // Si activa el switch y hay productos, mostrar modal de confirmación
+                    setModalConfirmarEnvio(true)
+                  } else {
+                    setEnvioTiempoReal(value)
+                  }
+                }}
                 trackColor={{ false: '#767577', true: '#81b5ff' }}
                 thumbColor={envioTiempoReal ? '#fff' : '#f4f3f4'}
                 style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
@@ -954,15 +1149,7 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.actionsRow2}>
-        <TouchableOpacity
-          style={[styles.actionButton2, { backgroundColor: '#8b5cf6' }]}
-          onPress={() => setModalImportarIA(true)}
-        >
-          <Ionicons name="sparkles" size={20} color="#fff" />
-          <Text style={styles.actionButtonText}>Importar con IA</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Botón de Importar con IA eliminado de la sesión de colaborador */}
 
       <View style={styles.summaryRow}>
         <View style={styles.summaryCard}>
@@ -1203,12 +1390,80 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
         solicitudId={solicitudId}
       />
 
-      {/* Modal Importar con IA */}
-      <ImportarConGeminiModal
-        visible={modalImportarIA}
-        onClose={() => setModalImportarIA(false)}
-        onProductosImportados={handleProductosImportados}
-        solicitudId={solicitudId}
+      {/* Modal de Sincronización con opciones */}
+      <Modal visible={modalSincronizar} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Sincronizar Productos</Text>
+            <Text style={{ color: '#64748b', marginBottom: 16 }}>
+              {productosOffline.length} producto(s) pendiente(s)
+            </Text>
+            <Text style={{ color: '#475569', marginBottom: 20 }}>
+              ¿Cómo quieres sincronizar?
+            </Text>
+
+            {/* Botón Productos Valor 0 */}
+            {productosConCostoZero.length > 0 && (
+              <TouchableOpacity
+                style={[styles.syncOptionButton, { backgroundColor: '#fef3c7', borderColor: '#f59e0b' }]}
+                onPress={() => {
+                  setModalSincronizar(false)
+                  setModalZeroCost(true)
+                }}
+              >
+                <Ionicons name="alert-circle" size={22} color="#f59e0b" />
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={[styles.syncOptionText, { color: '#92400e' }]}>
+                    Productos Valor $0
+                  </Text>
+                  <Text style={{ fontSize: 12, color: '#b45309' }}>
+                    {productosConCostoZero.length} producto(s) sin costo
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#f59e0b" />
+              </TouchableOpacity>
+            )}
+
+            {/* Botón Enviar por Internet */}
+            <TouchableOpacity
+              style={[styles.syncOptionButton, { backgroundColor: '#ecfdf5', borderColor: '#10b981' }]}
+              onPress={() => {
+                setModalSincronizar(false)
+                if (isConnected) {
+                  setModalConfirmarEnvio(true)
+                } else {
+                  Alert.alert('Sin conexión', 'Necesitas conexión a internet para enviar los productos')
+                }
+              }}
+            >
+              <Ionicons name="cloud-upload" size={22} color="#10b981" />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[styles.syncOptionText, { color: '#065f46' }]}>
+                  Enviar al Servidor
+                </Text>
+                <Text style={{ fontSize: 12, color: '#047857' }}>
+                  Sincronizar {productosOffline.length} producto(s)
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#10b981" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modalButton, styles.cancelButton, { marginTop: 20 }]}
+              onPress={() => setModalSincronizar(false)}
+            >
+              <Text style={styles.cancelButtonText}>CANCELAR</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Productos con Costo 0 */}
+      <ZeroCostProductsColaboradorModal
+        visible={modalZeroCost}
+        onClose={() => setModalZeroCost(false)}
+        productos={productos}
+        onUpdateProducts={handleUpdateZeroCostProducts}
       />
 
       {/* Modal de confirmación de producto */}
@@ -1229,48 +1484,295 @@ const SesionColaboradorScreen = ({ route, navigation }) => {
       {/* Modal de sincronización de inventario */}
       <ModalSincronizacionInventario visible={isSincronizandoInventario} />
 
+      {/* Modal de Confirmación de Envío */}
+      <Modal visible={modalConfirmarEnvio} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmEnvioModal}>
+            <View style={styles.confirmEnvioHeader}>
+              <View style={styles.confirmEnvioIconContainer}>
+                <Ionicons name="paper-plane" size={40} color="#3b82f6" />
+              </View>
+              <Text style={styles.confirmEnvioTitle}>Enviar Productos</Text>
+            </View>
+            
+            <Text style={styles.confirmEnvioMessage}>
+              ¿Deseas enviar los productos al servidor?
+            </Text>
+            
+            <View style={styles.confirmEnvioStats}>
+              <View style={styles.confirmEnvioStatItem}>
+                <Ionicons name="cube-outline" size={24} color="#3b82f6" />
+                <Text style={styles.confirmEnvioStatNumber}>{productos.length}</Text>
+                <Text style={styles.confirmEnvioStatLabel}>Productos</Text>
+              </View>
+              <View style={styles.confirmEnvioStatDivider} />
+              <View style={styles.confirmEnvioStatItem}>
+                <Ionicons name="calculator-outline" size={24} color="#10b981" />
+                <Text style={styles.confirmEnvioStatNumber}>{totalConteo}</Text>
+                <Text style={styles.confirmEnvioStatLabel}>Unidades</Text>
+              </View>
+            </View>
+
+            <View style={styles.confirmEnvioButtons}>
+              <TouchableOpacity
+                style={styles.confirmEnvioCancelButton}
+                onPress={() => setModalConfirmarEnvio(false)}
+              >
+                <Text style={styles.confirmEnvioCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmEnvioSendButton}
+                onPress={handleConfirmarEnvio}
+              >
+                <Ionicons name="send" size={18} color="#fff" />
+                <Text style={styles.confirmEnvioSendText}>Enviar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Animación de Envío */}
+      <Modal visible={modalAnimacionEnvio} animationType="fade" transparent>
+        <View style={styles.animacionEnvioOverlay}>
+          <View style={styles.animacionEnvioContainer}>
+            {/* Animación del paquete enviándose */}
+            <Animated.View
+              style={[
+                styles.animacionPaquete,
+                {
+                  transform: [
+                    {
+                      translateY: sendAnimation.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [0, -50, -150],
+                      }),
+                    },
+                    {
+                      scale: sendAnimation.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [1, 1.1, 0.3],
+                      }),
+                    },
+                  ],
+                  opacity: sendAnimation.interpolate({
+                    inputRange: [0, 0.8, 1],
+                    outputRange: [1, 1, 0],
+                  }),
+                },
+              ]}
+            >
+              <Ionicons name="cube" size={60} color="#3b82f6" />
+            </Animated.View>
+
+            {/* Nube de destino */}
+            <Animated.View
+              style={[
+                styles.animacionNube,
+                {
+                  opacity: sendAnimation.interpolate({
+                    inputRange: [0, 0.3, 0.7, 1],
+                    outputRange: [0.3, 0.5, 0.8, 1],
+                  }),
+                  transform: [{ scale: scaleAnimation }],
+                },
+              ]}
+            >
+              <Ionicons name="cloud" size={80} color="#10b981" />
+              {/* Checkmark que aparece al final */}
+              <Animated.View
+                style={[
+                  styles.animacionCheckmark,
+                  {
+                    opacity: checkmarkAnimation,
+                    transform: [
+                      {
+                        scale: checkmarkAnimation.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.5, 1],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <Ionicons name="checkmark-circle" size={40} color="#fff" />
+              </Animated.View>
+            </Animated.View>
+
+            <Text style={styles.animacionTexto}>Enviando productos...</Text>
+            <Text style={styles.animacionSubtexto}>
+              {productos.length} producto(s)
+            </Text>
+          </View>
+        </View>
+      </Modal>
+
       {/* Modal Historial / Agenda */}
       <Modal visible={modalHistorial} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Historial de Envíos</Text>
+          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+            <View style={styles.historialHeader}>
+              <Ionicons name="calendar" size={24} color="#3b82f6" />
+              <Text style={styles.modalTitle}>Historial de Envíos</Text>
+            </View>
             
             {historialEnvios.length === 0 ? (
-              <View style={{ padding: 20, alignItems: 'center' }}>
-                <Text style={{ color: '#64748b' }}>No hay historial de envíos aún</Text>
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <Ionicons name="document-text-outline" size={48} color="#cbd5e1" />
+                <Text style={{ color: '#64748b', marginTop: 12, textAlign: 'center' }}>
+                  No hay historial de envíos aún
+                </Text>
               </View>
             ) : (
-              <FlatList
-                data={historialEnvios}
-                keyExtractor={item => item.id}
-                style={{ maxHeight: 400 }}
-                renderItem={({ item }) => (
-                  <View style={{ 
-                    padding: 12, 
-                    borderBottomWidth: 1, 
-                    borderBottomColor: '#e2e8f0',
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <View>
-                      <Text style={{ fontWeight: '600', color: '#1e293b' }}>{item.cliente}</Text>
-                      <Text style={{ fontSize: 12, color: '#64748b' }}>
-                        {new Date(item.fecha).toLocaleDateString()} {new Date(item.fecha).toLocaleTimeString()}
-                      </Text>
+              <ScrollView style={{ maxHeight: 450 }} showsVerticalScrollIndicator={false}>
+                {Object.entries(agruparHistorialPorDia()).map(([fecha, envios]) => (
+                  <View key={fecha} style={styles.historialDiaContainer}>
+                    <View style={styles.historialDiaHeader}>
+                      <Ionicons name="calendar-outline" size={16} color="#64748b" />
+                      <Text style={styles.historialDiaFecha}>{fecha}</Text>
+                      <View style={styles.historialDiaBadge}>
+                        <Text style={styles.historialDiaBadgeText}>{envios.length} cliente(s)</Text>
+                      </View>
                     </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ fontWeight: 'bold', color: '#3b82f6' }}>{item.cantidadProductos}</Text>
-                      <Text style={{ fontSize: 10, color: '#64748b' }}>prods</Text>
-                    </View>
+                    
+                    {envios.map((envio) => (
+                      <TouchableOpacity
+                        key={envio.id}
+                        style={styles.historialEnvioItem}
+                        onPress={() => {
+                          setEnvioSeleccionado(envio)
+                          setModalHistorial(false)
+                          setModalAgendaDetalle(true)
+                        }}
+                      >
+                        <View style={styles.historialEnvioInfo}>
+                          <Text style={styles.historialClienteNombre}>{envio.cliente}</Text>
+                          <Text style={styles.historialEnvioHora}>
+                            {new Date(envio.fecha).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                          </Text>
+                        </View>
+                        <View style={styles.historialEnvioStats}>
+                          <Text style={styles.historialCantidad}>{envio.cantidadProductos}</Text>
+                          <Text style={styles.historialCantidadLabel}>productos</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+                      </TouchableOpacity>
+                    ))}
                   </View>
-                )}
-              />
+                ))}
+              </ScrollView>
             )}
 
             <TouchableOpacity
               style={[styles.modalButton, styles.cancelButton, { marginTop: 16 }]}
               onPress={() => setModalHistorial(false)}
+            >
+              <Text style={styles.cancelButtonText}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Detalle de Envío (Solo Lectura) */}
+      <Modal visible={modalAgendaDetalle} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '85%' }]}>
+            <View style={styles.detalleHeader}>
+              <TouchableOpacity 
+                onPress={() => {
+                  setModalAgendaDetalle(false)
+                  setModalHistorial(true)
+                }}
+                style={{ padding: 4 }}
+              >
+                <Ionicons name="arrow-back" size={24} color="#64748b" />
+              </TouchableOpacity>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.detalleClienteNombre}>
+                  {envioSeleccionado?.cliente || 'Cliente'}
+                </Text>
+                <Text style={styles.detalleFecha}>
+                  {envioSeleccionado ? new Date(envioSeleccionado.fecha).toLocaleString('es-ES') : ''}
+                </Text>
+              </View>
+              <View style={styles.detalleBadge}>
+                <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
+                <Text style={styles.detalleBadgeText}>Enviado</Text>
+              </View>
+            </View>
+
+            <View style={styles.detalleSubheader}>
+              <Text style={styles.detalleSubtitle}>
+                Productos enviados ({envioSeleccionado?.cantidadProductos || 0})
+              </Text>
+              <View style={styles.soloLecturaBadge}>
+                <Ionicons name="lock-closed" size={12} color="#64748b" />
+                <Text style={styles.soloLecturaText}>Solo lectura</Text>
+              </View>
+            </View>
+
+            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+              {envioSeleccionado?.productos && envioSeleccionado.productos.length > 0 ? (
+                envioSeleccionado.productos.map((producto, index) => {
+                  const total = (Number(producto.cantidad) || 0) * (Number(producto.costo) || 0)
+                  return (
+                    <View key={producto.temporalId || index} style={styles.detalleProductoItem}>
+                      <View style={styles.detalleProductoInfo}>
+                        <Text style={styles.detalleProductoNombre}>{producto.nombre}</Text>
+                        <Text style={styles.detalleProductoSku}>
+                          {producto.sku ? `SKU: ${producto.sku}` : ''}
+                          {producto.codigoBarras ? ` · CB: ${producto.codigoBarras}` : ''}
+                        </Text>
+                      </View>
+                      <View style={styles.detalleProductoStats}>
+                        <Text style={styles.detalleProductoCantidad}>
+                          Cant: {producto.cantidad}
+                        </Text>
+                        <Text style={styles.detalleProductoCosto}>
+                          ${(Number(producto.costo) || 0).toFixed(2)}
+                        </Text>
+                        <Text style={styles.detalleProductoTotal}>
+                          Total: ${total.toFixed(2)}
+                        </Text>
+                      </View>
+                    </View>
+                  )
+                })
+              ) : (
+                <View style={{ padding: 30, alignItems: 'center' }}>
+                  <Ionicons name="cube-outline" size={40} color="#cbd5e1" />
+                  <Text style={{ color: '#94a3b8', marginTop: 8 }}>
+                    No hay detalles de productos disponibles
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Resumen del envío */}
+            {envioSeleccionado?.productos && envioSeleccionado.productos.length > 0 && (
+              <View style={styles.detalleResumen}>
+                <View style={styles.detalleResumenRow}>
+                  <Text style={styles.detalleResumenLabel}>Total productos:</Text>
+                  <Text style={styles.detalleResumenValue}>{envioSeleccionado.cantidadProductos}</Text>
+                </View>
+                <View style={styles.detalleResumenRow}>
+                  <Text style={styles.detalleResumenLabel}>Valor total:</Text>
+                  <Text style={styles.detalleResumenTotal}>
+                    ${envioSeleccionado.productos.reduce((sum, p) => 
+                      sum + (Number(p.cantidad) || 0) * (Number(p.costo) || 0), 0
+                    ).toFixed(2)}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.modalButton, styles.cancelButton, { marginTop: 12 }]}
+              onPress={() => {
+                setModalAgendaDetalle(false)
+                setEnvioSeleccionado(null)
+              }}
             >
               <Text style={styles.cancelButtonText}>Cerrar</Text>
             </TouchableOpacity>
@@ -1673,6 +2175,349 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',
+  },
+  // Estilos para modal de sincronización
+  syncOptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+  },
+  syncOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginLeft: 12,
+    flex: 1,
+  },
+  // Estilos para historial mejorado
+  historialHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 16,
+  },
+  historialDiaContainer: {
+    marginBottom: 16,
+  },
+  historialDiaHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 8,
+    gap: 8,
+  },
+  historialDiaFecha: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+    flex: 1,
+    textTransform: 'capitalize',
+  },
+  historialDiaBadge: {
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  historialDiaBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1d4ed8',
+  },
+  historialEnvioItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 6,
+    marginLeft: 8,
+  },
+  historialEnvioInfo: {
+    flex: 1,
+  },
+  historialClienteNombre: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 2,
+  },
+  historialEnvioHora: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  historialEnvioStats: {
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  historialCantidad: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#3b82f6',
+  },
+  historialCantidadLabel: {
+    fontSize: 10,
+    color: '#64748b',
+  },
+  // Estilos para detalle de envío
+  detalleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    marginBottom: 12,
+  },
+  detalleClienteNombre: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1e293b',
+  },
+  detalleFecha: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  detalleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  detalleBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#16a34a',
+  },
+  detalleSubheader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  detalleSubtitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  soloLecturaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  soloLecturaText: {
+    fontSize: 11,
+    color: '#64748b',
+  },
+  detalleProductoItem: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#3b82f6',
+  },
+  detalleProductoInfo: {
+    marginBottom: 8,
+  },
+  detalleProductoNombre: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 2,
+  },
+  detalleProductoSku: {
+    fontSize: 11,
+    color: '#64748b',
+  },
+  detalleProductoStats: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  detalleProductoCantidad: {
+    fontSize: 12,
+    color: '#0f766e',
+    fontWeight: '600',
+  },
+  detalleProductoCosto: {
+    fontSize: 12,
+    color: '#475569',
+  },
+  detalleProductoTotal: {
+    fontSize: 12,
+    color: '#7c2d12',
+    fontWeight: '700',
+  },
+  detalleResumen: {
+    backgroundColor: '#f0f9ff',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+  },
+  detalleResumenRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  detalleResumenLabel: {
+    fontSize: 13,
+    color: '#475569',
+  },
+  detalleResumenValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  detalleResumenTotal: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#0369a1',
+  },
+  // Estilos para modal de confirmación de envío
+  confirmEnvioModal: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    width: '90%',
+    maxWidth: 380,
+    alignItems: 'center',
+  },
+  confirmEnvioHeader: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  confirmEnvioIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  confirmEnvioTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#1e293b',
+  },
+  confirmEnvioMessage: {
+    fontSize: 15,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  confirmEnvioStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+    width: '100%',
+  },
+  confirmEnvioStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  confirmEnvioStatNumber: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#1e293b',
+    marginTop: 4,
+  },
+  confirmEnvioStatLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  confirmEnvioStatDivider: {
+    width: 1,
+    height: 50,
+    backgroundColor: '#e2e8f0',
+  },
+  confirmEnvioButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  confirmEnvioCancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+  },
+  confirmEnvioCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  confirmEnvioSendButton: {
+    flex: 1.5,
+    flexDirection: 'row',
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#22c55e',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  confirmEnvioSendText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  // Estilos para modal de animación de envío
+  animacionEnvioOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  animacionEnvioContainer: {
+    alignItems: 'center',
+    padding: 40,
+  },
+  animacionPaquete: {
+    marginBottom: 20,
+  },
+  animacionNube: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  animacionCheckmark: {
+    position: 'absolute',
+  },
+  animacionTexto: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+    marginTop: 24,
+  },
+  animacionSubtexto: {
+    fontSize: 14,
+    color: '#94a3b8',
+    marginTop: 8,
   },
 })
 
