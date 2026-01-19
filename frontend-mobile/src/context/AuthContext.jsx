@@ -306,51 +306,10 @@ export const AuthProvider = ({ children }) => {
     try {
       dispatch({ type: AUTH_ACTIONS.LOGIN_START })
       
-      // Detectar si estamos en modo offline o intentar login local primero
-      console.log('🔐 Intentando login local primero...')
-      
-      // Intentar login local (por email o nombre)
-      const loginResult = await localDb.loginLocal(
-        credentials.email,
-        credentials.password
-      )
-
-      if (loginResult.success) {
-        console.log('✅ Login local exitoso')
-        
-        const usuario = loginResult.usuario
-        const accessToken = 'local-token-' + Date.now()
-        const refreshToken = 'local-refresh-' + Date.now()
-
-        // Guardar en Keychain
-        await Promise.all([
-          setInternetCredentials('auth_token', 'token', accessToken),
-          setInternetCredentials('refresh_token', 'refresh', refreshToken),
-          setInternetCredentials('user_data', 'user', JSON.stringify(usuario)),
-        ])
-
-        // Actualizar estado
-        dispatch({
-          type: AUTH_ACTIONS.LOGIN_SUCCESS,
-          payload: {
-            user: usuario,
-            accessToken,
-            refreshToken,
-          },
-        })
-
-        showMessage({
-          message: '¡Bienvenido!',
-          description: `Hola, ${usuario.nombre}`,
-          type: 'success',
-        })
-        
-        return { success: true, user: usuario }
-      }
-
-      // Si el login local falla y NO estamos en modo offline puro, intentar con API
+      // PRIMERO: Intentar login con API remota si hay conexión
+      // Esto es importante para admin/contador que necesitan tokens válidos
       if (!config.isOffline) {
-        console.log('🌐 Intentando login con API remota...')
+        console.log('🌐 Intentando login con API remota primero...')
         
         try {
           const response = await authApi.login(credentials)
@@ -375,12 +334,8 @@ export const AuthProvider = ({ children }) => {
 
           // Conectar WebSocket
           console.log(`🔌 [AuthContext Login] Conectando WebSocket después de login exitoso. isOffline: ${config.isOffline}`)
-          if (!config.isOffline) {
-            console.log(`🔌 [AuthContext Login] Llamando a webSocketService.connect() con token de longitud: ${accessToken?.length}`)
-            webSocketService.connect(accessToken)
-          } else {
-            console.warn('⚠️ [AuthContext Login] Modo offline activado - no se conectará al WebSocket')
-          }
+          console.log(`🔌 [AuthContext Login] Llamando a webSocketService.connect() con token de longitud: ${accessToken?.length}`)
+          webSocketService.connect(accessToken)
 
           showMessage({
             message: '¡Bienvenido!',
@@ -390,17 +345,53 @@ export const AuthProvider = ({ children }) => {
           
           return { success: true, user: usuario }
         } catch (apiError) {
-          // Si falla la API, usar el error del login local
-          const errorMessage = loginResult.error || 'Credenciales incorrectas'
-          dispatch({
-            type: AUTH_ACTIONS.LOGIN_ERROR,
-            payload: errorMessage,
-          })
-          return { success: false, error: errorMessage }
+          console.log('⚠️ Login remoto falló, intentando login local como fallback...', apiError.message)
+          // Continuar con login local como fallback
         }
       }
+      
+      // SEGUNDO: Intentar login local como fallback (modo offline o si API falló)
+      console.log('🔐 Intentando login local...')
+      
+      const loginResult = await localDb.loginLocal(
+        credentials.email,
+        credentials.password
+      )
 
-      // Si estamos en modo offline puro y el login local falló
+      if (loginResult.success) {
+        console.log('✅ Login local exitoso (modo offline)')
+        
+        const usuario = loginResult.usuario
+        const accessToken = 'local-token-' + Date.now()
+        const refreshToken = 'local-refresh-' + Date.now()
+
+        // Guardar en Keychain
+        await Promise.all([
+          setInternetCredentials('auth_token', 'token', accessToken),
+          setInternetCredentials('refresh_token', 'refresh', refreshToken),
+          setInternetCredentials('user_data', 'user', JSON.stringify(usuario)),
+        ])
+
+        // Actualizar estado
+        dispatch({
+          type: AUTH_ACTIONS.LOGIN_SUCCESS,
+          payload: {
+            user: usuario,
+            accessToken,
+            refreshToken,
+          },
+        })
+
+        showMessage({
+          message: '¡Bienvenido! (Modo Offline)',
+          description: `Hola, ${usuario.nombre}. Algunas funciones pueden estar limitadas.`,
+          type: 'success',
+        })
+        
+        return { success: true, user: usuario, offline: true }
+      }
+
+      // Si ambos login fallaron
       const errorMessage = loginResult.error || 'Credenciales incorrectas'
       dispatch({
         type: AUTH_ACTIONS.LOGIN_ERROR,
@@ -508,68 +499,98 @@ export const AuthProvider = ({ children }) => {
   }, [])
 
   // Escuchar eventos de error de autenticación del WebSocket
+  // Usar ref para controlar si ya estamos procesando un error de auth
+  const isHandlingAuthError = React.useRef(false)
+  const lastAuthErrorTime = React.useRef(0)
+  
   useEffect(() => {
     const handleWsAuthError = async ({ message }) => {
+      // Evitar múltiples ejecuciones simultáneas
+      const now = Date.now()
+      if (isHandlingAuthError.current || (now - lastAuthErrorTime.current) < 10000) {
+        console.log('⏳ Ya se está procesando un error de auth o se procesó recientemente, ignorando...')
+        return
+      }
+      
+      isHandlingAuthError.current = true
+      lastAuthErrorTime.current = now
+      
       console.error('🔐 Error de autenticación en WebSocket:', message)
       
-      // Verificar si hay un refresh token disponible
-      const refreshCredentials = await getInternetCredentials('refresh_token')
-      const refresh = refreshCredentials?.password
+      try {
+        // Verificar si hay un refresh token disponible
+        const refreshCredentials = await getInternetCredentials('refresh_token')
+        const refresh = refreshCredentials?.password
 
-      if (refresh && state.token) {
-        // Intentar refrescar el token una vez
-        console.log('🔄 Intentando refrescar token después de error WS...')
-        try {
-          const response = await axios.post(`${config.apiUrl}/auth/refresh`, {
-            refreshToken: refresh,
-          })
-
-          const newAccessToken = response.data.datos?.accessToken
-          const newRefreshToken = response.data.datos?.refreshToken
-
-          if (newAccessToken) {
-            console.log('✅ Token refrescado después de error WS')
-            
-            // Guardar nuevos tokens
-            await Promise.all([
-              setInternetCredentials('auth_token', 'token', newAccessToken),
-              setInternetCredentials('refresh_token', 'refresh', newRefreshToken || refresh),
-            ])
-
-            // Actualizar estado
-            dispatch({
-              type: AUTH_ACTIONS.LOGIN_SUCCESS,
-              payload: {
-                user: state.user,
-                accessToken: newAccessToken,
-                refreshToken: newRefreshToken || refresh,
-              },
-            })
-
-            // Reconectar WebSocket con nuevo token
-            webSocketService.connect(newAccessToken)
-            
-            showMessage({
-              message: 'Sesión renovada',
-              description: 'Tu sesión fue actualizada automáticamente',
-              type: 'success',
-              duration: 2000,
-            })
-            return
-          }
-        } catch (error) {
-          console.error('❌ No se pudo refrescar token después de error WS:', error.message)
+        // Si el refresh token es local o no existe, hacer logout silencioso
+        if (!refresh || refresh.startsWith('local-refresh-')) {
+          console.log('🔐 No hay refresh token válido para renovar sesión')
+          // Para usuarios locales, simplemente desconectar WebSocket sin hacer logout
+          webSocketService.disconnect(false)
+          isHandlingAuthError.current = false
+          return
         }
-      }
 
-      // Si no se pudo refrescar o no hay refresh token, hacer logout
-      showMessage({
-        message: 'Sesión expirada',
-        description: message || 'Por favor, inicia sesión nuevamente',
-        type: 'danger',
-        duration: 3000,
-      })
-      logout()
+        if (refresh && state.token) {
+          // Intentar refrescar el token una vez
+          console.log('🔄 Intentando refrescar token después de error WS...')
+          try {
+            const response = await axios.post(`${config.apiUrl}/auth/refresh`, {
+              refreshToken: refresh,
+            })
+
+            const newAccessToken = response.data.datos?.accessToken
+            const newRefreshToken = response.data.datos?.refreshToken
+
+            if (newAccessToken) {
+              console.log('✅ Token refrescado después de error WS')
+              
+              // Guardar nuevos tokens
+              await Promise.all([
+                setInternetCredentials('auth_token', 'token', newAccessToken),
+                setInternetCredentials('refresh_token', 'refresh', newRefreshToken || refresh),
+              ])
+
+              // Actualizar estado
+              dispatch({
+                type: AUTH_ACTIONS.LOGIN_SUCCESS,
+                payload: {
+                  user: state.user,
+                  accessToken: newAccessToken,
+                  refreshToken: newRefreshToken || refresh,
+                },
+              })
+
+              // Resetear el bloqueo de autenticación del WebSocket
+              webSocketService.resetAuthBlock()
+
+              // Esperar un momento antes de reconectar para asegurar que el estado se actualizó
+              setTimeout(() => {
+                webSocketService.connect(newAccessToken)
+                isHandlingAuthError.current = false
+              }, 1000)
+              
+              return
+            }
+          } catch (error) {
+            console.error('❌ No se pudo refrescar token después de error WS:', error.message)
+          }
+        }
+
+        // Si no se pudo refrescar o no hay refresh token, hacer logout
+        showMessage({
+          message: 'Sesión expirada',
+          description: message || 'Por favor, inicia sesión nuevamente',
+          type: 'danger',
+          duration: 3000,
+        })
+        logout()
+      } finally {
+        // Resetear el flag después de un tiempo para permitir futuros intentos
+        setTimeout(() => {
+          isHandlingAuthError.current = false
+        }, 15000)
+      }
     }
 
     webSocketService.on('auth_error', handleWsAuthError)
@@ -577,11 +598,37 @@ export const AuthProvider = ({ children }) => {
   }, [logout, state.token, state.user])
 
   // Verificar y reconectar WebSocket si es necesario
+  // Usar ref para evitar reconexiones excesivas
+  const lastWsCheckTime = React.useRef(0)
+  const wsReconnectAttempts = React.useRef(0)
+  const maxWsReconnectAttempts = 3 // Máximo 3 intentos antes de pausar
+  
   useEffect(() => {
     if (!state.isAuthenticated || !state.token || config.isOffline) return
 
+    // Si el token es local, no intentar conectar WebSocket
+    if (state.token.startsWith('local-token-')) {
+      console.log('🔐 Token local detectado - WebSocket no requerido')
+      return
+    }
+
     const checkWebSocketConnection = () => {
+      const now = Date.now()
       const wsStatus = webSocketService.getConnectionStatus()
+      
+      // Evitar verificaciones muy frecuentes (mínimo 10 segundos entre verificaciones)
+      if ((now - lastWsCheckTime.current) < 10000) {
+        return
+      }
+      
+      // Si hay un error de auth reciente, no intentar reconectar
+      if (wsStatus.lastError && wsStatus.lastError.toLowerCase().includes('token')) {
+        console.log('⚠️ [AuthContext] Error de token detectado, no se reintentará automáticamente')
+        return
+      }
+      
+      lastWsCheckTime.current = now
+      
       console.log('🔍 [AuthContext] Verificando estado WebSocket:', {
         isAuthenticated: state.isAuthenticated,
         hasToken: !!state.token,
@@ -591,16 +638,33 @@ export const AuthProvider = ({ children }) => {
 
       // Si no está conectado ni intentando conectar, intentar conectar
       if (!wsStatus.isConnected && !wsStatus.isConnecting && state.token) {
-        console.log('🔌 [AuthContext] WebSocket no conectado, intentando conectar...')
+        // Verificar si hemos excedido los intentos de reconexión
+        if (wsReconnectAttempts.current >= maxWsReconnectAttempts) {
+          console.log('⚠️ [AuthContext] Máximo de intentos de reconexión alcanzado, pausando...')
+          // Resetear después de 60 segundos
+          setTimeout(() => {
+            wsReconnectAttempts.current = 0
+          }, 60000)
+          return
+        }
+        
+        wsReconnectAttempts.current++
+        console.log(`🔌 [AuthContext] WebSocket no conectado, intento ${wsReconnectAttempts.current}/${maxWsReconnectAttempts}...`)
         webSocketService.connect(state.token)
+      } else if (wsStatus.isConnected) {
+        // Resetear contador si está conectado
+        wsReconnectAttempts.current = 0
       }
     }
 
-    // Verificar inmediatamente
-    checkWebSocketConnection()
+    // Verificar inmediatamente solo si no hay intentos recientes
+    const wsStatus = webSocketService.getConnectionStatus()
+    if (!wsStatus.isConnected && !wsStatus.isConnecting) {
+      checkWebSocketConnection()
+    }
 
-    // Verificar cada 5 segundos
-    const interval = setInterval(checkWebSocketConnection, 5000)
+    // Verificar cada 30 segundos (aumentado de 5 segundos)
+    const interval = setInterval(checkWebSocketConnection, 30000)
 
     return () => clearInterval(interval)
   }, [state.isAuthenticated, state.token])

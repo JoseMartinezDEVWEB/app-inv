@@ -16,9 +16,9 @@ class WebSocketService {
     this.socket = null
     this.isConnected = false
     this.reconnectAttempts = 0
-    this.maxReconnectAttempts = 10
-    this.baseReconnectDelay = 1000 // 1 segundo
-    this.maxReconnectDelay = 30000 // 30 segundos
+    this.maxReconnectAttempts = 5 // Reducido de 10 a 5
+    this.baseReconnectDelay = 2000 // 2 segundos (aumentado)
+    this.maxReconnectDelay = 60000 // 60 segundos (aumentado)
     this.listeners = new Map()
     this.currentToken = null
     this.lastErrorMessage = null
@@ -27,6 +27,9 @@ class WebSocketService {
     this.lastConnectionTime = null
     this.shouldShowMessages = true
     this.backendUrl = null
+    this.authErrorCount = 0 // Contador de errores de autenticación
+    this.lastAuthErrorTime = 0 // Timestamp del último error de auth
+    this.isAuthBlocked = false // Flag para bloquear reconexiones por error de auth
   }
 
   // Conectar al servidor WebSocket
@@ -37,6 +40,27 @@ class WebSocketService {
     }
 
     const sanitizedToken = token.trim()
+    
+    // Si es un token local, no intentar conectar WebSocket
+    if (sanitizedToken.startsWith('local-token-')) {
+      console.log('🔐 [WebSocket] Token local detectado - WebSocket no requerido para modo offline')
+      return null
+    }
+
+    // Si está bloqueado por error de auth, no intentar reconectar
+    if (this.isAuthBlocked) {
+      const timeSinceLastError = Date.now() - this.lastAuthErrorTime
+      // Desbloquear después de 30 segundos
+      if (timeSinceLastError < 30000) {
+        console.log('🚫 [WebSocket] Bloqueado por error de autenticación reciente, esperando...')
+        return null
+      } else {
+        // Resetear el bloqueo
+        this.isAuthBlocked = false
+        this.authErrorCount = 0
+        console.log('🔓 [WebSocket] Desbloqueado, intentando reconectar...')
+      }
+    }
 
     // Si ya está conectado con el mismo token, no hacer nada
     if (this.socket && this.isConnected && this.currentToken === sanitizedToken) {
@@ -139,13 +163,32 @@ class WebSocketService {
       const message = this.extractErrorMessage(error)
       this.lastErrorMessage = message
 
-      // Si es error de autenticación, no reintentar
+      // Si es error de autenticación, no reintentar y bloquear
       if (this.isAuthError(message)) {
-        console.error('❌ Error de autenticación, no se reintentará')
-        this.emitLocal('auth_error', { message: message || 'Token inválido o expirado' })
+        this.authErrorCount++
+        this.lastAuthErrorTime = Date.now()
+        
+        console.error(`❌ Error de autenticación (${this.authErrorCount}), no se reintentará`)
+        
+        // Si hay más de 2 errores de auth consecutivos, bloquear reconexiones
+        if (this.authErrorCount >= 2) {
+          this.isAuthBlocked = true
+          console.error('🚫 Múltiples errores de autenticación, bloqueando reconexiones por 30 segundos')
+        }
+        
+        // Solo emitir el evento auth_error una vez cada 10 segundos
+        const timeSinceLastEmit = Date.now() - (this._lastAuthErrorEmit || 0)
+        if (timeSinceLastEmit > 10000) {
+          this._lastAuthErrorEmit = Date.now()
+          this.emitLocal('auth_error', { message: message || 'Token inválido o expirado' })
+        }
+        
         this.disconnect(false)
         return
       }
+
+      // Resetear contador de errores de auth si no es error de auth
+      this.authErrorCount = 0
 
       // Programar reconexión con backoff exponencial
       this.scheduleReconnect()
@@ -268,6 +311,15 @@ class WebSocketService {
       clearTimeout(this.reconnectTimeout)
       this.reconnectTimeout = null
     }
+  }
+
+  // Resetear bloqueo de autenticación (útil cuando se obtiene un nuevo token)
+  resetAuthBlock() {
+    this.isAuthBlocked = false
+    this.authErrorCount = 0
+    this.lastAuthErrorTime = 0
+    this._lastAuthErrorEmit = 0
+    console.log('🔓 [WebSocket] Bloqueo de autenticación reseteado')
   }
 
   // Unirse a una sala (sesión de inventario)

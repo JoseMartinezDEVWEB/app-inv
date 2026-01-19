@@ -7,7 +7,6 @@ class Usuario {
     const db = dbManager.getDatabase()
 
     const {
-      nombreUsuario,
       nombre,
       email,
       password,
@@ -16,6 +15,27 @@ class Usuario {
       contablePrincipalId = null,
       configuracion = {},
     } = datos
+
+    // Generar nombreUsuario automáticamente si no se proporciona
+    // Usar la parte antes del @ del email, o el nombre en minúsculas sin espacios
+    let nombreUsuario = datos.nombreUsuario
+    if (!nombreUsuario) {
+      if (email) {
+        nombreUsuario = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '')
+      } else if (nombre) {
+        nombreUsuario = nombre.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+      } else {
+        nombreUsuario = 'user_' + Date.now()
+      }
+    }
+
+    // Verificar si el nombreUsuario ya existe y agregar sufijo si es necesario
+    let finalNombreUsuario = nombreUsuario
+    let contador = 1
+    while (Usuario.buscarPorNombreUsuario(finalNombreUsuario)) {
+      finalNombreUsuario = `${nombreUsuario}${contador}`
+      contador++
+    }
 
     // Hash del password
     const passwordHash = bcrypt.hashSync(password, 10)
@@ -28,17 +48,26 @@ class Usuario {
     `)
 
     const info = stmt.run(
-      nombreUsuario,
+      finalNombreUsuario,
       nombre,
       email,
       passwordHash,
-      telefono,
+      telefono || null,
       rol,
       contablePrincipalId,
       JSON.stringify(configuracion)
     )
 
-    return Usuario.buscarPorId(info.lastInsertRowid)
+    // Si es colaborador, generar código de acceso
+    const nuevoUsuario = Usuario.buscarPorId(info.lastInsertRowid)
+    
+    if (rol === 'colaborador') {
+      // Generar código de 6 dígitos
+      const codigoAcceso = String(Math.floor(100000 + Math.random() * 900000))
+      nuevoUsuario.codigoAcceso = codigoAcceso
+    }
+
+    return nuevoUsuario
   }
 
   // Buscar usuario por ID

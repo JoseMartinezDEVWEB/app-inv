@@ -11,7 +11,8 @@
         "gradleCommand": ":app:assembleRelease"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://appj4-hlqj.onrender.com/api"
+        "EXPO_PUBLIC_API_URL": "https://appj4-hlqj.onrender.com/api",
+        "EAS_BUILD_GRADLE_UNIVERSAL_APK": "true"
       }
     },
     "production-local": {
@@ -20,12 +21,16 @@
         "gradleCommand": ":app:assembleRelease"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://appj4-hlqj.onrender.com/api"
+        "EXPO_PUBLIC_API_URL": "https://appj4-hlqj.onrender.com/api",
+        "EAS_BUILD_GRADLE_UNIVERSAL_APK": "true"
       }
     },
     "preview": {
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EAS_BUILD_GRADLE_UNIVERSAL_APK": "true"
       }
     }
   },

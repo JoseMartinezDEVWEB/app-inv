@@ -8,15 +8,17 @@ import localDb from './localDb'
 // MODO STANDALONE: Activado para priorizar SQLite
 const FORCE_STANDALONE = true; 
 
-// Rutas que requieren conexión real (Colaboración, Auth inicial, Sync, Importación)
+// Rutas que requieren conexión real (Colaboración, Auth inicial, Sync, Importación, Usuarios)
 const ROUTES_PREFER_REMOTE = [
   '/solicitudes-conexion',
   '/invitaciones',
   '/auth/login', // Login inicial requiere nube para obtener token
+  '/auth/refresh', // Refresh token requiere servidor
   '/sync',       // Nueva ruta de sincronización
   '/salud',
   '/importar',   // Importación de archivos requiere servidor (procesamiento Python/IA)
   '/productos/generales/importar', // Importación de productos requiere servidor
+  '/usuarios',   // Gestión de usuarios requiere servidor (admin/contador)
 ];
 
 const API_BASE_URL = config.apiUrl
@@ -136,10 +138,58 @@ const mockLocalResponse = async (config) => {
         }
     }
     
-    if (url.includes('/sesiones-inventario') && method === 'post') {
-        const nueva = { ...data, _id: 'local-' + Date.now(), fecha: new Date().toISOString() };
-        await localDb.crearSesionLocal(nueva);
-        return { data: { exito: true, datos: { sesion: nueva } } };
+    if (url.includes('/sesiones-inventario')) {
+        if (method === 'post' && !url.includes('/productos')) {
+            // Crear nueva sesión
+            const nueva = { ...data, _id: 'local-' + Date.now(), fecha: new Date().toISOString() };
+            await localDb.crearSesionLocal(nueva);
+            return { data: { exito: true, datos: { sesion: nueva } } };
+        }
+        
+        // Actualizar datos financieros de sesión
+        if (method === 'put' && url.includes('/financieros')) {
+            const sesionId = url.split('/sesiones-inventario/')[1].split('/')[0];
+            await localDb.actualizarDatosFinancierosSesion(sesionId, data);
+            return { data: { exito: true, datos: data } };
+        }
+        
+        // Agregar producto a sesión
+        if (method === 'post' && url.includes('/productos')) {
+            const sesionId = url.split('/sesiones-inventario/')[1].split('/')[0];
+            const productoGuardado = await localDb.guardarConteoLocal({
+                ...data, 
+                sesionId, 
+                productoId: data.producto || data.productoId,
+                nombreProducto: data.nombre,
+                skuProducto: data.sku
+            });
+            return { data: { exito: true, datos: productoGuardado } };
+        }
+        
+        // Actualizar producto en sesión
+        if (method === 'put' && url.includes('/productos/')) {
+            const parts = url.split('/');
+            const productoId = parts.pop();
+            const sesionId = parts[parts.indexOf('sesiones-inventario') + 1];
+            await localDb.actualizarConteoLocal(sesionId, productoId, data);
+            return { data: { exito: true, datos: data } };
+        }
+        
+        // Eliminar producto de sesión
+        if (method === 'delete' && url.includes('/productos/')) {
+            const parts = url.split('/');
+            const productoId = parts.pop();
+            const sesionId = parts[parts.indexOf('sesiones-inventario') + 1];
+            await localDb.eliminarConteoLocal(sesionId, productoId);
+            return { data: { exito: true, datos: {} } };
+        }
+        
+        // Completar sesión
+        if (method === 'patch' && url.includes('/completar')) {
+            const sesionId = url.split('/sesiones-inventario/')[1].split('/')[0];
+            await localDb.completarSesionLocal(sesionId);
+            return { data: { exito: true, datos: { completada: true } } };
+        }
     }
 
     // Fallback por defecto
@@ -315,12 +365,29 @@ export const sesionesApi = {
     create: (d) => api.post('/sesiones-inventario', d),
     update: (id, d) => api.put(`/sesiones-inventario/${id}`, d),
     delete: (id) => api.delete(`/sesiones-inventario/${id}`),
-    addProduct: (id, d) => localDb.guardarConteoLocal({...d, sesionId: id, productoId: d.producto, nombreProducto: d.nombre, skuProducto: d.sku}),
-    getProducts: (id) => localDb.obtenerConteosSesion(id),
+    
+    // Funciones de productos en sesión
+    addProduct: (id, d) => api.post(`/sesiones-inventario/${id}/productos`, d),
+    updateProduct: (id, productoId, d) => api.put(`/sesiones-inventario/${id}/productos/${productoId}`, d),
+    removeProduct: (id, productoId) => api.delete(`/sesiones-inventario/${id}/productos/${productoId}`),
+    getProducts: (id) => api.get(`/sesiones-inventario/${id}/productos`),
+    
+    // Funciones financieras
+    updateFinancial: (id, d) => api.put(`/sesiones-inventario/${id}/financieros`, d),
+    
+    // Funciones de estado de sesión
+    complete: (id) => api.patch(`/sesiones-inventario/${id}/completar`),
+    cancel: (id) => api.patch(`/sesiones-inventario/${id}/cancelar`),
+    
+    // Funciones de timer
+    pauseTimer: (id) => api.patch(`/sesiones-inventario/${id}/timer/pause`),
+    resumeTimer: (id) => api.patch(`/sesiones-inventario/${id}/timer/resume`),
 };
 
 export const productosApi = { 
     getAll: (p) => api.get('/productos/generales', { params: p }),
+    // Alias para getAllGenerales - usado en ProductSearchModal y ProductosGeneralesModal
+    getAllGenerales: (p) => api.get('/productos/generales', { params: p }),
     getById: (id) => api.get(`/productos/generales/${id}`),
     create: async (d) => {
         const response = await api.post('/productos/generales', d);
@@ -386,6 +453,8 @@ export const productosApi = {
     getByCliente: (clienteId, params) => api.get(`/productos/cliente/${clienteId}`, { params }),
     createForClient: (clienteId, data) => api.post(`/productos/cliente/${clienteId}`, data),
     createForCliente: (clienteId, data) => api.post(`/productos/cliente/${clienteId}`, data),
+    // Asignar productos generales a un cliente
+    asignarGenerales: (clienteId, productosIds) => api.post(`/productos/cliente/${clienteId}/asignar`, { productosIds }),
 };
 
 export const reportesApi = {
@@ -454,6 +523,27 @@ export const solicitudesConexionApi = {
   rechazar: (solicitudId) => api.post(`/solicitudes-conexion/${solicitudId}/rechazar`),
   obtenerProductosOffline: (solicitudId) => api.get(`/solicitudes-conexion/${solicitudId}/productos-offline`),
   sincronizar: (solicitudId, temporalIds) => api.post(`/solicitudes-conexion/${solicitudId}/sincronizar`, { temporalIds }),
+};
+
+// API para gestión de usuarios (admin/contador)
+export const usuariosApi = {
+  // Obtener usuarios subordinados (colaboradores, contadores)
+  getSubordinados: () => api.get('/usuarios/subordinados'),
+  
+  // Crear nuevo usuario
+  create: (data) => api.post('/usuarios', data),
+  
+  // Obtener usuario por ID
+  getById: (id) => api.get(`/usuarios/${id}`),
+  
+  // Actualizar usuario
+  update: (id, data) => api.put(`/usuarios/${id}`, data),
+  
+  // Cambiar contraseña de usuario
+  changePassword: (id, password) => api.patch(`/usuarios/${id}/password`, { password }),
+  
+  // Desactivar usuario
+  delete: (id) => api.delete(`/usuarios/${id}`),
 };
 
 // Export default

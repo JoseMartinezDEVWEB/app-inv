@@ -126,7 +126,7 @@ android {
             enable enableSeparateBuildPerCPUArchitecture
             reset()
             include(*reactNativeArchitectures)
-            universalApk false
+            universalApk true  // APK universal compatible con todos los dispositivos (32-bit y 64-bit)
         }
     }
     defaultConfig {

@@ -30,6 +30,7 @@ import NetInfo from '@react-native-community/netinfo' // Ensure NetInfo is impor
 import { getInternetCredentials } from '../services/secureStorage'
 import SplashScreen from '../components/SplashScreen'
 import { useLoader } from '../context/LoaderContext'
+import { useAuth } from '../context/AuthContext'
 import localDb from '../services/localDb'
 import syncService from '../services/syncService'
 import { config } from '../config/env'
@@ -53,8 +54,10 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
   const { sesionId } = route.params || {}
   const queryClient = useQueryClient()
   const { showAnimation, hideLoader, showLoader } = useLoader()
+  const { state: authState } = useAuth()
 
-  // Validar sesionId
+  // Validar sesionId - Nota: Este return temprano está antes de otros hooks
+  // pero después de los hooks esenciales que siempre se necesitan
   if (!sesionId) {
     return (
       <View style={styles.container}>
@@ -293,18 +296,28 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
   // Cargar datos de colaboradores e invitaciones
   useEffect(() => {
-    if (sesionId) {
+    if (!sesionId) return
+    
+    // Solo cargar si el token NO es local (las APIs remotas requieren token real)
+    const token = authState?.token || ''
+    const isLocalToken = token.startsWith('local-token-')
+    
+    if (isLocalToken) {
+      console.log('⚠️ Token local detectado - omitiendo carga de colaboradores/invitaciones')
+      return
+    }
+    
+    // Carga inicial
+    cargarColaboradoresConectados()
+    cargarInvitaciones()
+
+    const interval = setInterval(() => {
       cargarColaboradoresConectados()
       cargarInvitaciones()
+    }, 30000) // Cada 30 segundos
 
-      const interval = setInterval(() => {
-        cargarColaboradoresConectados()
-        cargarInvitaciones()
-      }, 30000) // Aumentado de 10s a 30s para reducir solicitudes
-
-      return () => clearInterval(interval)
-    }
-  }, [sesionId])
+    return () => clearInterval(interval)
+  }, [sesionId, authState?.token])
 
   const cargarInvitaciones = async () => {
     try {
@@ -1858,6 +1871,8 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
         visible={showDistribucionModal}
         onClose={() => setShowDistribucionModal(false)}
         onSave={(data) => {
+          setDistribucionData(data)
+          setShowDistribucionModal(false)
           showMessage({
             message: 'Distribución guardada exitosamente',
             type: 'success',

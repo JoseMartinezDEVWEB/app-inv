@@ -504,6 +504,92 @@ const localDb = {
         }
     },
 
+    // Actualizar datos financieros de una sesión
+    actualizarDatosFinancierosSesion: async (sesionId, datosFinancieros) => {
+        try {
+            const database = await getDatabase();
+            const timestamp = Date.now();
+            
+            // Primero verificamos si existe la columna datosFinancieros
+            const info = await database.getAllAsync('PRAGMA table_info(sesiones)');
+            const hasColumn = info.some(c => c.name === 'datosFinancieros');
+            
+            if (!hasColumn) {
+                await database.execAsync('ALTER TABLE sesiones ADD COLUMN datosFinancieros TEXT');
+            }
+            
+            await database.runAsync(
+                `UPDATE sesiones SET datosFinancieros = ?, is_dirty = 1, last_updated = ? WHERE _id = ?`,
+                [JSON.stringify(datosFinancieros), timestamp, sesionId]
+            );
+            
+            console.log('✅ Datos financieros actualizados localmente');
+            return true;
+        } catch (error) {
+            console.error('Error actualizando datos financieros:', error);
+            throw error;
+        }
+    },
+
+    // Actualizar conteo de producto en sesión
+    actualizarConteoLocal: async (sesionId, productoId, data) => {
+        try {
+            const database = await getDatabase();
+            const timestamp = Date.now();
+            
+            await database.runAsync(
+                `UPDATE productos_contados 
+                 SET cantidad = ?, costo = ?, is_dirty = 1, last_updated = ?
+                 WHERE sesionId = ? AND (productoId = ? OR id = ?)`,
+                [data.cantidad || data.cantidadContada, data.costo || data.costoProducto, timestamp, sesionId, productoId, productoId]
+            );
+            
+            return true;
+        } catch (error) {
+            console.error('Error actualizando conteo local:', error);
+            throw error;
+        }
+    },
+
+    // Eliminar conteo de producto en sesión
+    eliminarConteoLocal: async (sesionId, productoId) => {
+        try {
+            const database = await getDatabase();
+            const timestamp = Date.now();
+            
+            await database.runAsync(
+                `UPDATE productos_contados 
+                 SET deleted = 1, is_dirty = 1, last_updated = ?
+                 WHERE sesionId = ? AND (productoId = ? OR id = ?)`,
+                [timestamp, sesionId, productoId, productoId]
+            );
+            
+            return true;
+        } catch (error) {
+            console.error('Error eliminando conteo local:', error);
+            throw error;
+        }
+    },
+
+    // Completar sesión localmente
+    completarSesionLocal: async (sesionId) => {
+        try {
+            const database = await getDatabase();
+            const timestamp = Date.now();
+            
+            await database.runAsync(
+                `UPDATE sesiones SET estado = 'completada', is_dirty = 1, last_updated = ? WHERE _id = ?`,
+                [timestamp, sesionId]
+            );
+            
+            console.log('✅ Sesión completada localmente');
+            return true;
+        } catch (error) {
+            console.error('Error completando sesión local:', error);
+            throw error;
+        }
+    },
+
     // --- PRODUCTOS CONTADOS (OFFLINE FIRST) ---
 
     guardarConteoLocal: async (data) => {

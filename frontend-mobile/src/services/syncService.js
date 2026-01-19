@@ -3,6 +3,7 @@ import localDb from './localDb'
 import api from './api'
 import { showMessage } from 'react-native-flash-message'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import storage from './storage'
 
 /**
  * Servicio de Sincronización Maestro (Offline-First)
@@ -96,6 +97,17 @@ class SyncService {
     
     const state = await NetInfo.fetch()
     if (!state.isConnected) {
+      return
+    }
+
+    // Verificar si tenemos un token válido (no local)
+    try {
+      const token = await storage.getItem('auth_token')
+      if (!token || token.startsWith('local-token-')) {
+        // Token local - no sincronizar con servidor
+        return
+      }
+    } catch (e) {
       return
     }
 
@@ -197,6 +209,16 @@ class SyncService {
     const state = await NetInfo.fetch()
     if (!state.isConnected) {
       return // Silencioso - pausar cuando está offline
+    }
+
+    // Verificar si tenemos un token válido (no local)
+    try {
+      const token = await storage.getItem('auth_token')
+      if (!token || token.startsWith('local-token-')) {
+        return // Token local - no sincronizar con servidor
+      }
+    } catch (e) {
+      return
     }
 
     // Verificar cooldown después de error 401
