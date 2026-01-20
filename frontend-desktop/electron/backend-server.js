@@ -16,7 +16,7 @@ class BackendServer {
   constructor() {
     this.process = null
     // Puerto estable para el backend embebido (debe ser fijo para QR/auto-conexión)
-    this.port = 4001
+    this.port = 4500
     // En Windows, `localhost` puede resolver a IPv6 (::1) y fallar si el backend
     // solo escucha en IPv4. Usamos loopback IPv4 explícito para checks internos.
     this.host = '127.0.0.1'
@@ -75,7 +75,7 @@ class BackendServer {
     try {
       const backendPath = this.getBackendPath()
 
-      // Validar disponibilidad del puerto fijo 4001 (no cambiarlo automáticamente)
+      // Validar disponibilidad del puerto fijo 4500 (no cambiarlo automáticamente)
       const isAvailable = await this.checkPort(this.port)
       if (!isAvailable) {
         throw new Error(
@@ -175,8 +175,8 @@ class BackendServer {
 
     // Detectar el puerto reportado por el backend y sincronizarlo estrictamente
     // Ejemplos:
-    // - "info: ✅ Servidor iniciado en puerto 4001 {...}"
-    // - "🌐 Servidor Local: http://localhost:4001"
+    // - "info: ✅ Servidor iniciado en puerto 4500 {...}"
+    // - "🌐 Servidor Local: http://localhost:4500"
     const portMatch =
       line.match(/Servidor iniciado en puerto\s+(\d{2,5})/i) ||
       line.match(/Servidor Local:\s*http:\/\/localhost:(\d{2,5})/i) ||

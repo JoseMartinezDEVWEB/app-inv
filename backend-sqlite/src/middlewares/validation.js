@@ -2,11 +2,14 @@ import Joi from 'joi'
 import { respuestaError } from '../utils/helpers.js'
 
 // Middleware genérico de validación
-export const validar = (schema, property = 'body') => {
+export const validar = (schema, property = 'body', options = {}) => {
   return (req, res, next) => {
+    // Por defecto stripUnknown es true, pero se puede desactivar con options
+    const stripUnknown = options.stripUnknown !== false
+    
     const { error, value } = schema.validate(req[property], {
       abortEarly: false,
-      stripUnknown: true,
+      stripUnknown: stripUnknown,
     })
 
     if (error) {
@@ -138,14 +141,28 @@ export const schemaAgregarProducto = Joi.object({
   notas: Joi.string().allow('', null),
 })
 
+// Schema de datos financieros - permitir campos desconocidos para flexibilidad
 export const schemaDatosFinancieros = Joi.object({
+  // Campos numéricos (totales)
   efectivoEnCajaYBanco: Joi.number().min(0),
   cuentasPorCobrar: Joi.number().min(0),
   cuentasPorPagar: Joi.number().min(0),
   activosFijos: Joi.number().min(0),
   ventasDelMes: Joi.number().min(0),
   gastosGenerales: Joi.number().min(0),
-})
+  deudaANegocio: Joi.number().min(0),
+  nominaEmpleados: Joi.number().min(0),
+  
+  // Campos de detalle (arrays) - usar .unknown(true) para permitir campos adicionales
+  gastosGeneralesDetalle: Joi.array().items(Joi.object().unknown(true)),
+  cuentasPorCobrarDetalle: Joi.array().items(Joi.object().unknown(true)),
+  cuentasPorPagarDetalle: Joi.array().items(Joi.object().unknown(true)),
+  efectivoEnCajaYBancoDetalle: Joi.array().items(Joi.object().unknown(true)),
+  deudaANegocioDetalle: Joi.array().items(Joi.object().unknown(true)),
+  
+  // Datos de empleados
+  empleados: Joi.array().items(Joi.object().unknown(true)),
+}).unknown(true) // Permitir campos adicionales no definidos
 
 // Invitaciones
 export const schemaCrearInvitacion = Joi.object({

@@ -188,6 +188,14 @@ export const removerProducto = async (req, res) => {
 export const actualizarDatosFinancieros = async (req, res) => {
   const { id } = req.params
 
+  // Log para depuración - ver qué datos llegan
+  console.log('📊 [FINANCIEROS] ================================')
+  console.log('📊 [FINANCIEROS] Sesión ID:', id)
+  console.log('📊 [FINANCIEROS] Datos recibidos:')
+  console.log('   - deudaANegocio:', req.body.deudaANegocio)
+  console.log('   - deudaANegocioDetalle:', JSON.stringify(req.body.deudaANegocioDetalle))
+  console.log('   - Todos los campos:', Object.keys(req.body))
+
   const sesion = SesionInventario.buscarPorId(id)
 
   if (!sesion) {
@@ -199,6 +207,12 @@ export const actualizarDatosFinancieros = async (req, res) => {
   }
 
   const sesionActualizada = SesionInventario.actualizarDatosFinancieros(id, req.body)
+
+  // Log para ver qué se guardó
+  console.log('📊 [FINANCIEROS] Datos guardados:')
+  console.log('   - deudaANegocio:', sesionActualizada?.datosFinancieros?.deudaANegocio)
+  console.log('   - deudaANegocioDetalle:', JSON.stringify(sesionActualizada?.datosFinancieros?.deudaANegocioDetalle))
+  console.log('📊 [FINANCIEROS] ================================')
 
   // Registrar en historial
   HistorialSesion.registrar({

@@ -5,7 +5,6 @@ import {
   validar,
   schemaCrearSesion,
   schemaAgregarProducto,
-  schemaDatosFinancieros,
 } from '../middlewares/validation.js'
 
 const router = express.Router()
@@ -28,8 +27,8 @@ router.post('/:id/productos', validar(schemaAgregarProducto), sesionesController
 router.put('/:id/productos/:productoId', sesionesController.actualizarProducto)
 router.delete('/:id/productos/:productoId', sesionesController.removerProducto)
 
-// Datos financieros
-router.put('/:id/financieros', validar(schemaDatosFinancieros), sesionesController.actualizarDatosFinancieros)
+// Datos financieros - sin validación estricta para permitir campos flexibles
+router.put('/:id/financieros', sesionesController.actualizarDatosFinancieros)
 
 // Acciones de sesión
 router.patch('/:id/completar', sesionesController.completarSesion)

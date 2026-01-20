@@ -2,7 +2,7 @@
   "expo": {
     "name": "Gestor de Inventario J4 Pro",
     "slug": "gestor-inventario-j4-pro",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "icon": "./assets/icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -20,7 +20,11 @@
       "icon": "./assets/ios/AppIcon.appiconset/icon_1024x1024@1x.png",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "Esta app usa Bluetooth para sincronizar productos con otros dispositivos sin internet.",
-        "NSBluetoothPeripheralUsageDescription": "Esta app usa Bluetooth para sincronizar productos con otros dispositivos sin internet."
+        "NSBluetoothPeripheralUsageDescription": "Esta app usa Bluetooth para sincronizar productos con otros dispositivos sin internet.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
+        }
       }
     },
     "android": {
@@ -29,6 +33,7 @@
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.ACCESS_WIFI_STATE",
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
         "android.permission.BLUETOOTH",
@@ -64,7 +69,17 @@
         {
           "cameraPermission": "Permitir acceso a la cámara para escanear códigos QR"
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "./plugins/withNetworkSecurityConfig.js",
+      "./plugins/withAndroidCleartextTraffic.js"
     ],
     "owner": "jose_alberto19"
   }

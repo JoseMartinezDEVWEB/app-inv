@@ -8,7 +8,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import { sesionesApi, productosApi, reportesApi, invitacionesApi, solicitudesConexionApi, handleApiError } from '../services/api'
 import logoInfocolmados from '../img/logo_transparent.png'
-import { ArrowLeft, Search, Trash2, Clock, TrendingUp, Users, CreditCard, Briefcase, PiggyBank, DollarSign, ShoppingCart, Barcode, X, Printer, FileText, Settings, TrendingDown, Wallet, Calculator, Calendar, Download, Share2, FileSpreadsheet, FileImage, UserMinus, Menu, Smartphone, QrCode, RefreshCw, Wifi, WifiOff, PieChart, Eye, CheckCircle, XCircle, Package } from 'lucide-react'
+import { ArrowLeft, Search, Trash2, Clock, TrendingUp, Users, CreditCard, Briefcase, PiggyBank, DollarSign, ShoppingCart, Barcode, X, Printer, FileText, Settings, TrendingDown, Wallet, Calculator, Calendar, Download, Share2, FileSpreadsheet, FileImage, UserMinus, Menu, Smartphone, QrCode, RefreshCw, Wifi, WifiOff, PieChart, Eye, CheckCircle, XCircle, Package, Edit3 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import ProductoForm from '../components/ProductoForm'
@@ -104,6 +104,9 @@ const InventarioDetalleNuevo = () => {
   const [currentReportPage, setCurrentReportPage] = useState(0) // Para paginación dentro de productos
   const [showReportMenu, setShowReportMenu] = useState(false)
   const [productNotFoundCode, setProductNotFoundCode] = useState('')
+  // Estados para edición del balance antes de imprimir
+  const [balanceEditMode, setBalanceEditMode] = useState(false)
+  const [balanceEditData, setBalanceEditData] = useState(null)
   const [isSearching, setIsSearching] = useState(false)
   // Estados para temporizador y modos de escaneo
   const [tiempoTranscurrido, setTiempoTranscurrido] = useState(0)
@@ -403,8 +406,11 @@ const InventarioDetalleNuevo = () => {
       onError: handleApiError,
       refetchInterval: false, // Desactivar auto-refetch para evitar 429
       onSuccess: (data) => {
+        // Log para depuración - ver qué datos vienen del backend
+        console.log('📥 [CARGA] Datos financieros del backend:', JSON.stringify(data?.datosFinancieros, null, 2))
+        
         if (data?.datosFinancieros) {
-          setDatosFinancieros({
+          const nuevosDatosFinancieros = {
             ventasDelMes: data.datosFinancieros.ventasDelMes || 0,
             // Priorizar campos de detalle si existen, sino usar arrays o valores únicos
             gastosGenerales: Array.isArray(data.datosFinancieros.gastosGeneralesDetalle)
@@ -433,10 +439,11 @@ const InventarioDetalleNuevo = () => {
                 ? data.datosFinancieros.deudaANegocio
                 : (data.datosFinancieros.deudaANegocio ? [{ monto: data.datosFinancieros.deudaANegocio, descripcion: 'Deuda de socio', deudor: 'Socio' }] : []),
             activosFijos: data.datosFinancieros.activosFijos || 0
-          })
+          }
+          
+          console.log('📥 [CARGA] Datos financieros procesados:', JSON.stringify(nuevosDatosFinancieros, null, 2))
+          setDatosFinancieros(nuevosDatosFinancieros)
         }
-
-
       }
     }
   )
@@ -481,20 +488,27 @@ const InventarioDetalleNuevo = () => {
 
   // Mutaciones para agregar productos
   const addProductMutation = useMutation(
-    (data) => sesionesApi.addProduct(id, data),
+    async (data) => {
+      // Verificar si es el primer producto ANTES de agregarlo
+      const esElPrimerProducto = productosContados.length === 0 && !sesion?.timerEnMarcha
+      
+      // Agregar el producto
+      const resultado = await sesionesApi.addProduct(id, data)
+      
+      // Iniciar reloj inmediatamente si es el primer producto
+      if (esElPrimerProducto) {
+        try {
+          await sesionesApi.resumeTimer(id)
+          console.log('✅ Reloj iniciado con el primer producto')
+        } catch (error) {
+          console.error('Error al iniciar reloj:', error)
+        }
+      }
+      
+      return resultado
+    },
     {
       onSuccess: async () => {
-        // Activar reloj si es el primer producto
-        const currentProductos = productosContados.length
-        if (currentProductos === 0) {
-          try {
-            await sesionesApi.resumeTimer(id)
-            toast.success('Reloj iniciado')
-          } catch (error) {
-            console.error('Error al iniciar reloj:', error)
-          }
-        }
-        
         // Invalidar queries y refrescar datos
         queryClient.invalidateQueries(['sesion-inventario', id])
         await refetch()
@@ -1634,18 +1648,28 @@ const InventarioDetalleNuevo = () => {
         // Obtener el valor correcto del deudor según si es socio o no
         const esSocio = data.esSocio === 'true' || data.esSocio === true
         let deudorValue = data.deudor || 'Deudor'
+        let socioIndex = null
 
         // Si es socio, obtener el valor del selector de socios
         if (esSocio) {
           const socioSelect = document.getElementById('deudor-socio-select')
           if (socioSelect && socioSelect.value) {
-            deudorValue = socioSelect.value
+            try {
+              // El valor es un JSON con { index, nombre }
+              const socioData = JSON.parse(socioSelect.value)
+              deudorValue = socioData.nombre
+              socioIndex = socioData.index
+            } catch (e) {
+              // Si no es JSON, usar el valor directamente
+              deudorValue = socioSelect.value
+            }
           }
         }
 
         newEntry.deudor = deudorValue
         newEntry.tipoDeuda = data.tipoDeuda || 'Dinero'
         newEntry.esSocio = esSocio
+        newEntry.socioIndex = socioIndex // Guardar el índice del socio para la distribución
         newEntry.fechaDeuda = data.fechaDeuda || ''
         newFinancialData.deudaANegocio.push(newEntry)
         break
@@ -1660,11 +1684,16 @@ const InventarioDetalleNuevo = () => {
     // Transformar datos para backend (mantener compatibilidad)
     const transformedData = transformFinancialDataForBackend(newFinancialData)
 
+    // Logs de depuración
+    console.log('📊 [FRONTEND] Modal activo:', activeModal)
+    console.log('📊 [FRONTEND] Datos del formulario:', data)
+    console.log('📊 [FRONTEND] Datos financieros locales:', newFinancialData)
+    console.log('📊 [FRONTEND] Datos transformados para backend:', transformedData)
+
     // Actualizar el estado y enviar al backend
     setDatosFinancieros(newFinancialData)
     updateFinancialMutation.mutate(transformedData)
 
-    console.log(`Datos de ${activeModal}:`, data)
     toast.success(`${modalData.title} guardado exitosamente`)
     closeFinancialModal()
   }
@@ -1789,6 +1818,88 @@ const InventarioDetalleNuevo = () => {
       : (parseFloat(datosFinancieros.deudaANegocio) || 0)
   }
 
+  // Calcular la deuda total de un socio específico (para la distribución de saldo)
+  const calculateDeudaSocio = (socioIndex) => {
+    if (!Array.isArray(datosFinancieros.deudaANegocio)) return 0
+    
+    return datosFinancieros.deudaANegocio
+      .filter(deuda => deuda.esSocio && deuda.socioIndex === socioIndex)
+      .reduce((sum, deuda) => sum + (parseFloat(deuda.monto) || 0), 0)
+  }
+
+  // Obtener las deudas de un socio para mostrar detalles
+  const getDeudasSocio = (socioIndex) => {
+    if (!Array.isArray(datosFinancieros.deudaANegocio)) return []
+    
+    return datosFinancieros.deudaANegocio.filter(deuda => deuda.esSocio && deuda.socioIndex === socioIndex)
+  }
+
+  // Funciones para modo edición del balance
+  const getBalanceValue = (field, index = null) => {
+    if (!balanceEditMode || !balanceEditData) {
+      // Modo normal: usar datos financieros originales
+      if (index !== null && Array.isArray(datosFinancieros[field])) {
+        return datosFinancieros[field][index]?.monto || 0
+      }
+      return datosFinancieros[field] || 0
+    }
+    // Modo edición: usar datos editados
+    if (index !== null && Array.isArray(balanceEditData[field])) {
+      return balanceEditData[field][index]?.monto || 0
+    }
+    return balanceEditData[field] || 0
+  }
+
+  const getBalanceArray = (field) => {
+    if (!balanceEditMode || !balanceEditData) {
+      return datosFinancieros[field] || []
+    }
+    return balanceEditData[field] || []
+  }
+
+  const updateBalanceValue = (field, value, index = null) => {
+    if (!balanceEditData) return
+    
+    const newData = { ...balanceEditData }
+    if (index !== null && Array.isArray(newData[field])) {
+      newData[field] = [...newData[field]]
+      newData[field][index] = { ...newData[field][index], monto: parseFloat(value) || 0 }
+    } else {
+      newData[field] = parseFloat(value) || 0
+    }
+    setBalanceEditData(newData)
+  }
+
+  const updateBalanceArrayItem = (field, index, key, value) => {
+    if (!balanceEditData) return
+    
+    const newData = { ...balanceEditData }
+    if (Array.isArray(newData[field])) {
+      newData[field] = [...newData[field]]
+      newData[field][index] = { ...newData[field][index], [key]: value }
+    }
+    setBalanceEditData(newData)
+  }
+
+  const deleteBalanceArrayItem = (field, index) => {
+    if (!balanceEditData) return
+    
+    const newData = { ...balanceEditData }
+    if (Array.isArray(newData[field])) {
+      newData[field] = newData[field].filter((_, i) => i !== index)
+    }
+    setBalanceEditData(newData)
+  }
+
+  // Calcular totales para el modo edición
+  const getEditableTotal = (field) => {
+    const data = balanceEditMode && balanceEditData ? balanceEditData : datosFinancieros
+    if (Array.isArray(data[field])) {
+      return data[field].reduce((sum, item) => sum + (parseFloat(item.monto) || 0), 0)
+    }
+    return parseFloat(data[field]) || 0
+  }
+
   // Transformar datos financieros para compatibilidad con backend
   const transformFinancialDataForBackend = (data) => {
     const transformed = { ...data }
@@ -1831,6 +1942,20 @@ const InventarioDetalleNuevo = () => {
     }
 
     return transformed
+  }
+
+  // Función para guardar cambios del balance en el backend
+  const saveBalanceChanges = () => {
+    if (!balanceEditData) return
+    
+    // Actualizar estado local de datosFinancieros
+    setDatosFinancieros(balanceEditData)
+    
+    // Transformar y enviar al backend
+    const transformedData = transformFinancialDataForBackend(balanceEditData)
+    updateFinancialMutation.mutate(transformedData)
+    
+    toast.success('Cambios guardados correctamente')
   }
 
   // Función para calcular utilidades netas
@@ -5226,8 +5351,11 @@ const InventarioDetalleNuevo = () => {
                           id="deudor-socio-select"
                         >
                           <option value="">Seleccionar socio...</option>
-                          <option value="Socio 1">Socio 1</option>
-                          <option value="Socio 2">Socio 2</option>
+                          {distribucionData.socios.map((socio, idx) => (
+                            <option key={idx} value={JSON.stringify({ index: idx, nombre: socio.nombre || `Socio ${idx + 1}` })}>
+                              {socio.nombre || `Socio ${idx + 1}`}
+                            </option>
+                          ))}
                         </select>
                         <input
                           type="text"
@@ -5434,6 +5562,66 @@ const InventarioDetalleNuevo = () => {
               ) : currentReportSection === 'balance' ? (
                   // Página del Balance General
                   <div className="p-8 bg-white" style={{ fontFamily: 'Arial, sans-serif' }}>
+                    {/* Toggle de modo edición */}
+                    <div className="mb-4 flex items-center justify-end no-print">
+                      <label className="flex items-center cursor-pointer bg-amber-50 px-4 py-2 rounded-lg border border-amber-200 hover:bg-amber-100 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={balanceEditMode}
+                          onChange={(e) => {
+                            setBalanceEditMode(e.target.checked)
+                            if (e.target.checked && !balanceEditData) {
+                              // Inicializar datos de edición con los valores actuales
+                              setBalanceEditData({
+                                efectivoEnCajaYBanco: [...(datosFinancieros.efectivoEnCajaYBanco || [])],
+                                cuentasPorCobrar: [...(datosFinancieros.cuentasPorCobrar || [])],
+                                cuentasPorPagar: [...(datosFinancieros.cuentasPorPagar || [])],
+                                deudaANegocio: [...(datosFinancieros.deudaANegocio || [])],
+                                gastosGenerales: [...(datosFinancieros.gastosGenerales || [])],
+                                ventasDelMes: datosFinancieros.ventasDelMes || 0,
+                                activosFijos: datosFinancieros.activosFijos || 0
+                              })
+                            }
+                          }}
+                          className="h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300 rounded mr-2"
+                        />
+                        <Edit3 className="w-4 h-4 mr-2 text-amber-600" />
+                        <span className="text-sm font-medium text-amber-700">Modo Edición</span>
+                      </label>
+                      {balanceEditMode && (
+                        <div className="flex items-center gap-2 ml-2">
+                          <button
+                            onClick={() => {
+                              saveBalanceChanges()
+                              setBalanceEditMode(false)
+                              setBalanceEditData(null)
+                            }}
+                            className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-medium flex items-center gap-1"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            Guardar Cambios
+                          </button>
+                          <button
+                            onClick={() => {
+                              setBalanceEditMode(false)
+                              setBalanceEditData(null)
+                            }}
+                            className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 text-sm"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {balanceEditMode && (
+                      <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg no-print">
+                        <p className="text-sm text-amber-700">
+                          <strong>Modo edición activo:</strong> Haz clic en cualquier valor para editarlo. Los cambios se guardarán automáticamente.
+                        </p>
+                      </div>
+                    )}
+                    
                     <div className="text-center mb-8">
                       <h2 className="text-2xl font-bold text-gray-800 mb-2">{sesion?.clienteNegocio?.nombre?.toUpperCase()}</h2>
                       <h3 className="text-lg font-semibold text-gray-700 mb-1">Balance General</h3>
@@ -5449,70 +5637,132 @@ const InventarioDetalleNuevo = () => {
                         <div className="space-y-3">
                           <div className="font-semibold text-gray-700">CORRIENTES</div>
                           <div className="ml-4 space-y-1">
-                            <div className="flex justify-between">
+                            {/* EFECTIVO Y CAJA */}
+                            <div className="flex justify-between items-center">
                               <span className="text-gray-800">EFECTIVO Y CAJA</span>
-                              <span className="text-gray-800">{formatearMoneda(calculateTotalEfectivo())}</span>
+                              <span className="text-gray-800 font-medium">{formatearMoneda(getEditableTotal('efectivoEnCajaYBanco'))}</span>
                             </div>
-                            {Array.isArray(datosFinancieros.efectivoEnCajaYBanco) && datosFinancieros.efectivoEnCajaYBanco.length > 0 && (
+                            {getBalanceArray('efectivoEnCajaYBanco').length > 0 && (
                               <div className="ml-4 mt-1 space-y-1">
-                                {datosFinancieros.efectivoEnCajaYBanco.map((efectivo, index) => (
-                                  <div key={index} className="text-xs text-gray-700 italic">
-                                    • {efectivo.tipoCuenta || 'Caja'}: {formatearMoneda(parseFloat(efectivo.monto || 0))} ({efectivo.descripcion || 'Sin descripción'})
+                                {getBalanceArray('efectivoEnCajaYBanco').map((efectivo, index) => (
+                                  <div key={index} className={`text-xs text-gray-700 italic flex items-center justify-between ${balanceEditMode ? 'bg-amber-50 p-1 rounded' : ''}`}>
+                                    <span>• {efectivo.tipoCuenta || 'Caja'}: </span>
+                                    {balanceEditMode ? (
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="number"
+                                          value={efectivo.monto || 0}
+                                          onChange={(e) => updateBalanceArrayItem('efectivoEnCajaYBanco', index, 'monto', parseFloat(e.target.value) || 0)}
+                                          className="w-24 px-1 py-0.5 text-xs border border-amber-300 rounded focus:ring-1 focus:ring-amber-500"
+                                        />
+                                        <button onClick={() => deleteBalanceArrayItem('efectivoEnCajaYBanco', index)} className="text-red-500 hover:text-red-700">
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <span>{formatearMoneda(parseFloat(efectivo.monto || 0))} ({efectivo.descripcion || 'Sin descripción'})</span>
+                                    )}
                                   </div>
                                 ))}
                               </div>
                             )}
-                            <div className="flex justify-between">
+                            
+                            {/* CUENTAS POR COBRAR */}
+                            <div className="flex justify-between items-center">
                               <span className="text-gray-800">CUENTAS POR COBRAR</span>
-                              <span className="text-gray-800">{formatearMoneda(calculateTotalCuentasPorCobrar())}</span>
+                              <span className="text-gray-800 font-medium">{formatearMoneda(getEditableTotal('cuentasPorCobrar'))}</span>
                             </div>
-                            {Array.isArray(datosFinancieros.cuentasPorCobrar) && datosFinancieros.cuentasPorCobrar.length > 0 && (
+                            {getBalanceArray('cuentasPorCobrar').length > 0 && (
                               <div className="ml-4 mt-1 space-y-1">
-                                {datosFinancieros.cuentasPorCobrar.map((cuenta, index) => (
-                                  <div key={index} className="text-xs text-gray-700 italic">
-                                    • {cuenta.cliente || 'Cliente'}: {formatearMoneda(parseFloat(cuenta.monto || 0))} ({cuenta.descripcion || 'Sin descripción'})
+                                {getBalanceArray('cuentasPorCobrar').map((cuenta, index) => (
+                                  <div key={index} className={`text-xs text-gray-700 italic flex items-center justify-between ${balanceEditMode ? 'bg-amber-50 p-1 rounded' : ''}`}>
+                                    <span>• {cuenta.cliente || 'Cliente'}: </span>
+                                    {balanceEditMode ? (
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="number"
+                                          value={cuenta.monto || 0}
+                                          onChange={(e) => updateBalanceArrayItem('cuentasPorCobrar', index, 'monto', parseFloat(e.target.value) || 0)}
+                                          className="w-24 px-1 py-0.5 text-xs border border-amber-300 rounded focus:ring-1 focus:ring-amber-500"
+                                        />
+                                        <button onClick={() => deleteBalanceArrayItem('cuentasPorCobrar', index)} className="text-red-500 hover:text-red-700">
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <span>{formatearMoneda(parseFloat(cuenta.monto || 0))} ({cuenta.descripcion || 'Sin descripción'})</span>
+                                    )}
                                   </div>
                                 ))}
                               </div>
                             )}
+                            
+                            {/* INVENTARIO DE MERCANCIA */}
                             <div className="flex justify-between">
                               <span className="text-gray-800">INVENTARIO DE MERCANCIA</span>
-                              <span className="text-gray-800">{formatearMoneda(valorTotal)}</span>
+                              <span className="text-gray-800 font-medium">{formatearMoneda(valorTotal)}</span>
                             </div>
-                            <div className="flex justify-between">
+                            
+                            {/* DEUDA A NEGOCIO */}
+                            <div className="flex justify-between items-center">
                               <span className="text-gray-800">DEUDA A NEGOCIO</span>
-                              <span className="text-gray-800">{formatearMoneda(calculateTotalDeudaANegocio())}</span>
+                              <span className="text-gray-800 font-medium">{formatearMoneda(getEditableTotal('deudaANegocio'))}</span>
                             </div>
-                            {Array.isArray(datosFinancieros.deudaANegocio) && datosFinancieros.deudaANegocio.length > 0 && (
+                            {getBalanceArray('deudaANegocio').length > 0 && (
                               <div className="ml-4 mt-1 space-y-1">
-                                {datosFinancieros.deudaANegocio.map((deuda, index) => (
-                                  <div key={index} className="text-xs text-gray-700 italic">
-                                    • {deuda.deudor || 'Deudor'}: {formatearMoneda(parseFloat(deuda.monto || 0))} ({deuda.descripcion || 'Sin descripción'})
+                                {getBalanceArray('deudaANegocio').map((deuda, index) => (
+                                  <div key={index} className={`text-xs text-gray-700 italic flex items-center justify-between ${balanceEditMode ? 'bg-amber-50 p-1 rounded' : ''}`}>
+                                    <span>• {deuda.deudor || 'Deudor'}{deuda.esSocio ? ' (Socio)' : ''}: </span>
+                                    {balanceEditMode ? (
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="number"
+                                          value={deuda.monto || 0}
+                                          onChange={(e) => updateBalanceArrayItem('deudaANegocio', index, 'monto', parseFloat(e.target.value) || 0)}
+                                          className="w-24 px-1 py-0.5 text-xs border border-amber-300 rounded focus:ring-1 focus:ring-amber-500"
+                                        />
+                                        <button onClick={() => deleteBalanceArrayItem('deudaANegocio', index)} className="text-red-500 hover:text-red-700">
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <span>{formatearMoneda(parseFloat(deuda.monto || 0))} ({deuda.tipoDeuda || deuda.descripcion || 'Sin descripción'})</span>
+                                    )}
                                   </div>
                                 ))}
                               </div>
                             )}
+                            
                             <div className="flex justify-between font-semibold border-t pt-1">
                               <span className="text-gray-900">TOTAL CORRIENTES</span>
-                              <span className="text-gray-900">{formatearMoneda(calculateTotalEfectivo() + calculateTotalCuentasPorCobrar() + valorTotal + calculateTotalDeudaANegocio())}</span>
+                              <span className="text-gray-900">{formatearMoneda(getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('cuentasPorCobrar') + valorTotal + getEditableTotal('deudaANegocio'))}</span>
                             </div>
                           </div>
 
                           <div className="font-semibold text-gray-900 mt-4">FIJOS</div>
                           <div className="ml-4 space-y-1">
-                            <div className="flex justify-between">
+                            <div className="flex justify-between items-center">
                               <span className="text-gray-900">ACTIVOS FIJOS</span>
-                              <span className="text-gray-900">{formatearMoneda(datosFinancieros.activosFijos)}</span>
+                              {balanceEditMode ? (
+                                <input
+                                  type="number"
+                                  value={balanceEditData?.activosFijos || 0}
+                                  onChange={(e) => updateBalanceValue('activosFijos', e.target.value)}
+                                  className="w-28 px-2 py-1 text-sm border border-amber-300 rounded focus:ring-1 focus:ring-amber-500 text-right"
+                                />
+                              ) : (
+                                <span className="text-gray-900 font-medium">{formatearMoneda(datosFinancieros.activosFijos)}</span>
+                              )}
                             </div>
                             <div className="flex justify-between font-semibold border-t pt-1">
                               <span className="text-gray-900">TOTAL FIJOS</span>
-                              <span className="text-gray-900">{formatearMoneda(datosFinancieros.activosFijos)}</span>
+                              <span className="text-gray-900">{formatearMoneda(balanceEditMode ? (balanceEditData?.activosFijos || 0) : datosFinancieros.activosFijos)}</span>
                             </div>
                           </div>
 
                           <div className="flex justify-between font-bold text-lg border-t-2 border-gray-400 pt-2 mt-4">
                             <span className="text-gray-900">TOTAL ACTIVOS</span>
-                            <span className="text-gray-900">{formatearMoneda(calculateTotalEfectivo() + calculateTotalCuentasPorCobrar() + valorTotal + calculateTotalDeudaANegocio() + datosFinancieros.activosFijos)}</span>
+                            <span className="text-gray-900">{formatearMoneda(getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('cuentasPorCobrar') + valorTotal + getEditableTotal('deudaANegocio') + (balanceEditMode ? (balanceEditData?.activosFijos || 0) : datosFinancieros.activosFijos))}</span>
                           </div>
                         </div>
                       </div>
@@ -5524,22 +5774,37 @@ const InventarioDetalleNuevo = () => {
                         <div className="space-y-3">
                           <div className="font-semibold text-gray-700">PASIVOS</div>
                           <div className="ml-4 space-y-1">
-                            <div className="flex justify-between">
+                            <div className="flex justify-between items-center">
                               <span className="text-gray-800">CUENTAS POR PAGAR</span>
-                              <span className="text-gray-800">{formatearMoneda(calculateTotalCuentasPorPagar())}</span>
+                              <span className="text-gray-800 font-medium">{formatearMoneda(getEditableTotal('cuentasPorPagar'))}</span>
                             </div>
-                            {Array.isArray(datosFinancieros.cuentasPorPagar) && datosFinancieros.cuentasPorPagar.length > 0 && (
+                            {getBalanceArray('cuentasPorPagar').length > 0 && (
                               <div className="ml-4 mt-1 space-y-1">
-                                {datosFinancieros.cuentasPorPagar.map((cuenta, index) => (
-                                  <div key={index} className="text-xs text-gray-700 italic">
-                                    • {cuenta.proveedor || 'Proveedor'}: {formatearMoneda(parseFloat(cuenta.monto || 0))} ({cuenta.descripcion || 'Sin descripción'})
+                                {getBalanceArray('cuentasPorPagar').map((cuenta, index) => (
+                                  <div key={index} className={`text-xs text-gray-700 italic flex items-center justify-between ${balanceEditMode ? 'bg-amber-50 p-1 rounded' : ''}`}>
+                                    <span>• {cuenta.proveedor || 'Proveedor'}: </span>
+                                    {balanceEditMode ? (
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="number"
+                                          value={cuenta.monto || 0}
+                                          onChange={(e) => updateBalanceArrayItem('cuentasPorPagar', index, 'monto', parseFloat(e.target.value) || 0)}
+                                          className="w-24 px-1 py-0.5 text-xs border border-amber-300 rounded focus:ring-1 focus:ring-amber-500"
+                                        />
+                                        <button onClick={() => deleteBalanceArrayItem('cuentasPorPagar', index)} className="text-red-500 hover:text-red-700">
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <span>{formatearMoneda(parseFloat(cuenta.monto || 0))} ({cuenta.descripcion || 'Sin descripción'})</span>
+                                    )}
                                   </div>
                                 ))}
                               </div>
                             )}
                             <div className="flex justify-between font-semibold border-t pt-1">
                               <span className="text-gray-900">TOTAL PASIVOS</span>
-                              <span className="text-gray-900">{formatearMoneda(calculateTotalCuentasPorPagar())}</span>
+                              <span className="text-gray-900">{formatearMoneda(getEditableTotal('cuentasPorPagar'))}</span>
                             </div>
                           </div>
 
@@ -5547,32 +5812,58 @@ const InventarioDetalleNuevo = () => {
                           <div className="ml-4 space-y-1">
                             <div className="flex justify-between font-semibold border-t pt-1">
                               <span className="text-gray-900">CAPITAL CONTABLE</span>
-                              <span className="text-gray-900">{formatearMoneda(capitalContable)}</span>
+                              <span className="text-gray-900">{formatearMoneda(
+                                getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('cuentasPorCobrar') + valorTotal + getEditableTotal('deudaANegocio') + (balanceEditMode ? (balanceEditData?.activosFijos || 0) : datosFinancieros.activosFijos) - getEditableTotal('cuentasPorPagar')
+                              )}</span>
                             </div>
                           </div>
 
                           <div className="flex justify-between font-bold text-lg border-t-2 border-gray-400 pt-2 mt-4">
                             <span className="text-gray-900">TOTAL PASIVOS + CAPITAL</span>
-                            <span className="text-gray-900">{formatearMoneda(calculateTotalEfectivo() + calculateTotalCuentasPorCobrar() + valorTotal + calculateTotalDeudaANegocio() + datosFinancieros.activosFijos)}</span>
+                            <span className="text-gray-900">{formatearMoneda(getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('cuentasPorCobrar') + valorTotal + getEditableTotal('deudaANegocio') + (balanceEditMode ? (balanceEditData?.activosFijos || 0) : datosFinancieros.activosFijos))}</span>
                           </div>
                         </div>
                         {/* Ventas y Gastos */}
                         <div className="mt-4 p-4 bg-blue-50 rounded-lg">
                           <div className="font-semibold text-blue-700 mb-3">VENTAS Y GASTOS</div>
                           <div className="space-y-2">
-                            <div className="flex justify-between">
+                            <div className="flex justify-between items-center">
                               <span className="text-gray-900">VENTAS DEL MES</span>
-                              <span className="font-semibold text-green-600">{formatearMoneda(datosFinancieros.ventasDelMes)}</span>
+                              {balanceEditMode ? (
+                                <input
+                                  type="number"
+                                  value={balanceEditData?.ventasDelMes || 0}
+                                  onChange={(e) => updateBalanceValue('ventasDelMes', e.target.value)}
+                                  className="w-28 px-2 py-1 text-sm border border-green-300 rounded focus:ring-1 focus:ring-green-500 text-right text-green-600 font-semibold"
+                                />
+                              ) : (
+                                <span className="font-semibold text-green-600">{formatearMoneda(datosFinancieros.ventasDelMes)}</span>
+                              )}
                             </div>
-                            <div className="flex justify-between">
+                            <div className="flex justify-between items-center">
                               <span className="text-gray-900">GASTOS GENERALES</span>
-                              <span className="font-semibold text-red-600">({formatearMoneda(calculateTotalGastos())})</span>
+                              <span className="font-semibold text-red-600">({formatearMoneda(getEditableTotal('gastosGenerales'))})</span>
                             </div>
-                            {Array.isArray(datosFinancieros.gastosGenerales) && datosFinancieros.gastosGenerales.length > 0 && (
+                            {getBalanceArray('gastosGenerales').length > 0 && (
                               <div className="ml-4 mt-1 space-y-1">
-                                {datosFinancieros.gastosGenerales.map((gasto, index) => (
-                                  <div key={index} className="text-xs text-red-600 italic">
-                                    • {gasto.categoria || 'Sin categoría'}: ({formatearMoneda(parseFloat(gasto.monto || 0))}) ({gasto.descripcion || 'Sin descripción'})
+                                {getBalanceArray('gastosGenerales').map((gasto, index) => (
+                                  <div key={index} className={`text-xs text-red-600 italic flex items-center justify-between ${balanceEditMode ? 'bg-red-50 p-1 rounded' : ''}`}>
+                                    <span>• {gasto.categoria || 'Sin categoría'}: </span>
+                                    {balanceEditMode ? (
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="number"
+                                          value={gasto.monto || 0}
+                                          onChange={(e) => updateBalanceArrayItem('gastosGenerales', index, 'monto', parseFloat(e.target.value) || 0)}
+                                          className="w-24 px-1 py-0.5 text-xs border border-red-300 rounded focus:ring-1 focus:ring-red-500"
+                                        />
+                                        <button onClick={() => deleteBalanceArrayItem('gastosGenerales', index)} className="text-red-500 hover:text-red-700">
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <span>({formatearMoneda(parseFloat(gasto.monto || 0))}) ({gasto.descripcion || 'Sin descripción'})</span>
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -5595,12 +5886,25 @@ const InventarioDetalleNuevo = () => {
                             )}
                             <div className="flex justify-between text-lg font-bold text-blue-800 border-t pt-2">
                               <span className="text-gray-900">UTILIDAD NETA</span>
-                              <span className="text-gray-900">{formatearMoneda(calculateUtilidadesNetas())}</span>
+                              <span className="text-gray-900">{formatearMoneda(
+                                (balanceEditMode && balanceEditData ? balanceEditData.ventasDelMes : datosFinancieros.ventasDelMes) - getEditableTotal('gastosGenerales')
+                              )}</span>
                             </div>
                           </div>
                           <div className="text-sm text-gray-900 mt-2 pt-2 border-t">
-                            <div className="text-gray-900">PORCENTAJE NETO: {datosFinancieros.ventasDelMes > 0 ? ((calculateUtilidadesNetas() / datosFinancieros.ventasDelMes * 100).toFixed(2)) : '0.00'}%</div>
-                            <div className="text-gray-900">PORCENTAJE BRUTO: {datosFinancieros.ventasDelMes > 0 ? (((datosFinancieros.ventasDelMes - valorTotal - calculateTotalGastos()) / datosFinancieros.ventasDelMes * 100).toFixed(2)) : '0.00'}%</div>
+                            {(() => {
+                              const ventas = balanceEditMode && balanceEditData ? balanceEditData.ventasDelMes : datosFinancieros.ventasDelMes
+                              const gastos = getEditableTotal('gastosGenerales')
+                              const utilidadNeta = ventas - gastos
+                              const porcentajeNeto = ventas > 0 ? ((utilidadNeta / ventas) * 100).toFixed(2) : '0.00'
+                              const porcentajeBruto = ventas > 0 ? (((ventas - valorTotal - gastos) / ventas) * 100).toFixed(2) : '0.00'
+                              return (
+                                <>
+                                  <div className="text-gray-900">PORCENTAJE NETO: {porcentajeNeto}%</div>
+                                  <div className="text-gray-900">PORCENTAJE BRUTO: {porcentajeBruto}%</div>
+                                </>
+                              )
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -5666,15 +5970,27 @@ const InventarioDetalleNuevo = () => {
                             {distribucionData.socios.map((socio, index) => {
                               const utilidadPeriodo = (calculateUtilidadesNetas() * socio.porcentaje) / 100;
                               const utilidadAcumulada = (socio.utilidadAcumulada || 0) + utilidadPeriodo;
-                              const cuentaAdeudada = socio.cuentaAdeudada || 0;
-                              const saldoNeto = utilidadAcumulada - cuentaAdeudada;
+                              // Sumar la cuenta adeudada del formulario + las deudas registradas en gestión financiera
+                              const deudaFinanciera = calculateDeudaSocio(index);
+                              const cuentaAdeudadaTotal = (socio.cuentaAdeudada || 0) + deudaFinanciera;
+                              const saldoNeto = utilidadAcumulada - cuentaAdeudadaTotal;
+                              const deudasSocio = getDeudasSocio(index);
                               return (
                                 <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                                   <td className="border border-gray-300 px-4 py-3 font-semibold text-black text-sm">{socio.nombre || `Socio ${index + 1}`}</td>
                                   <td className="border border-gray-300 px-4 py-3 text-center text-black font-medium text-sm">{safeToFixed(socio.porcentaje, 2)}%</td>
                                   <td className="border border-gray-300 px-4 py-3 text-right text-black font-medium text-sm">{formatearMoneda(utilidadPeriodo)}</td>
                                   <td className="border border-gray-300 px-4 py-3 text-right text-black font-medium text-sm">{formatearMoneda(utilidadAcumulada)}</td>
-                                  <td className="border border-gray-300 px-4 py-3 text-right text-black font-medium text-sm">{formatearMoneda(cuentaAdeudada)}</td>
+                                  <td className="border border-gray-300 px-4 py-3 text-right text-black font-medium text-sm">
+                                    {formatearMoneda(cuentaAdeudadaTotal)}
+                                    {deudasSocio.length > 0 && (
+                                      <div className="text-xs text-red-500 mt-1">
+                                        {deudasSocio.map((d, i) => (
+                                          <div key={i}>• {d.tipoDeuda}: {formatearMoneda(d.monto)}</div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </td>
                                   <td className={`border border-gray-300 px-4 py-3 text-right font-bold text-sm ${saldoNeto < 0 ? 'text-red-600' : 'text-green-600'}`}>
                                     {formatearMoneda(saldoNeto)}
                                   </td>
@@ -5694,14 +6010,18 @@ const InventarioDetalleNuevo = () => {
                                 }, 0)
                               )}</td>
                               <td className="border border-gray-300 px-4 py-2 text-right">{formatearMoneda(
-                                distribucionData.socios.reduce((sum, socio) => sum + (socio.cuentaAdeudada || 0), 0)
+                                distribucionData.socios.reduce((sum, socio, index) => {
+                                  const deudaFinanciera = calculateDeudaSocio(index);
+                                  return sum + (socio.cuentaAdeudada || 0) + deudaFinanciera;
+                                }, 0)
                               )}</td>
                               <td className="border border-gray-300 px-4 py-2 text-right font-bold">{formatearMoneda(
-                                distribucionData.socios.reduce((sum, socio) => {
+                                distribucionData.socios.reduce((sum, socio, index) => {
                                   const utilidadPeriodo = (calculateUtilidadesNetas() * socio.porcentaje) / 100;
                                   const utilidadAcumulada = (socio.utilidadAcumulada || 0) + utilidadPeriodo;
-                                  const cuentaAdeudada = socio.cuentaAdeudada || 0;
-                                  return sum + (utilidadAcumulada - cuentaAdeudada);
+                                  const deudaFinanciera = calculateDeudaSocio(index);
+                                  const cuentaAdeudadaTotal = (socio.cuentaAdeudada || 0) + deudaFinanciera;
+                                  return sum + (utilidadAcumulada - cuentaAdeudadaTotal);
                                 }, 0)
                               )}</td>
                             </tr>

@@ -16,6 +16,15 @@ import { invitacionesApi, handleApiError } from '../services/api'
 import { showMessage } from 'react-native-flash-message'
 import axios from 'axios'
 
+// Crear instancia limpia de axios para verificación de servidores (sin interceptores ni baseURL)
+// Esto evita conflictos con la configuración global de axios que usa api.js
+const cleanAxios = axios.create({
+  timeout: 8000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
 const QRScannerModal = ({ visible, onClose, onSuccess, mode = 'invitacion' }) => {
   const [hasPermission, setHasPermission] = useState(null)
   const [scanned, setScanned] = useState(false)
@@ -77,10 +86,25 @@ const QRScannerModal = ({ visible, onClose, onSuccess, mode = 'invitacion' }) =>
 
         // Validación robusta: verificar contra el endpoint del backend (identidad J4 Pro)
         // Si responde correctamente, usamos la URL que el propio backend reporta.
+        // IMPORTANTE: Usar cleanAxios (instancia limpia) para evitar conflictos con interceptores
         const verifyUrl = `${j4proUrl}/api/red/info`
-        const verifyResp = await axios.get(verifyUrl, { timeout: 5000, validateStatus: () => true })
+        console.log('🔍 [QRScanner] Verificando servidor en:', verifyUrl)
+        
+        let verifyResp
+        try {
+          verifyResp = await cleanAxios.get(verifyUrl, { 
+            timeout: 8000, 
+            validateStatus: () => true 
+          })
+          console.log('✅ [QRScanner] Respuesta del servidor:', verifyResp.status, verifyResp.data)
+        } catch (networkError) {
+          console.error('❌ [QRScanner] Error de red al verificar servidor:', networkError.message)
+          throw new Error(`No se pudo conectar al servidor: ${networkError.message}. Verifica que estés en la misma red WiFi.`)
+        }
+        
         if (verifyResp.status !== 200 || !verifyResp.data?.ok || !verifyResp.data?.apiUrl) {
-          throw new Error('Este QR no corresponde a un servidor J4 Pro válido')
+          console.error('❌ [QRScanner] Respuesta inválida:', verifyResp.status, verifyResp.data)
+          throw new Error('Este QR no corresponde a un servidor J4 Pro válido o el servidor no responde correctamente')
         }
 
         const canonicalBase = (verifyResp.data.url || j4proUrl).toString().replace(/\/+$/, '')

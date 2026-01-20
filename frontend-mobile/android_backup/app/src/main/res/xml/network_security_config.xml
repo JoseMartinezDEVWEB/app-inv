@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-  <!-- Permitir HTTP (cleartext) para conectar por LAN a http://IP:4001 -->
+  <!-- Permitir HTTP (cleartext) para conectar por LAN a http://IP:4500 -->
   <base-config cleartextTrafficPermitted="true">
     <trust-anchors>
       <certificates src="system" />

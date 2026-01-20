@@ -5,6 +5,21 @@ import storage from './storage'
 import { config, setOnlineStatus, isOnline } from '../config/env'
 import localDb from './localDb'
 
+// Importar función para actualizar cache de WebSocket URL
+// (Se importa de forma diferida para evitar dependencia circular)
+let updateWsUrlCache = null
+const getUpdateWsUrlCache = async () => {
+  if (!updateWsUrlCache) {
+    try {
+      const wsModule = await import('./websocket')
+      updateWsUrlCache = wsModule.updateWsUrlCache
+    } catch (e) {
+      console.warn('⚠️ No se pudo importar updateWsUrlCache:', e.message)
+    }
+  }
+  return updateWsUrlCache
+}
+
 // MODO STANDALONE: Activado para priorizar SQLite
 const FORCE_STANDALONE = true; 
 
@@ -44,13 +59,27 @@ export const setRuntimeApiBaseUrl = async (apiUrl) => {
   const clean = apiUrl.replace(/\/+$/, '')
   await AsyncStorage.setItem('apiUrl', clean)
   api.defaults.baseURL = clean
-  axios.defaults.baseURL = clean
+  // NOTA: Ya NO modificamos axios.defaults.baseURL global para evitar conflictos
+  // con llamadas directas de axios en otros módulos (QRScanner, networkDiscovery)
+  // que necesitan usar URLs absolutas sin interferencia de baseURL
+  console.log('✅ [API] Runtime baseURL configurado:', clean)
+  
+  // Actualizar cache de URL de WebSocket
+  try {
+    const updateFn = await getUpdateWsUrlCache()
+    if (updateFn) {
+      await updateFn()
+    }
+  } catch (e) {
+    console.warn('⚠️ No se pudo actualizar cache de WebSocket URL:', e.message)
+  }
+  
   return clean
 }
 
 /**
  * Recibe la URL base del backend (sin /api) y deriva apiUrl.
- * Ej: "http://192.168.1.10:4001" -> "http://192.168.1.10:4001/api"
+ * Ej: "http://192.168.1.10:4500" -> "http://192.168.1.10:4500/api"
  */
 export const setRuntimeApiFromJ4ProUrl = async (j4proUrl) => {
   if (!j4proUrl || typeof j4proUrl !== 'string') {

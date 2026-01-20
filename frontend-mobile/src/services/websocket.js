@@ -1,14 +1,36 @@
 import { io } from 'socket.io-client'
 import { showMessage } from 'react-native-flash-message'
 import { config } from '../config/env'
-import axios from 'axios'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+
+// Cache de la URL del WebSocket para acceso síncrono
+let cachedWsUrl = config.wsUrl
+
+// Actualizar cache de URL de WebSocket (llamar después de setRuntimeApiBaseUrl)
+export const updateWsUrlCache = async () => {
+  try {
+    const storedApiUrl = await AsyncStorage.getItem('apiUrl')
+    if (storedApiUrl && typeof storedApiUrl === 'string') {
+      cachedWsUrl = storedApiUrl.replace(/\/api\/?$/i, '')
+      console.log('🔌 [WebSocket] URL actualizada desde AsyncStorage:', cachedWsUrl)
+    }
+  } catch (e) {
+    console.warn('⚠️ [WebSocket] Error al leer URL de AsyncStorage:', e.message)
+  }
+  return cachedWsUrl
+}
+
+// Inicializar cache al importar el módulo
+AsyncStorage.getItem('apiUrl').then(url => {
+  if (url && typeof url === 'string') {
+    cachedWsUrl = url.replace(/\/api\/?$/i, '')
+    console.log('🔌 [WebSocket] URL inicial cargada:', cachedWsUrl)
+  }
+}).catch(() => {})
 
 const getRuntimeWsUrl = () => {
-  // ApiContext actualiza axios.defaults.baseURL al guardar IP:PUERTO.
-  // Usamos eso como fuente de verdad en runtime para evitar quedarnos con un puerto viejo.
-  const apiBase = axios?.defaults?.baseURL || config.apiUrl
-  if (!apiBase || typeof apiBase !== 'string') return config.wsUrl
-  return apiBase.replace(/\/api\/?$/i, '')
+  // Usar cache actualizado por updateWsUrlCache o setRuntimeApiBaseUrl
+  return cachedWsUrl || config.wsUrl
 }
 
 class WebSocketService {

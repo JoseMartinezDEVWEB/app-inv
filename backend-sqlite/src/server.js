@@ -202,7 +202,7 @@ app.get('/api/info-conexion', (req, res) => {
 // ===== INFO DE RED PARA CONEXIÓN AUTOMÁTICA (QR) =====
 // Devuelve IP local + URL completa (sin /api) para apps móviles.
 // Incluye un QR con el JSON exacto esperado por el cliente:
-//   {"j4pro_url":"http://IP:4001"}
+//   {"j4pro_url":"http://IP:4500"}
 app.get('/api/red/info', async (req, res) => {
   const addr = server.address()
   const activePort = addr && typeof addr === 'object' ? addr.port : config.port
@@ -259,8 +259,8 @@ app.use(errorHandler)
 
 // ===== INICIAR SERVIDOR =====
 
-// Puerto estable por defecto (LAN): 4001
-const PORT = Number(process.env.PORT) || 4001
+// Puerto estable por defecto (LAN): 4500
+const PORT = Number(process.env.PORT) || 4500
 
 // Escuchar en 0.0.0.0 para ser visible desde dispositivos en la misma red Wi‑Fi
 server.listen(PORT, '0.0.0.0', () => {

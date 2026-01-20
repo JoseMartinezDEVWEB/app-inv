@@ -1,6 +1,15 @@
 import NetInfo from '@react-native-community/netinfo'
 import axios from 'axios'
 
+// Crear instancia limpia de axios para descubrimiento de red (sin interceptores ni baseURL global)
+// Esto evita conflictos con la configuración de api.js
+const cleanAxios = axios.create({
+  timeout: 5000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
 /**
  * Servicio de Descubrimiento de Red Local
  * Permite encontrar el servidor backend en la red local
@@ -42,7 +51,7 @@ class NetworkDiscoveryService {
    * Busca en el rango 192.168.x.1-254 en los puertos comunes
    */
   async escanearRedLocal(
-    puertos = [4000, 4001, 4002, 4003, 4004, 4005, 4006, 4007, 4008, 4009, 4010, 3000, 3001, 5000, 8000, 8080, 8081]
+    puertos = [4500, 4000, 4001, 4002, 4003, 4004, 4005, 4006, 4007, 4008, 4009, 4010, 3000, 3001, 5000, 8000, 8080, 8081]
   ) {
     if (this.isScanning) {
       console.log('⚠️ Ya hay un escaneo en curso')
@@ -105,7 +114,8 @@ class NetworkDiscoveryService {
         const url = `http://${ip}:${puerto}/api/info-conexion`
         
         // Timeout corto para no esperar mucho
-        const response = await axios.get(url, {
+        // IMPORTANTE: Usar cleanAxios para evitar conflictos con interceptores de api.js
+        const response = await cleanAxios.get(url, {
           timeout: 2000,
           validateStatus: () => true, // Aceptar cualquier status
         })
@@ -153,7 +163,8 @@ class NetworkDiscoveryService {
     try {
       const url = `http://${ip}:${puerto}/api/info-conexion`
       
-      const response = await axios.get(url, {
+      // IMPORTANTE: Usar cleanAxios para evitar conflictos con interceptores de api.js
+      const response = await cleanAxios.get(url, {
         timeout: 5000,
       })
 
@@ -198,7 +209,8 @@ class NetworkDiscoveryService {
    */
   async verificarDisponibilidad(servidor) {
     try {
-      const response = await axios.get(`${servidor.url}/api/salud`, {
+      // IMPORTANTE: Usar cleanAxios para evitar conflictos con interceptores de api.js
+      const response = await cleanAxios.get(`${servidor.url}/api/salud`, {
         timeout: 3000,
       })
 
