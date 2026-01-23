@@ -201,6 +201,7 @@ class SesionInventario {
     const countStmt = db.prepare(`
       SELECT COUNT(*) as total
       FROM sesiones_inventario si
+      LEFT JOIN clientes_negocios cn ON si.clienteNegocioId = cn.id
       ${whereClause}
     `)
     const { total } = countStmt.get(...params)
@@ -209,25 +210,51 @@ class SesionInventario {
     const stmt = db.prepare(`
       SELECT 
         si.*,
-        cn.nombre as nombreCliente,
+        cn.id as cliente_id,
+        cn.nombre as cliente_nombre,
+        cn.telefono as cliente_telefono,
+        cn.direccion as cliente_direccion,
         u.nombre as nombreContador
       FROM sesiones_inventario si
-      INNER JOIN clientes_negocios cn ON si.clienteNegocioId = cn.id
+      LEFT JOIN clientes_negocios cn ON si.clienteNegocioId = cn.id
       INNER JOIN usuarios u ON si.contadorId = u.id
       ${whereClause}
       ORDER BY si.fecha DESC, si.createdAt DESC
       LIMIT ? OFFSET ?
     `)
 
-    const sesiones = stmt.all(...params, limite, offset).map(sesion => ({
-      ...sesion,
-      datosFinancieros: JSON.parse(sesion.datosFinancieros || '{}'),
-      totales: JSON.parse(sesion.totales || '{}'),
-      configuracion: JSON.parse(sesion.configuracion || '{}'),
-      timerEnMarcha: Boolean(sesion.timerEnMarcha),
-      // Alias para compatibilidad con frontend que espera _id
-      _id: sesion.id,
-    }))
+    const sesiones = stmt.all(...params, limite, offset).map(sesion => {
+      // Extraer datos del cliente antes del spread
+      const clienteNegocio = sesion.cliente_id ? {
+        _id: sesion.cliente_id,
+        id: sesion.cliente_id,
+        nombre: sesion.cliente_nombre || null,
+        telefono: sesion.cliente_telefono || null,
+        direccion: sesion.cliente_direccion || null,
+      } : null
+
+      // Construir objeto de sesión sin los campos del cliente que vienen del JOIN
+      const {
+        cliente_id,
+        cliente_nombre,
+        cliente_telefono,
+        cliente_direccion,
+        nombreContador,
+        ...sesionData
+      } = sesion
+
+      return {
+        ...sesionData,
+        datosFinancieros: JSON.parse(sesion.datosFinancieros || '{}'),
+        totales: JSON.parse(sesion.totales || '{}'),
+        configuracion: JSON.parse(sesion.configuracion || '{}'),
+        timerEnMarcha: Boolean(sesion.timerEnMarcha),
+        // Incluir objeto clienteNegocio completo
+        clienteNegocio: clienteNegocio,
+        // Alias para compatibilidad con frontend que espera _id
+        _id: sesion.id,
+      }
+    })
 
     return {
       sesiones: sesiones,

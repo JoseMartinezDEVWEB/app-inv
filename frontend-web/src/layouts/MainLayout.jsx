@@ -38,11 +38,13 @@ const MainLayout = ({ children }) => {
     { name: 'Agenda', href: '/agenda', icon: Calendar },
   ]
 
-  // Agregar opciones de colaboración solo para contables y administradores
-  const navigation = user?.rol === 'contable' || user?.rol === 'administrador'
+  // Agregar opciones de colaboración para contables, administradores y contadores
+  const navigation = user?.rol === 'contable' || user?.rol === 'administrador' || user?.rol === 'contador'
     ? [
         ...navigationBase,
-        { name: 'Usuarios', href: '/usuarios', icon: UserPlus },
+        ...(user?.rol === 'contable' || user?.rol === 'administrador' 
+          ? [{ name: 'Usuarios', href: '/usuarios', icon: UserPlus }]
+          : []),
         { name: 'Invitaciones', href: '/invitaciones', icon: QrCode },
       ]
     : navigationBase

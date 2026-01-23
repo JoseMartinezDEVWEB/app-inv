@@ -43,7 +43,7 @@ export const schemaRegistroUsuario = Joi.object({
 })
 
 export const schemaLoginUsuario = Joi.object({
-  email: Joi.string().email().required(),
+  email: Joi.string().required(), // Acepta email o nombre de usuario
   password: Joi.string().required(),
 })
 

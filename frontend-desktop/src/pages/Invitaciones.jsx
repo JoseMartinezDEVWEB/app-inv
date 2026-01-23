@@ -35,7 +35,7 @@ const Invitaciones = () => {
   });
 
   useEffect(() => {
-    if (!hasRole('contable') && !hasRole('administrador')) {
+    if (!hasRole('contable') && !hasRole('administrador') && !hasRole('contador')) {
       toast.error('No tienes permisos para acceder a esta página');
       return;
     }
@@ -315,13 +315,15 @@ const Invitaciones = () => {
             <Wifi className="w-5 h-5" />
             {loadingQRConexion ? 'Generando...' : 'QR Conexión Móvil'}
           </Button>
-          <Button
-            onClick={() => setModalGenerar(true)}
-            className="flex items-center gap-2"
-          >
-            <QrCode className="w-5 h-5" />
-            Generar Invitación
-          </Button>
+          {(hasRole('contable') || hasRole('administrador')) && (
+            <Button
+              onClick={() => setModalGenerar(true)}
+              className="flex items-center gap-2"
+            >
+              <QrCode className="w-5 h-5" />
+              Generar Invitación
+            </Button>
+          )}
         </div>
       </div>
 
@@ -397,7 +399,7 @@ const Invitaciones = () => {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      {invitacion.estado === 'pendiente' && (
+                      {invitacion.estado === 'pendiente' && (hasRole('contable') || hasRole('administrador')) && (
                         <button
                           onClick={() => handleCancelarInvitacion(invitacion._id)}
                           className="text-red-600 hover:text-red-900"

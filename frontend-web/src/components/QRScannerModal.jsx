@@ -182,7 +182,7 @@ const QRScannerModal = ({ isOpen, onClose }) => {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={handleClose}
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+          className="fixed inset-0 bg-black/30 backdrop-blur-sm"
         />
 
         {/* Modal */}
@@ -299,7 +299,7 @@ const QRScannerModal = ({ isOpen, onClose }) => {
 
                     {/* Estado de procesamiento */}
                     {isProcessing && (
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                         <div className="bg-white rounded-xl p-6 flex flex-col items-center space-y-3">
                           <div className="animate-spin rounded-full h-12 w-12 border-4 border-purple-600 border-t-transparent"></div>
                           <p className="text-gray-900 font-medium">Conectando...</p>

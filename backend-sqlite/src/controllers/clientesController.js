@@ -37,21 +37,33 @@ export const obtenerCliente = async (req, res) => {
 
 // Crear nuevo cliente
 export const crearCliente = async (req, res) => {
-  // Calcular business_id (el admin principal del negocio)
-  const businessId = req.usuario.contablePrincipalId || req.usuario.id
+  try {
+    // Calcular business_id (el admin principal del negocio)
+    const businessId = req.usuario.contablePrincipalId || req.usuario.id
 
-  const datosCliente = {
-    ...req.body,
-    contadorAsignadoId: req.usuario.id,
-    business_id: businessId,
-    created_by: req.usuario.id,
-    // Si el frontend envía uuid, lo usamos; si no, se genera en el modelo
-    uuid: req.body.uuid || req.body.id_uuid || null,
+    const datosCliente = {
+      ...req.body,
+      contadorAsignadoId: req.usuario.id,
+      business_id: businessId,
+      created_by: req.usuario.id,
+      // Si el frontend envía uuid, lo usamos; si no, se genera en el modelo
+      uuid: req.body.uuid || req.body.id_uuid || null,
+    }
+
+    const cliente = ClienteNegocio.crear(datosCliente)
+
+    if (!cliente) {
+      throw new AppError('Error al crear el cliente', 500)
+    }
+
+    res.status(201).json(respuestaExito(cliente, 'Cliente creado exitosamente'))
+  } catch (error) {
+    console.error('❌ Error al crear cliente:', error)
+    if (error instanceof AppError) {
+      throw error
+    }
+    throw new AppError('Error interno al crear cliente: ' + error.message, 500)
   }
-
-  const cliente = ClienteNegocio.crear(datosCliente)
-
-  res.status(201).json(respuestaExito(cliente, 'Cliente creado exitosamente'))
 }
 
 // Actualizar cliente

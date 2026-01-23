@@ -285,6 +285,29 @@ const Clientes = () => {
               <label className="block text-sm font-medium text-gray-700">Dirección</label>
               <p className="mt-1 text-sm text-gray-900">{selectedCliente?.direccion}</p>
             </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Estadísticas de Inventarios</label>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Total de Inventarios:</span>
+                  <span className="text-sm font-bold text-blue-600">
+                    {selectedCliente?.estadisticas?.totalInventarios || 0}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Último Inventario:</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {selectedCliente?.estadisticas?.ultimoInventario 
+                      ? new Date(selectedCliente.estadisticas.ultimoInventario).toLocaleDateString('es-ES', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })
+                      : 'Nunca'}
+                  </span>
+                </div>
+              </div>
+            </div>
             {selectedCliente?.notas && (
               <div>
                 <label className="block text-sm font-medium text-gray-700">Notas</label>

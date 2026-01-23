@@ -2807,31 +2807,31 @@ const InventarioDetalleNuevo = () => {
       </div>
 
       {showMenuModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg w-full max-w-sm p-4">
             <div className="space-y-3">
               <button onClick={() => { setShowMenuModal(false); setShowDownloadModal(true) }} className="w-full flex items-center justify-between px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded">
-                <span className="font-medium">Descargar listado</span>
-                <Download className="w-5 h-5" />
+                <span className="font-medium text-gray-900">Descargar listado</span>
+                <Download className="w-5 h-5 text-gray-900" />
               </button>
               <button onClick={() => { setShowMenuModal(false); setShowConnectModal(true) }} className="w-full flex items-center justify-between px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded">
-                <span className="font-medium">Conectar</span>
-                <Smartphone className="w-5 h-5" />
+                <span className="font-medium text-gray-900">Conectar</span>
+                <Smartphone className="w-5 h-5 text-gray-900" />
               </button>
               <button onClick={() => { setShowMenuModal(false); setShowSearchEditModal(true) }} className="w-full flex items-center justify-between px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded">
-                <span className="font-medium">Buscar producto</span>
-                <Search className="w-5 h-5" />
+                <span className="font-medium text-gray-900">Buscar producto</span>
+                <Search className="w-5 h-5 text-gray-900" />
               </button>
             </div>
             <div className="mt-4 flex justify-end">
-              <button onClick={() => setShowMenuModal(false)} className="px-4 py-2 text-slate-700 hover:text-slate-900">Cerrar</button>
+              <button onClick={() => setShowMenuModal(false)} className="px-4 py-2 text-gray-900 hover:text-gray-700 font-medium">Cerrar</button>
             </div>
           </div>
         </div>
       )}
 
       {showDownloadModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg w-full max-w-sm p-4">
             <h3 className="text-lg font-semibold mb-4">Descargar listado</h3>
             <div className="space-y-3">
@@ -2852,8 +2852,8 @@ const InventarioDetalleNuevo = () => {
       )}
 
       {showConnectModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-6xl max-h-[95vh] overflow-y-auto shadow-2xl">
             {/* Header */}
             <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-6 py-4 rounded-t-2xl">
               <div className="flex items-center justify-between">
@@ -3118,7 +3118,7 @@ const InventarioDetalleNuevo = () => {
 
       {/* Modal de Revisión de Productos del Colaborador */}
       {showRevisarProductosModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl">
             {/* Header */}
             <div className="bg-gradient-to-r from-orange-600 to-orange-700 px-6 py-4">
@@ -3269,7 +3269,7 @@ const InventarioDetalleNuevo = () => {
 
       {/* Modal QR Colaborador */}
       {showQRColaboradorModal && qrColaboradorData && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
             {/* Header */}
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 rounded-t-2xl">
@@ -3353,11 +3353,11 @@ const InventarioDetalleNuevo = () => {
       )}
 
       {showSearchEditModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg w-full max-w-2xl p-4">
             <div className="flex items-center space-x-3 mb-3">
-              <Search className="w-5 h-5 text-slate-700" />
-              <input value={invSearchTerm} onChange={(e) => setInvSearchTerm(e.target.value)} placeholder="Buscar por nombre o código..." className="flex-1 border rounded px-3 py-2" />
+              <Search className="w-5 h-5 text-gray-900" />
+              <input value={invSearchTerm} onChange={(e) => setInvSearchTerm(e.target.value)} placeholder="Buscar por nombre o código..." className="flex-1 border rounded px-3 py-2 text-gray-900 placeholder-gray-400" />
             </div>
             <div className="max-h-96 overflow-auto divide-y">
               {productosFiltrados.map((p) => {
@@ -3365,21 +3365,21 @@ const InventarioDetalleNuevo = () => {
                 return (
                   <div key={p.productoId} className="py-2 flex items-center gap-3">
                     <div className="flex-1">
-                      <div className="font-medium">{p.nombreProducto}</div>
-                      <div className="text-xs text-slate-500">{p.skuProducto || '-'}</div>
+                      <div className="font-medium text-gray-900">{p.nombreProducto}</div>
+                      <div className="text-xs text-gray-600">{p.skuProducto || '-'}</div>
                     </div>
-                    <input type="number" defaultValue={ev.cantidadContada} onChange={(e) => setEditValues(prev => ({ ...prev, [p.productoId]: { ...(prev[p.productoId] || {}), cantidadContada: parseFloat(e.target.value) || 0 } }))} className="w-24 border rounded px-2 py-1 text-right" />
-                    <input type="number" step="0.01" defaultValue={ev.costoProducto} onChange={(e) => setEditValues(prev => ({ ...prev, [p.productoId]: { ...(prev[p.productoId] || {}), costoProducto: parseFloat(e.target.value) || 0 } }))} className="w-28 border rounded px-2 py-1 text-right" />
+                    <input type="number" defaultValue={ev.cantidadContada} onChange={(e) => setEditValues(prev => ({ ...prev, [p.productoId]: { ...(prev[p.productoId] || {}), cantidadContada: parseFloat(e.target.value) || 0 } }))} className="w-24 border rounded px-2 py-1 text-right text-gray-900" />
+                    <input type="number" step="0.01" defaultValue={ev.costoProducto} onChange={(e) => setEditValues(prev => ({ ...prev, [p.productoId]: { ...(prev[p.productoId] || {}), costoProducto: parseFloat(e.target.value) || 0 } }))} className="w-28 border rounded px-2 py-1 text-right text-gray-900" />
                     <button onClick={() => { const data = editValues[p.productoId] || { cantidadContada: p.cantidadContada, costoProducto: p.costoProducto }; updateProductBulkMutation.mutate({ productoId: p.productoId, data }) }} className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Guardar</button>
                   </div>
                 )
               })}
               {productosFiltrados.length === 0 && (
-                <div className="py-6 text-center text-slate-500">No hay resultados</div>
+                <div className="py-6 text-center text-gray-600">No hay resultados</div>
               )}
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setShowSearchEditModal(false)} className="px-4 py-2 bg-slate-200 rounded hover:bg-slate-300">Cerrar</button>
+              <button onClick={() => setShowSearchEditModal(false)} className="px-4 py-2 bg-slate-200 rounded hover:bg-slate-300 text-gray-900 font-medium">Cerrar</button>
             </div>
           </div>
         </div>
@@ -3861,7 +3861,7 @@ const InventarioDetalleNuevo = () => {
 
       {/* Search Modal */}
       {showSearchModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-gray-800">Buscar Producto por Nombre</h3>
@@ -5430,14 +5430,14 @@ const InventarioDetalleNuevo = () => {
       {/* Modal de Reporte Completo */}
       {activeModal === 'reporteCompleto' && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowReportMenu(false)
             }
           }}
         >
-          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[95vh] overflow-hidden shadow-2xl">
+          <div className="bg-white rounded-lg max-w-[95vw] w-full max-h-[95vh] overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-teal-600 to-teal-700">
               <div className="flex items-center space-x-3">
                 <FileText className="w-6 h-6 text-white" />

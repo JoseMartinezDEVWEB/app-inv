@@ -67,7 +67,7 @@ const Modal = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm"
+            className="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm"
             onClick={handleOverlayClick}
           />
 

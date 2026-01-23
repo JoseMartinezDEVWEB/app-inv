@@ -15,7 +15,7 @@ const Login = () => {
   const navigate = useNavigate()
   
   const [formData, setFormData] = useState({
-    email: '',
+    email: '', // Puede ser email o nombre de usuario
     password: '',
   })
   
@@ -48,16 +48,12 @@ const Login = () => {
   const validateForm = () => {
     const newErrors = {}
     
-    if (!formData.email) {
-      newErrors.email = 'El email es requerido'
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'El email no es válido'
+    if (!formData.email || formData.email.trim() === '') {
+      newErrors.email = 'El correo electrónico o usuario es requerido'
     }
     
     if (!formData.password) {
       newErrors.password = 'La contraseña es requerida'
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'La contraseña debe tener al menos 6 caracteres'
     }
     
     setErrors(newErrors)
@@ -195,16 +191,16 @@ const Login = () => {
           className="bg-white py-8 px-6 shadow-strong rounded-2xl border border-gray-100"
         >
           <form className="space-y-6" onSubmit={handleSubmit}>
-            {/* Email */}
+            {/* Email o Usuario */}
             <Input
-              label="Correo electrónico"
+              label="Correo electrónico o Usuario"
               name="email"
-              type="email"
+              type="text"
               value={formData.email}
               onChange={handleChange}
               error={errors.email}
               leftIcon={<Mail className="w-5 h-5" />}
-              placeholder="tu@email.com"
+              placeholder="tu@email.com o nombre de usuario"
               required
             />
 

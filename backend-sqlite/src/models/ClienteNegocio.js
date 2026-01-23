@@ -10,6 +10,17 @@ const generateUUID = () => {
 }
 
 class ClienteNegocio {
+  // Verificar si una columna existe en la tabla
+  static columnExists(tableName, columnName) {
+    const db = dbManager.getDatabase()
+    try {
+      const info = db.prepare(`PRAGMA table_info(${tableName})`).all()
+      return info.some(col => col.name === columnName)
+    } catch (e) {
+      return false
+    }
+  }
+
   // Crear nuevo cliente
   static crear(datos) {
     const db = dbManager.getDatabase()
@@ -28,10 +39,15 @@ class ClienteNegocio {
       created_by = null,
     } = datos
 
-    // Si viene uuid del frontend, verificar que no exista ya
-    const clienteUuid = uuid || generateUUID()
-    
-    if (uuid) {
+    // Verificar si las columnas de sincronización existen
+    const hasUuid = ClienteNegocio.columnExists('clientes_negocios', 'uuid')
+    const hasBusinessId = ClienteNegocio.columnExists('clientes_negocios', 'business_id')
+    const hasCreatedBy = ClienteNegocio.columnExists('clientes_negocios', 'created_by')
+    const hasCreatedAt = ClienteNegocio.columnExists('clientes_negocios', 'created_at')
+    const hasUpdatedAt = ClienteNegocio.columnExists('clientes_negocios', 'updated_at')
+
+    // Si viene uuid del frontend y la columna existe, verificar que no exista ya
+    if (uuid && hasUuid) {
       const existeStmt = db.prepare('SELECT id FROM clientes_negocios WHERE uuid = ?')
       const existe = existeStmt.get(uuid)
       if (existe) {
@@ -40,29 +56,50 @@ class ClienteNegocio {
       }
     }
 
+    // Construir query dinámicamente según las columnas disponibles
+    let columns = ['nombre', 'telefono', 'direccion', 'contadorAsignadoId', 'configuracionInventario', 'proximaVisita', 'notas', 'activo']
+    let values = [nombre, telefono, direccion, contadorAsignadoId, JSON.stringify(configuracionInventario), proximaVisita, notas, 1]
+    let placeholders = ['?', '?', '?', '?', '?', '?', '?', '?']
+
+    // Agregar columnas opcionales si existen
+    if (hasUuid) {
+      const clienteUuid = uuid || generateUUID()
+      columns.push('uuid')
+      values.push(clienteUuid)
+      placeholders.push('?')
+    }
+    
+    if (hasBusinessId) {
+      columns.push('business_id')
+      values.push(business_id || contadorAsignadoId)
+      placeholders.push('?')
+    }
+    
+    if (hasCreatedBy) {
+      columns.push('created_by')
+      values.push(created_by || contadorAsignadoId)
+      placeholders.push('?')
+    }
+    
+    if (hasCreatedAt) {
+      columns.push('created_at')
+      values.push(timestamp)
+      placeholders.push('?')
+    }
+    
+    if (hasUpdatedAt) {
+      columns.push('updated_at')
+      values.push(timestamp)
+      placeholders.push('?')
+    }
+
     const stmt = db.prepare(`
       INSERT INTO clientes_negocios (
-        nombre, telefono, direccion, contadorAsignadoId,
-        configuracionInventario, proximaVisita, notas, activo,
-        uuid, business_id, created_by, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ${columns.join(', ')}
+      ) VALUES (${placeholders.join(', ')})
     `)
 
-    const info = stmt.run(
-      nombre,
-      telefono,
-      direccion,
-      contadorAsignadoId,
-      JSON.stringify(configuracionInventario),
-      proximaVisita,
-      notas,
-      1,
-      clienteUuid,
-      business_id || contadorAsignadoId,
-      created_by || contadorAsignadoId,
-      timestamp,
-      timestamp
-    )
+    const info = stmt.run(...values)
 
     return ClienteNegocio.buscarPorId(info.lastInsertRowid)
   }
@@ -143,6 +180,8 @@ class ClienteNegocio {
     const { total } = countStmt.get(...params)
 
     // Obtener clientes
+    // Ordenar por fecha de creación descendente (más reciente primero), luego por nombre
+    const orderBy = 'ORDER BY COALESCE(cn.created_at, cn.id) DESC, cn.nombre ASC'
     const stmt = db.prepare(`
       SELECT 
         cn.*,
@@ -150,18 +189,38 @@ class ClienteNegocio {
       FROM clientes_negocios cn
       INNER JOIN usuarios u ON cn.contadorAsignadoId = u.id
       WHERE ${whereClause}
-      ORDER BY cn.nombre
+      ${orderBy}
       LIMIT ? OFFSET ?
     `)
 
-    const clientes = stmt.all(...params, limite, offset).map(cliente => ({
-      ...cliente,
-      configuracionInventario: JSON.parse(cliente.configuracionInventario || '{}'),
-      estadisticas: JSON.parse(cliente.estadisticas || '{}'),
-      // Alias para compatibilidad con frontend que espera _id
-      _id: cliente.id,
-      id_uuid: cliente.uuid,
-    }))
+    const clientes = stmt.all(...params, limite, offset).map(cliente => {
+      // Calcular estadísticas reales desde la base de datos
+      const estadisticasStmt = db.prepare(`
+        SELECT 
+          COUNT(*) as totalInventarios,
+          MAX(fecha) as ultimoInventario
+        FROM sesiones_inventario
+        WHERE clienteNegocioId = ? AND estado = 'completada'
+      `)
+      const estadisticasDb = estadisticasStmt.get(cliente.id)
+      
+      // Combinar estadísticas de BD con las guardadas (si existen)
+      const estadisticasGuardadas = JSON.parse(cliente.estadisticas || '{}')
+      const estadisticas = {
+        totalInventarios: estadisticasDb?.totalInventarios || 0,
+        ultimoInventario: estadisticasDb?.ultimoInventario || estadisticasGuardadas?.ultimoInventario || null,
+        ...estadisticasGuardadas, // Mantener otras estadísticas guardadas
+      }
+      
+      return {
+        ...cliente,
+        configuracionInventario: JSON.parse(cliente.configuracionInventario || '{}'),
+        estadisticas: estadisticas,
+        // Alias para compatibilidad con frontend que espera _id
+        _id: cliente.id,
+        id_uuid: cliente.uuid,
+      }
+    })
 
     return {
       datos: clientes,

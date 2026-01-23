@@ -20,13 +20,13 @@ const InvitacionesScreen = () => {
   const { data, isLoading, isFetching } = useQuery(
     ['mis-invitaciones'],
     () => invitacionesApi.listMine(),
-    { select: (r) => r.data.datos || [], enabled: hasRole('contable') || hasRole('administrador'), onError: handleApiError }
+    { select: (r) => r.data.datos || [], enabled: hasRole('contable') || hasRole('administrador') || hasRole('contador'), onError: handleApiError }
   )
 
   const { data: colaboradores, isLoading: loadingColab, refetch: refetchColab } = useQuery(
     ['colaboradores'],
     () => invitacionesApi.listarColaboradores(),
-    { select: (r) => r.data.datos || [], enabled: hasRole('contable') || hasRole('administrador'), onError: handleApiError }
+    { select: (r) => r.data.datos || [], enabled: hasRole('contable') || hasRole('administrador') || hasRole('contador'), onError: handleApiError }
   )
 
   const genMutation = useMutation((payload) => invitacionesApi.createQR(payload), {
@@ -111,7 +111,7 @@ const InvitacionesScreen = () => {
     </View>
   )
 
-  if (!hasRole('contable') && !hasRole('administrador')) {
+  if (!hasRole('contable') && !hasRole('administrador') && !hasRole('contador')) {
     return (
       <View style={styles.center}>
         <Text style={styles.info}>No tienes permisos para acceder a esta sección</Text>
@@ -123,10 +123,12 @@ const InvitacionesScreen = () => {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Invitaciones QR</Text>
-        <TouchableOpacity style={styles.addButton} onPress={() => setModalGenerar(true)}>
-          <Ionicons name="qr-code-outline" size={18} color="#fff" />
-          <Text style={styles.addButtonText}>Generar</Text>
-        </TouchableOpacity>
+        {(hasRole('contable') || hasRole('administrador')) && (
+          <TouchableOpacity style={styles.addButton} onPress={() => setModalGenerar(true)}>
+            <Ionicons name="qr-code-outline" size={18} color="#fff" />
+            <Text style={styles.addButtonText}>Generar</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16 }}>
@@ -150,7 +152,7 @@ const InvitacionesScreen = () => {
                 </View>
                 <Text style={styles.meta}>Expira: {new Date(item.expiraEn).toLocaleString()}</Text>
               </View>
-              {item.estado === 'pendiente' && (
+              {item.estado === 'pendiente' && (hasRole('contable') || hasRole('administrador')) && (
                 <TouchableOpacity style={styles.iconButton} onPress={() => {
                   Alert.alert('Confirmar', '¿Cancelar invitación?', [
                     { text: 'No', style: 'cancel' },

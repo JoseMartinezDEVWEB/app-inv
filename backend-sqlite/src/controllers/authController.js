@@ -26,6 +26,7 @@ const generarTokens = (usuario) => {
 // Login
 export const login = async (req, res) => {
   const { email, password } = req.body
+  // 'email' puede ser email o nombre de usuario
 
   // Buscar usuario (por email o nombre de usuario)
   const usuario = Usuario.buscarPorCredencial(email)

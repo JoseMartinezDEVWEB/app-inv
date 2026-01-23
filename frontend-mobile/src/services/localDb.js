@@ -237,22 +237,44 @@ const localDb = {
             // Migraciones específicas
             await addColumnIfNotExists('clientes', 'notas', 'TEXT');
             await addColumnIfNotExists('sesiones', 'clienteNegocioId', 'TEXT');
+            
+            // Agregar columna nombreUsuario a usuarios si no existe
+            await addColumnIfNotExists('usuarios', 'nombreUsuario', 'TEXT');
 
             // Crear o actualizar usuario admin por defecto
             const checkAdmin = await database.getFirstAsync('SELECT * FROM usuarios WHERE email = ?', ['admin@j4pro.com']);
             if (!checkAdmin) {
-                await database.runAsync(
-                    `INSERT INTO usuarios (_id, nombre, email, password, rol, activo, createdAt, updatedAt)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                    ['admin-local-id', 'Administrador', 'admin@j4pro.com', 'Jose.1919', 'administrador', 1, new Date().toISOString(), new Date().toISOString()]
-                );
+                // Intentar insertar con nombreUsuario si la columna existe
+                try {
+                    await database.runAsync(
+                        `INSERT INTO usuarios (_id, nombre, nombreUsuario, email, password, rol, activo, createdAt, updatedAt)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        ['admin-local-id', 'Administrador', 'admin', 'admin@j4pro.com', 'Jose.1919', 'administrador', 1, new Date().toISOString(), new Date().toISOString()]
+                    );
+                } catch (e) {
+                    // Si falla (columna no existe aún), insertar sin nombreUsuario
+                    await database.runAsync(
+                        `INSERT INTO usuarios (_id, nombre, email, password, rol, activo, createdAt, updatedAt)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                        ['admin-local-id', 'Administrador', 'admin@j4pro.com', 'Jose.1919', 'administrador', 1, new Date().toISOString(), new Date().toISOString()]
+                    );
+                }
                 console.log('✅ Usuario admin creado');
             } else {
                 // Asegurar que la contraseña del admin sea la correcta
-                await database.runAsync(
-                    `UPDATE usuarios SET password = ?, activo = 1, updatedAt = ? WHERE email = ?`,
-                    ['Jose.1919', new Date().toISOString(), 'admin@j4pro.com']
-                );
+                // También actualizar nombreUsuario si existe la columna
+                try {
+                    await database.runAsync(
+                        `UPDATE usuarios SET password = ?, nombreUsuario = ?, activo = 1, updatedAt = ? WHERE email = ?`,
+                        ['Jose.1919', 'admin', new Date().toISOString(), 'admin@j4pro.com']
+                    );
+                } catch (e) {
+                    // Si falla (columna no existe aún), actualizar sin nombreUsuario
+                    await database.runAsync(
+                        `UPDATE usuarios SET password = ?, activo = 1, updatedAt = ? WHERE email = ?`,
+                        ['Jose.1919', new Date().toISOString(), 'admin@j4pro.com']
+                    );
+                }
                 console.log('✅ Usuario admin actualizado');
             }
 
@@ -914,14 +936,35 @@ const localDb = {
     loginLocal: async (emailOrName, password) => {
         try {
             const database = await getDatabase();
-            const usuario = await database.getFirstAsync(
-                `SELECT * FROM usuarios WHERE (email = ? OR nombre = ?) AND activo = 1`,
-                [emailOrName, emailOrName]
-            );
-            if (!usuario || usuario.password !== password) return { success: false, error: 'Credenciales inválidas' };
+            // Primero verificar si la columna nombreUsuario existe
+            const tableInfo = await database.getAllAsync(`PRAGMA table_info(usuarios)`);
+            const hasNombreUsuario = tableInfo.some(col => col.name === 'nombreUsuario');
+            
+            let usuario;
+            if (hasNombreUsuario) {
+                // Buscar por email, nombreUsuario o nombre
+                usuario = await database.getFirstAsync(
+                    `SELECT * FROM usuarios WHERE (email = ? OR nombreUsuario = ? OR nombre = ?) AND activo = 1`,
+                    [emailOrName, emailOrName, emailOrName]
+                );
+            } else {
+                // Si la columna no existe, buscar solo por email y nombre
+                usuario = await database.getFirstAsync(
+                    `SELECT * FROM usuarios WHERE (email = ? OR nombre = ?) AND activo = 1`,
+                    [emailOrName, emailOrName]
+                );
+            }
+            
+            if (!usuario || usuario.password !== password) {
+                return { success: false, error: 'Credenciales inválidas' };
+            }
+            
             const { password: _, ...u } = usuario;
             return { success: true, usuario: { ...u, _id: usuario._id, loginLocal: true } };
-        } catch (e) { return { success: false, error: e.message }; }
+        } catch (e) {
+            console.error('Error en loginLocal:', e);
+            return { success: false, error: e.message };
+        }
     },
     
     // ... Otras funciones de usuarios e invitaciones se mantienen igual ...

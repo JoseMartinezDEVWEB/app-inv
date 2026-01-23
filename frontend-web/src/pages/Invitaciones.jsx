@@ -32,7 +32,7 @@ const Invitaciones = () => {
   });
 
   useEffect(() => {
-    if (!hasRole('contable') && !hasRole('administrador')) {
+    if (!hasRole('contable') && !hasRole('administrador') && !hasRole('contador')) {
       toast.error('No tienes permisos para acceder a esta página');
       return;
     }
@@ -339,7 +339,7 @@ const Invitaciones = () => {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      {invitacion.estado === 'pendiente' && (
+                      {invitacion.estado === 'pendiente' && (hasRole('contable') || hasRole('administrador')) && (
                         <button
                           onClick={() => handleCancelarInvitacion(invitacion._id)}
                           className="text-red-600 hover:text-red-900"
