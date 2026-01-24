@@ -66,6 +66,44 @@ class BackendServer {
     throw new Error('Backend no encontrado')
   }
 
+  /**
+   * Intenta encontrar Node.js 18 desde nvm para asegurar compatibilidad con better-sqlite3
+   * Si no se encuentra, usa el 'node' del PATH
+   */
+  getNodeExecutable() {
+    // En Windows con nvm-windows, las versiones están en:
+    // C:\Users\<user>\AppData\Local\nvm\v<version>\node.exe
+    const userHome = process.env.HOME || process.env.USERPROFILE
+    const nvmPath = path.join(userHome, 'AppData', 'Local', 'nvm', 'v18.20.4', 'node.exe')
+    
+    if (fs.existsSync(nvmPath)) {
+      console.log('✅ Usando Node.js 18.20.4 desde nvm')
+      return nvmPath
+    }
+
+    // Intentar otras versiones de Node.js 18
+    const nvmBase = path.join(userHome, 'AppData', 'Local', 'nvm')
+    if (fs.existsSync(nvmBase)) {
+      try {
+        const versions = fs.readdirSync(nvmBase)
+        const node18Version = versions.find(v => v.startsWith('v18.'))
+        if (node18Version) {
+          const nodePath = path.join(nvmBase, node18Version, 'node.exe')
+          if (fs.existsSync(nodePath)) {
+            console.log(`✅ Usando Node.js ${node18Version} desde nvm`)
+            return nodePath
+          }
+        }
+      } catch (error) {
+        // Si no podemos leer el directorio, continuar con 'node' del PATH
+      }
+    }
+
+    // Fallback: usar 'node' del PATH (debe ser Node.js 18 si el usuario ejecutó 'nvm use 18.20.4')
+    console.log('⚠️ Usando Node.js del PATH. Asegúrate de ejecutar "nvm use 18.20.4" antes de iniciar')
+    return 'node'
+  }
+
   async start() {
     if (this.isRunning) {
       console.log('⚠️ Backend ya está corriendo')
@@ -97,8 +135,11 @@ class BackendServer {
       this._backendLogsBuffer = ''
       this._backendLastLines = []
 
+      // Obtener ejecutable de Node.js (preferir Node.js 18 para compatibilidad con better-sqlite3)
+      const nodeExecutable = this.getNodeExecutable()
+
       // Iniciar servidor backend
-      this.process = spawn('node', ['src/server.js'], {
+      this.process = spawn(nodeExecutable, ['src/server.js'], {
         cwd: backendPath,
         env: {
           ...process.env,

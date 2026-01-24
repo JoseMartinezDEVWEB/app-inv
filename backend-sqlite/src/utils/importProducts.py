@@ -43,65 +43,146 @@ def parsear_numero(valor: Any) -> float:
 def procesar_excel(archivo_path: str) -> List[Dict[str, Any]]:
     """Procesa un archivo Excel y retorna una lista de diccionarios"""
     try:
-        # Leer Excel
-        df = pd.read_excel(archivo_path, dtype=str) # Leer todo como string para evitar conversiones automáticas erróneas
+        # Leer Excel - intentar todas las hojas si hay múltiples
+        excel_file = pd.ExcelFile(archivo_path)
+        df = None
+        
+        # Intentar leer la primera hoja que tenga datos
+        for sheet_name in excel_file.sheet_names:
+            try:
+                temp_df = pd.read_excel(archivo_path, sheet_name=sheet_name, dtype=str, header=None)
+                # Verificar si tiene al menos 2 filas (encabezado + datos)
+                if len(temp_df) > 1:
+                    # Intentar detectar si la primera fila es encabezado
+                    primera_fila = temp_df.iloc[0].astype(str).str.lower().str.strip()
+                    # Si la primera fila parece tener nombres de columnas (texto, no números)
+                    if primera_fila.str.contains('nombre|producto|descrip|articulo|item|precio|costo|valor', case=False, na=False).any():
+                        df = pd.read_excel(archivo_path, sheet_name=sheet_name, dtype=str, header=0)
+                    else:
+                        # Si no parece encabezado, usar la primera fila como datos
+                        df = temp_df
+                        df.columns = [f'Columna_{i+1}' for i in range(len(df.columns))]
+                    break
+            except:
+                continue
+        
+        # Si no se encontró ninguna hoja válida, intentar leer la primera hoja directamente
+        if df is None or len(df) == 0:
+            df = pd.read_excel(archivo_path, dtype=str)
+        
+        # Si el DataFrame está vacío
+        if df is None or len(df) == 0:
+            return {'error': 'El archivo Excel está vacío o no contiene datos'}
         
         # Normalizar nombres de columnas (minusculas, sin acentos, sin espacios extra)
         df.columns = df.columns.astype(str).str.strip().str.lower()
         
-        # Mapeo de posibles nombres de columnas a nuestro esquema
+        # Mapeo de posibles nombres de columnas a nuestro esquema (más amplio)
         mapa_columnas = {
-            'nombre': ['nombre', 'producto', 'descripción', 'descripcion', 'articulo', 'item'],
-            'codigo_barras': ['codigo', 'código', 'barras', 'barcode', 'ean', 'sku', 'referencia'],
-            'precio': ['precio', 'costo', 'valor', 'pvp', 'precio venta', 'precio_venta', 'costobase'],
-            'categoria': ['categoria', 'categoría', 'grupo', 'familia', 'departamento'],
-            'cantidad': ['cantidad', 'stock', 'existencia', 'inventario', 'unidades']
+            'nombre': ['nombre', 'producto', 'descripción', 'descripcion', 'articulo', 'item', 'product', 'desc', 'detalle'],
+            'codigo_barras': ['codigo', 'código', 'barras', 'barcode', 'ean', 'sku', 'referencia', 'ref', 'cod'],
+            'precio': ['precio', 'costo', 'valor', 'pvp', 'precio venta', 'precio_venta', 'costobase', 'costo base', 'precio unitario', 'unitario'],
+            'categoria': ['categoria', 'categoría', 'grupo', 'familia', 'departamento', 'tipo', 'clase'],
+            'cantidad': ['cantidad', 'stock', 'existencia', 'inventario', 'unidades', 'qty', 'qty.', 'cant']
         }
         
-        # Identificar columnas
+        # Identificar columnas (búsqueda más flexible)
         columnas_encontradas = {}
         for campo_destino, posibles_nombres in mapa_columnas.items():
             for posible in posibles_nombres:
-                match = next((col for col in df.columns if posible in col), None)
-                if match:
-                    columnas_encontradas[campo_destino] = match
+                # Buscar coincidencias exactas o parciales
+                matches = [col for col in df.columns if posible in col or col in posible]
+                if matches:
+                    columnas_encontradas[campo_destino] = matches[0]
                     break
         
-        # Si no encontramos columna nombre, es crítico
+        # Si no encontramos columna nombre, intentar estrategias alternativas
         if 'nombre' not in columnas_encontradas:
-            # Intentar usar la primera columna de texto como nombre si no se encontró explícitamente
-            if len(df.columns) > 0:
+            # Estrategia 1: Buscar la primera columna que tenga texto no vacío
+            for col in df.columns:
+                valores_no_vacios = df[col].astype(str).str.strip()
+                valores_no_vacios = valores_no_vacios[valores_no_vacios != '']
+                valores_no_vacios = valores_no_vacios[valores_no_vacios != 'nan']
+                # Si tiene al menos un valor no vacío y parece texto (no solo números)
+                if len(valores_no_vacios) > 0:
+                    # Verificar si tiene al menos un valor que no sea solo números
+                    tiene_texto = valores_no_vacios.str.match(r'^[^0-9]+$', na=False).any()
+                    if tiene_texto or len(valores_no_vacios) > len(df) * 0.5:  # Al menos 50% de filas con datos
+                        columnas_encontradas['nombre'] = col
+                        break
+            
+            # Estrategia 2: Si aún no encontramos, usar la primera columna
+            if 'nombre' not in columnas_encontradas and len(df.columns) > 0:
                 columnas_encontradas['nombre'] = df.columns[0]
             else:
-                return {'error': 'No se pudo identificar la columna de Nombre del producto'}
-
-        productos = []
+                return {'error': 'No se pudo identificar la columna de Nombre del producto. Verifica que el archivo tenga al menos una columna con nombres de productos.'}
         
-        for _, row in df.iterrows():
-            nombre = limpiar_texto(row.get(columnas_encontradas.get('nombre')))
+        productos = []
+        filas_procesadas = 0
+        
+        for idx, row in df.iterrows():
+            nombre = limpiar_texto(row.get(columnas_encontradas.get('nombre'), ''))
             
-            # Saltar filas vacías
-            if not nombre:
+            # Saltar filas vacías o que solo tengan espacios/números
+            if not nombre or nombre == 'nan' or nombre.strip() == '':
                 continue
             
-            precio = parsear_numero(row.get(columnas_encontradas.get('precio'))) if 'precio' in columnas_encontradas else 0
-            cantidad = int(parsear_numero(row.get(columnas_encontradas.get('cantidad')))) if 'cantidad' in columnas_encontradas else 1
+            # Validar que el nombre tenga al menos 2 caracteres (no solo un número o símbolo)
+            if len(nombre.strip()) < 2:
+                continue
+            
+            # Intentar obtener precio de diferentes columnas
+            precio = 0
+            if 'precio' in columnas_encontradas:
+                precio = parsear_numero(row.get(columnas_encontradas.get('precio')))
+            else:
+                # Buscar en todas las columnas numéricas
+                for col in df.columns:
+                    if col != columnas_encontradas.get('nombre'):
+                        try:
+                            val = parsear_numero(row.get(col))
+                            if val > 0:
+                                precio = val
+                                break
+                        except:
+                            continue
+            
+            cantidad = 1
+            if 'cantidad' in columnas_encontradas:
+                cantidad = int(parsear_numero(row.get(columnas_encontradas.get('cantidad'))))
+            
+            codigo_barras = ''
+            if 'codigo_barras' in columnas_encontradas:
+                codigo_barras = limpiar_texto(row.get(columnas_encontradas.get('codigo_barras')))
+            
+            categoria = 'General'
+            if 'categoria' in columnas_encontradas:
+                cat = limpiar_texto(row.get(columnas_encontradas.get('categoria')))
+                if cat and cat != 'nan':
+                    categoria = cat
                 
             producto = {
                 'nombre': nombre,
-                'codigoBarras': limpiar_texto(row.get(columnas_encontradas.get('codigo_barras'))) if 'codigo_barras' in columnas_encontradas else '',
+                'codigoBarras': codigo_barras,
                 'cantidad': cantidad,
                 'precio': precio,
                 'costoBase': precio,  # Mapear precio a costoBase para el backend
-                'categoria': limpiar_texto(row.get(columnas_encontradas.get('categoria'))) if 'categoria' in columnas_encontradas else 'General'
+                'categoria': categoria
             }
 
             productos.append(producto)
+            filas_procesadas += 1
+        
+        # Validar que se encontraron productos
+        if len(productos) == 0:
+            return {'error': f'No se encontraron productos válidos en el archivo. Se procesaron {len(df)} filas pero ninguna contenía un nombre de producto válido. Verifica que el archivo tenga al menos una columna con nombres de productos.'}
             
         return productos
 
     except Exception as e:
-        return {'error': f'Error procesando Excel: {str(e)}'}
+        import traceback
+        error_detail = traceback.format_exc()
+        return {'error': f'Error procesando Excel: {str(e)}. Detalles: {error_detail[-500:]}'}
 
 def procesar_pdf_con_gemini(archivo_path: str, api_key: str) -> List[Dict[str, Any]]:
     """
