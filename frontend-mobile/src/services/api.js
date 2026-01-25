@@ -369,7 +369,7 @@ api.interceptors.response.use(
 // Exports igual que antes...
 export const handleApiResponse = (res) => res.data?.datos || res.data;
 export const handleApiError = (err) => {
-    const msg = err.response?.data?.mensaje || err.message;
+    const msg = err.response?.data?.detalles?.[0]?.mensaje || err.response?.data?.mensaje || err.message;
     showMessage({ message: 'Error', description: msg, type: 'danger' });
     return msg;
 };
@@ -554,24 +554,13 @@ export const solicitudesConexionApi = {
   sincronizar: (solicitudId, temporalIds) => api.post(`/solicitudes-conexion/${solicitudId}/sincronizar`, { temporalIds }),
 };
 
-// API para gestión de usuarios (admin/contador)
+// API para gestión de usuarios (admin/contador/contable)
 export const usuariosApi = {
-  // Obtener usuarios subordinados (colaboradores, contadores)
   getSubordinados: () => api.get('/usuarios/subordinados'),
-  
-  // Crear nuevo usuario
   create: (data) => api.post('/usuarios', data),
-  
-  // Obtener usuario por ID
   getById: (id) => api.get(`/usuarios/${id}`),
-  
-  // Actualizar usuario
   update: (id, data) => api.put(`/usuarios/${id}`, data),
-  
-  // Cambiar contraseña de usuario
   changePassword: (id, password) => api.patch(`/usuarios/${id}/password`, { password }),
-  
-  // Desactivar usuario
   delete: (id) => api.delete(`/usuarios/${id}`),
 };
 

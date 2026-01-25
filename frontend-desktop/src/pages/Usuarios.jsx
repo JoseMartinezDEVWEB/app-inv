@@ -24,7 +24,8 @@ const Usuarios = () => {
     email: '',
     password: '',
     telefono: '',
-    rol: 'colaborador'
+    rol: 'colaborador',
+    limiteColaboradores: ''
   });
 
   // Verificar que el usuario sea contable
@@ -36,18 +37,18 @@ const Usuarios = () => {
     cargarUsuarios();
   }, []);
 
-  const cargarUsuarios = async () => {
+  const cargarUsuarios = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const response = await api.get('/usuarios/subordinados');
-      setUsuarios(response.data.datos);
+      setUsuarios(response.data.datos || []);
       setError(null);
     } catch (err) {
       console.error('Error al cargar usuarios:', err);
       setError('Error al cargar los usuarios');
       toast.error('Error al cargar los usuarios');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -60,14 +61,21 @@ const Usuarios = () => {
     }
 
     try {
-      await api.post('/usuarios', formData);
+      const payload = { ...formData };
+      if (hasRole('administrador') && formData.rol === 'contador' && formData.limiteColaboradores !== '' && formData.limiteColaboradores != null) {
+        payload.limiteColaboradores = Number(formData.limiteColaboradores);
+      } else {
+        delete payload.limiteColaboradores;
+      }
+      await api.post('/usuarios', payload);
       toast.success('Usuario creado exitosamente');
       setModalCrear(false);
       resetForm();
-      cargarUsuarios();
+      await cargarUsuarios(true);
     } catch (err) {
       console.error('Error al crear usuario:', err);
-      toast.error(err.response?.data?.mensaje || 'Error al crear usuario');
+      const msg = err.response?.data?.detalles?.[0]?.mensaje || err.response?.data?.mensaje || 'Error al crear usuario';
+      toast.error(msg);
     }
   };
 
@@ -75,19 +83,26 @@ const Usuarios = () => {
     e.preventDefault();
     
     try {
-      await api.put(`/usuarios/${usuarioSeleccionado._id}`, {
+      const payload = {
         nombre: formData.nombre,
         email: formData.email,
         telefono: formData.telefono,
         rol: formData.rol
-      });
+      };
+      if (hasRole('administrador') && usuarioSeleccionado?.rol === 'contador') {
+        payload.limiteColaboradores = formData.limiteColaboradores === '' || formData.limiteColaboradores == null
+          ? null
+          : Number(formData.limiteColaboradores);
+      }
+      await api.put(`/usuarios/${usuarioSeleccionado._id}`, payload);
       toast.success('Usuario actualizado exitosamente');
       setModalEditar(false);
       resetForm();
-      cargarUsuarios();
+      await cargarUsuarios(true);
     } catch (err) {
       console.error('Error al actualizar usuario:', err);
-      toast.error(err.response?.data?.mensaje || 'Error al actualizar usuario');
+      const msg = err.response?.data?.detalles?.[0]?.mensaje || err.response?.data?.mensaje || 'Error al actualizar usuario';
+      toast.error(msg);
     }
   };
 
@@ -106,6 +121,7 @@ const Usuarios = () => {
       toast.success('Contraseña actualizada exitosamente');
       setModalPassword(false);
       resetForm();
+      await cargarUsuarios(true);
     } catch (err) {
       console.error('Error al cambiar contraseña:', err);
       toast.error(err.response?.data?.mensaje || 'Error al cambiar contraseña');
@@ -118,7 +134,7 @@ const Usuarios = () => {
     try {
       await api.delete(`/usuarios/${usuarioId}`);
       toast.success('Usuario desactivado exitosamente');
-      cargarUsuarios();
+      await cargarUsuarios(true);
     } catch (err) {
       console.error('Error al eliminar usuario:', err);
       toast.error(err.response?.data?.mensaje || 'Error al eliminar usuario');
@@ -132,7 +148,8 @@ const Usuarios = () => {
       email: usuario.email,
       telefono: usuario.telefono || '',
       rol: usuario.rol,
-      password: ''
+      password: '',
+      limiteColaboradores: usuario.limiteColaboradores ?? ''
     });
     setModalEditar(true);
   };
@@ -149,7 +166,8 @@ const Usuarios = () => {
       email: '',
       password: '',
       telefono: '',
-      rol: 'colaborador'
+      rol: 'colaborador',
+      limiteColaboradores: ''
     });
     setUsuarioSeleccionado(null);
   };
@@ -210,6 +228,11 @@ const Usuarios = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Estado
                 </th>
+                {hasRole('administrador') && (
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Límite colab.
+                  </th>
+                )}
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Acciones
                 </th>
@@ -218,13 +241,13 @@ const Usuarios = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {usuarios.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={hasRole('administrador') ? 7 : 6} className="px-6 py-8 text-center text-gray-500">
                     No hay usuarios subordinados registrados
                   </td>
                 </tr>
               ) : (
                 usuarios.map((usuario) => (
-                  <tr key={usuario._id} className="hover:bg-gray-50">
+                  <tr key={usuario._id || usuario.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
                         {usuario.nombre}
@@ -256,6 +279,11 @@ const Usuarios = () => {
                         {usuario.activo ? 'Activo' : 'Inactivo'}
                       </span>
                     </td>
+                    {hasRole('administrador') && (
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {usuario.rol === 'contador' ? (usuario.limiteColaboradores ?? '—') : '—'}
+                      </td>
+                    )}
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end gap-2">
                         <button
@@ -273,7 +301,7 @@ const Usuarios = () => {
                           <Key className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleEliminarUsuario(usuario._id)}
+                          onClick={() => handleEliminarUsuario(usuario._id || usuario.id)}
                           className="text-red-600 hover:text-red-900"
                           title="Desactivar"
                         >
@@ -344,6 +372,17 @@ const Usuarios = () => {
               <option value="contador">Contador</option>
             </select>
           </div>
+          {hasRole('administrador') && formData.rol === 'contador' && (
+            <Input
+              label="Límite de colaboradores"
+              name="limiteColaboradores"
+              type="number"
+              min="0"
+              value={formData.limiteColaboradores}
+              onChange={handleChange}
+              placeholder="Ej. 3. Vacío = sin límite"
+            />
+          )}
           <div className="flex justify-end gap-2 pt-4">
             <Button
               type="button"
@@ -408,6 +447,17 @@ const Usuarios = () => {
               <option value="contador">Contador</option>
             </select>
           </div>
+          {hasRole('administrador') && formData.rol === 'contador' && (
+            <Input
+              label="Límite de colaboradores"
+              name="limiteColaboradores"
+              type="number"
+              min="0"
+              value={formData.limiteColaboradores}
+              onChange={handleChange}
+              placeholder="Ej. 3. Vacío = sin límite"
+            />
+          )}
           <div className="flex justify-end gap-2 pt-4">
             <Button
               type="button"

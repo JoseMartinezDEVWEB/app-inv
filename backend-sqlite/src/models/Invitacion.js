@@ -142,6 +142,18 @@ class Invitacion {
     return Invitacion.buscarPorId(id)
   }
 
+  // Contar invitaciones activas que crearían un colaborador (metadata.rol=colaborador)
+  static contarActivasColaborador(contableId) {
+    const db = dbManager.getDatabase()
+    const stmt = db.prepare(`
+      SELECT COUNT(*) as total FROM invitaciones
+      WHERE contableId = ? AND estado = 'activa' AND expiraEn > datetime('now')
+        AND (json_extract(metadata, '$.rol') = 'colaborador' OR json_extract(metadata, '$.rol') IS NULL)
+    `)
+    const r = stmt.get(contableId)
+    return (r?.total) || 0
+  }
+
   // Limpiar invitaciones expiradas
   static limpiarExpiradas() {
     const db = dbManager.getDatabase()

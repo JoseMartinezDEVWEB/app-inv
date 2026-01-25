@@ -14,15 +14,15 @@ const UsuariosScreen = () => {
   const [modalEditar, setModalEditar] = useState(false)
   const [modalPassword, setModalPassword] = useState(false)
   const [usuarioSel, setUsuarioSel] = useState(null)
-  const [form, setForm] = useState({ nombre: '', email: '', password: '', telefono: '', rol: 'colaborador' })
+  const [form, setForm] = useState({ nombre: '', email: '', password: '', telefono: '', rol: 'colaborador', limiteColaboradores: '' })
 
   const { data, isLoading, isFetching } = useQuery(
     ['usuarios-subordinados'],
     () => usuariosApi.getSubordinados(),
-    { select: (r) => r.data.datos || [], enabled: hasRole('contable') || hasRole('administrador'), onError: handleApiError }
+    { select: (r) => r.data.datos || [], enabled: hasRole('contable') || hasRole('administrador') || hasRole('contador'), onError: handleApiError }
   )
 
-  const resetForm = () => setForm({ nombre: '', email: '', password: '', telefono: '', rol: 'colaborador' })
+  const resetForm = () => setForm({ nombre: '', email: '', password: '', telefono: '', rol: 'colaborador', limiteColaboradores: '' })
 
   const createMutation = useMutation((payload) => usuariosApi.create(payload), {
     onSuccess: (response) => {
@@ -76,7 +76,7 @@ const UsuariosScreen = () => {
 
   const openEdit = (u) => {
     setUsuarioSel(u)
-    setForm({ nombre: u.nombre, email: u.email, telefono: u.telefono || '', rol: u.rol, password: '' })
+    setForm({ nombre: u.nombre, email: u.email, telefono: u.telefono || '', rol: u.rol, password: '', limiteColaboradores: u.limiteColaboradores ?? '' })
     setModalEditar(true)
   }
 
@@ -104,9 +104,11 @@ const UsuariosScreen = () => {
           <Ionicons name="key-outline" size={20} color="#10b981" />
         </TouchableOpacity>
         <TouchableOpacity onPress={() => {
+          const id = item._id ?? item.id
+          if (!id) return
           Alert.alert('Confirmar', '¿Desactivar este usuario?', [
             { text: 'Cancelar', style: 'cancel' },
-            { text: 'Desactivar', style: 'destructive', onPress: () => deleteMutation.mutate(item._id) },
+            { text: 'Desactivar', style: 'destructive', onPress: () => deleteMutation.mutate(id) },
           ])
         }} style={styles.iconButton}>
           <Ionicons name="trash-outline" size={20} color="#ef4444" />
@@ -115,7 +117,7 @@ const UsuariosScreen = () => {
     </View>
   )
 
-  if (!hasRole('contable') && !hasRole('administrador')) {
+  if (!hasRole('contable') && !hasRole('administrador') && !hasRole('contador')) {
     return (
       <View style={styles.center}> 
         <Text style={styles.info}>No tienes permisos para acceder a esta sección</Text>
@@ -162,11 +164,28 @@ const UsuariosScreen = () => {
               <Text style={[styles.roleChipText, form.rol === 'contador' ? styles.roleChipTextActive : null]}>Contador</Text>
             </TouchableOpacity>
           </View>
+          {hasRole('administrador') && form.rol === 'contador' && (
+            <TextInput
+              style={styles.input}
+              placeholder="Límite de colaboradores (ej. 3). Vacío = sin límite"
+              keyboardType="number-pad"
+              value={String(form.limiteColaboradores || '')}
+              onChangeText={(t) => setForm({ ...form, limiteColaboradores: t.replace(/[^0-9]/g, '') })}
+            />
+          )}
           <View style={styles.row}>
             <TouchableOpacity style={[styles.button, styles.cancel]} onPress={() => setModalCrear(false)}>
               <Text style={styles.cancelText}>Cancelar</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.button, styles.primary]} onPress={() => createMutation.mutate(form)} disabled={createMutation.isLoading}>
+            <TouchableOpacity style={[styles.button, styles.primary]} onPress={() => {
+              const payload = { ...form }
+              if (hasRole('administrador') && form.rol === 'contador' && form.limiteColaboradores !== '' && form.limiteColaboradores != null) {
+                payload.limiteColaboradores = Number(form.limiteColaboradores)
+              } else {
+                delete payload.limiteColaboradores
+              }
+              createMutation.mutate(payload)
+            }} disabled={createMutation.isLoading}>
               <Text style={styles.primaryText}>{createMutation.isLoading ? 'Guardando...' : 'Crear'}</Text>
             </TouchableOpacity>
           </View>
@@ -188,11 +207,28 @@ const UsuariosScreen = () => {
               <Text style={[styles.roleChipText, form.rol === 'contador' ? styles.roleChipTextActive : null]}>Contador</Text>
             </TouchableOpacity>
           </View>
+          {hasRole('administrador') && form.rol === 'contador' && (
+            <TextInput
+              style={styles.input}
+              placeholder="Límite de colaboradores (ej. 3). Vacío = sin límite"
+              keyboardType="number-pad"
+              value={String(form.limiteColaboradores || '')}
+              onChangeText={(t) => setForm({ ...form, limiteColaboradores: t.replace(/[^0-9]/g, '') })}
+            />
+          )}
           <View style={styles.row}>
             <TouchableOpacity style={[styles.button, styles.cancel]} onPress={() => setModalEditar(false)}>
               <Text style={styles.cancelText}>Cancelar</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.button, styles.primary]} onPress={() => updateMutation.mutate({ id: usuarioSel._id, data: { nombre: form.nombre, email: form.email, telefono: form.telefono, rol: form.rol } })} disabled={updateMutation.isLoading}>
+            <TouchableOpacity style={[styles.button, styles.primary]} onPress={() => {
+              const id = usuarioSel?._id ?? usuarioSel?.id
+              if (!id) return
+              const data = { nombre: form.nombre, email: form.email, telefono: form.telefono, rol: form.rol }
+              if (hasRole('administrador') && usuarioSel?.rol === 'contador') {
+                data.limiteColaboradores = form.limiteColaboradores === '' || form.limiteColaboradores == null ? null : Number(form.limiteColaboradores)
+              }
+              updateMutation.mutate({ id, data })
+            }} disabled={updateMutation.isLoading}>
               <Text style={styles.primaryText}>{updateMutation.isLoading ? 'Guardando...' : 'Actualizar'}</Text>
             </TouchableOpacity>
           </View>
@@ -209,7 +245,11 @@ const UsuariosScreen = () => {
             <TouchableOpacity style={[styles.button, styles.cancel]} onPress={() => setModalPassword(false)}>
               <Text style={styles.cancelText}>Cancelar</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.button, styles.primary]} onPress={() => passMutation.mutate({ id: usuarioSel._id, password: form.password })} disabled={passMutation.isLoading}>
+            <TouchableOpacity style={[styles.button, styles.primary]} onPress={() => {
+              const id = usuarioSel?._id ?? usuarioSel?.id
+              if (!id) return
+              passMutation.mutate({ id, password: form.password })
+            }} disabled={passMutation.isLoading}>
               <Text style={styles.primaryText}>{passMutation.isLoading ? 'Guardando...' : 'Cambiar'}</Text>
             </TouchableOpacity>
           </View>

@@ -37,13 +37,15 @@ export const schemaRegistroUsuario = Joi.object({
   nombre: Joi.string().min(2).max(100).required(),
   email: Joi.string().email().required(),
   password: Joi.string().min(6).required(),
-  telefono: Joi.string().max(20),
+  telefono: Joi.string().max(20).allow(null, ''),
   rol: Joi.string().valid('contable', 'contador', 'colaborador', 'administrador'),
   contablePrincipalId: Joi.number().integer().positive(),
+  limiteColaboradores: Joi.number().integer().min(0).allow(null, '').optional(),
 })
 
 export const schemaLoginUsuario = Joi.object({
-  email: Joi.string().required(), // Acepta email o nombre de usuario
+  // "email" en el body: acepta correo electrónico O nombre de usuario (nombreUsuario)
+  email: Joi.string().required(),
   password: Joi.string().required(),
 })
 
@@ -54,6 +56,7 @@ export const schemaActualizarUsuario = Joi.object({
   telefono: Joi.string().max(20),
   rol: Joi.string().valid('contable', 'contador', 'colaborador', 'administrador'),
   configuracion: Joi.object(),
+  limiteColaboradores: Joi.number().integer().min(0).allow(null, '').optional(),
 })
 
 export const schemaCambiarPassword = Joi.object({

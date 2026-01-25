@@ -14,6 +14,7 @@ class Usuario {
       rol = 'colaborador',
       contablePrincipalId = null,
       configuracion = {},
+      limiteColaboradores = null,
     } = datos
 
     // Generar nombreUsuario automáticamente si no se proporciona
@@ -40,11 +41,13 @@ class Usuario {
     // Hash del password
     const passwordHash = bcrypt.hashSync(password, 10)
 
+    const limite = (rol === 'contador' && limiteColaboradores != null) ? Number(limiteColaboradores) : null
+
     const stmt = db.prepare(`
       INSERT INTO usuarios (
         nombreUsuario, nombre, email, password, telefono, rol, 
-        contablePrincipalId, configuracion
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        contablePrincipalId, configuracion, limiteColaboradores
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const info = stmt.run(
@@ -55,7 +58,8 @@ class Usuario {
       telefono || null,
       rol,
       contablePrincipalId,
-      JSON.stringify(configuracion)
+      JSON.stringify(configuracion),
+      limite
     )
 
     // Si es colaborador, generar código de acceso
@@ -77,7 +81,7 @@ class Usuario {
       SELECT 
         id, nombreUsuario, nombre, email, telefono, rol, 
         contablePrincipalId, activo, ultimoAcceso, configuracion,
-        createdAt, updatedAt
+        limiteColaboradores, createdAt, updatedAt
       FROM usuarios WHERE id = ?
     `)
     const usuario = stmt.get(id)
@@ -143,6 +147,16 @@ class Usuario {
     return usuario
   }
 
+  // Contar colaboradores (rol=colaborador) de un contador/contable
+  static contarColaboradores(contadorId) {
+    const db = dbManager.getDatabase()
+    const stmt = db.prepare(`
+      SELECT COUNT(*) as total FROM usuarios
+      WHERE contablePrincipalId = ? AND rol = 'colaborador' AND activo = 1
+    `)
+    return (stmt.get(contadorId)?.total) || 0
+  }
+
   // Buscar todos los usuarios activos
   static buscarActivos() {
     const db = dbManager.getDatabase()
@@ -163,7 +177,7 @@ class Usuario {
     const stmt = db.prepare(`
       SELECT 
         id, nombreUsuario, nombre, email, telefono, rol, 
-        contablePrincipalId, activo, ultimoAcceso,
+        contablePrincipalId, activo, ultimoAcceso, limiteColaboradores,
         createdAt, updatedAt
       FROM usuarios 
       WHERE contablePrincipalId = ? AND activo = 1
@@ -218,6 +232,10 @@ class Usuario {
     if (datos.configuracion !== undefined) {
       campos.push('configuracion = ?')
       valores.push(JSON.stringify(datos.configuracion))
+    }
+    if (datos.limiteColaboradores !== undefined) {
+      campos.push('limiteColaboradores = ?')
+      valores.push(datos.limiteColaboradores == null ? null : Number(datos.limiteColaboradores))
     }
 
     if (campos.length === 0) {
