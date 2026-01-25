@@ -74,6 +74,23 @@ export const registro = async (req, res) => {
     throw new AppError('El email ya está registrado', 400)
   }
 
+  // Si se registra como colaborador con contablePrincipalId, verificar límite del contador
+  if (datosUsuario.rol === 'colaborador' && datosUsuario.contablePrincipalId) {
+    const Invitacion = (await import('../models/Invitacion.js')).default
+    const owner = Usuario.buscarPorId(datosUsuario.contablePrincipalId)
+    const limite = owner?.limiteColaboradores
+    if (owner?.rol === 'contador' && limite != null) {
+      const actual = Usuario.contarColaboradores(datosUsuario.contablePrincipalId)
+      const pendientes = Invitacion.contarActivasColaborador(datosUsuario.contablePrincipalId)
+      if (actual + pendientes >= limite) {
+        throw new AppError(
+          `El contador ha alcanzado el límite de ${limite} colaborador(es). Contacta al administrador.`,
+          400
+        )
+      }
+    }
+  }
+
   // Crear usuario
   const usuario = Usuario.crear(datosUsuario)
 

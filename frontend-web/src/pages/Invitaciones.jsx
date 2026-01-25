@@ -247,6 +247,10 @@ const Invitaciones = () => {
     );
   }
 
+  const countColaboradores = (colaboradores || []).filter(c => c.rol === 'colaborador').length
+  const limiteColab = user?.limiteColaboradores
+  const showLimite = hasRole('contador') && limiteColab != null
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-8">
@@ -257,6 +261,11 @@ const Invitaciones = () => {
           </h1>
           <p className="text-gray-600 mt-2">
             Genera invitaciones por código QR para vincular usuarios
+            {showLimite && (
+              <span className="ml-2 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-sm font-semibold">
+                Colaboradores: {countColaboradores}/{limiteColab}
+              </span>
+            )}
           </p>
         </div>
         <Button

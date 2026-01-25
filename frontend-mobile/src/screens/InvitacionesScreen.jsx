@@ -9,7 +9,7 @@ import * as FileSystem from 'expo-file-system'
 import * as Sharing from 'expo-sharing'
 
 const InvitacionesScreen = () => {
-  const { hasRole } = useAuth()
+  const { hasRole, user } = useAuth()
   const queryClient = useQueryClient()
 
   const [modalGenerar, setModalGenerar] = useState(false)
@@ -119,11 +119,20 @@ const InvitacionesScreen = () => {
     )
   }
 
+  const countColab = (colaboradores || []).filter(c => c.rol === 'colaborador').length
+  const limiteColab = user?.limiteColaboradores
+  const showLimite = hasRole('contador') && limiteColab != null
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Invitaciones QR</Text>
-        {(hasRole('contable') || hasRole('administrador')) && (
+        <View>
+          <Text style={styles.title}>Invitaciones QR</Text>
+          {showLimite && (
+            <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12, marginTop: 2 }}>Colaboradores: {countColab}/{limiteColab}</Text>
+          )}
+        </View>
+        {(hasRole('contable') || hasRole('administrador') || hasRole('contador')) && (
           <TouchableOpacity style={styles.addButton} onPress={() => setModalGenerar(true)}>
             <Ionicons name="qr-code-outline" size={18} color="#fff" />
             <Text style={styles.addButtonText}>Generar</Text>

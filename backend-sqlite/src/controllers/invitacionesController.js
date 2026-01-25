@@ -20,7 +20,24 @@ export const generarInvitacion = async (req, res) => {
 // Crear invitación y devolver QR y código numérico (para compatibilidad con frontend)
 export const generarInvitacionQR = async (req, res) => {
   const expiraEnMinutos = Number(req.body?.expiraEnMinutos || 1440)
-  
+  const rolInvitacion = req.body?.rol || 'colaborador'
+
+  // Si un contador genera una invitación para colaborador, verificar límite
+  if (rolInvitacion === 'colaborador') {
+    const contador = Usuario.buscarPorId(req.usuario.id)
+    const limite = contador?.limiteColaboradores
+    if (limite != null) {
+      const actual = Usuario.contarColaboradores(req.usuario.id)
+      const pendientes = Invitacion.contarActivasColaborador(req.usuario.id)
+      if (actual + pendientes >= limite) {
+        throw new AppError(
+          `Has alcanzado el límite de ${limite} colaborador(es) para tu equipo. Contacta al administrador para ampliarlo.`,
+          400
+        )
+      }
+    }
+  }
+
   // Calcular expiración en horas para el modelo (compatibilidad)
   // Si son muchos minutos (días/meses), el cálculo en horas puede ser grande pero válido
   const expiraEnHoras = Math.max(1, Math.ceil(expiraEnMinutos / 60))
@@ -29,7 +46,7 @@ export const generarInvitacionQR = async (req, res) => {
     contableId: req.usuario.id,
     expiraEnHoras,
     metadata: {
-      rol: req.body?.rol || 'colaborador',
+      rol: rolInvitacion,
       email: req.body?.email || null,
       nombre: req.body?.nombre || null,
       duracionMinutos: expiraEnMinutos,
