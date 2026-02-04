@@ -99,6 +99,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
   const [showBarcodeProductModal, setShowBarcodeProductModal] = useState(false)
   const [scannedProduct, setScannedProduct] = useState(null)
   const [scannedBarcode, setScannedBarcode] = useState(null)
+  const [cantidadAnteriorProducto, setCantidadAnteriorProducto] = useState(null)
   const [searchedProduct, setSearchedProduct] = useState(null)
   const [showSearchedProductModal, setShowSearchedProductModal] = useState(false)
   const [activeFinancialModal, setActiveFinancialModal] = useState(null)
@@ -723,6 +724,39 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
       )
     }
   };
+
+  // Función para buscar cantidad anterior del producto en inventarios anteriores
+  const buscarCantidadAnterior = useCallback(async (productoId, nombreProducto) => {
+    try {
+      const clienteId = sesionData?.clienteNegocio?._id;
+      if (!clienteId) return null;
+
+      // Buscar sesiones anteriores completadas del mismo cliente
+      const sesionesResponse = await sesionesApi.getByClient(clienteId, { estado: 'completada', limite: 10 });
+      const sesionesData = sesionesResponse?.data?.datos;
+      const sesiones = sesionesData?.sesiones || sesionesData || [];
+      
+      // Buscar el producto en las sesiones anteriores (excluyendo la sesión actual)
+      for (const sesion of Array.isArray(sesiones) ? sesiones : []) {
+        if (sesion._id === sesionId || sesion.id === sesionId) continue; // Saltar sesión actual
+        
+        const productosContados = sesion.productosContados || [];
+        const productoEncontrado = productosContados.find(p => 
+          (p.productoId === productoId || p.productoClienteId === productoId) ||
+          (nombreProducto && p.nombreProducto?.toLowerCase() === nombreProducto.toLowerCase())
+        );
+        
+        if (productoEncontrado && productoEncontrado.cantidadContada) {
+          return productoEncontrado.cantidadContada;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.log('Error buscando cantidad anterior:', error);
+      return null;
+    }
+  }, [sesionData, sesionId]);
 
   // Manejar confirmación desde el modal de código de barras
   const handleBarcodeProductConfirm = async ({ cantidad, costo }) => {
@@ -1735,9 +1769,16 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
         visible={showSearchModal}
         onClose={() => setShowSearchModal(false)}
         clienteId={sesionData?.clienteNegocio?._id}
-        onSelectProduct={(product) => {
+        onSelectProduct={async (product) => {
+          // Buscar cantidad anterior del producto en inventarios anteriores
+          const cantidadAnterior = await buscarCantidadAnterior(
+            product._id || product.id,
+            product.nombre
+          );
+          
           // Abrir modal de confirmación antes de agregar
           setSearchedProduct(product);
+          setCantidadAnteriorProducto(cantidadAnterior);
           setShowSearchedProductModal(true);
         }}
       />
@@ -1749,12 +1790,14 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
           setShowBarcodeProductModal(false);
           setScannedProduct(null);
           setScannedBarcode(null);
+          setCantidadAnteriorProducto(null);
         }}
         producto={scannedProduct}
         codigoBarras={scannedBarcode}
         onConfirm={handleBarcodeProductConfirm}
         costoInicial={scannedProduct?.costo || scannedProduct?.costoBase || ''}
-        cantidadInicial="1"
+        cantidadInicial={cantidadAnteriorProducto ? String(cantidadAnteriorProducto) : "1"}
+        cantidadAnterior={cantidadAnteriorProducto}
       />
 
       {/* Modal para producto buscado por nombre */}

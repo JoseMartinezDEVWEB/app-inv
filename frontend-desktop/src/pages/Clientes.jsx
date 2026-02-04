@@ -10,6 +10,7 @@ import Modal, { ModalFooter } from '../components/ui/Modal'
 import Pagination from '../components/ui/Pagination'
 import Card from '../components/ui/Card'
 import ImportarPDFModal from '../components/ImportarPDFModal'
+import ClienteHistorialModal from '../components/ClienteHistorialModal'
 import toast from 'react-hot-toast'
 
 const Clientes = () => {
@@ -17,6 +18,7 @@ const Clientes = () => {
   const [selectedCliente, setSelectedCliente] = useState(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isImportarPDFModalOpen, setIsImportarPDFModalOpen] = useState(false)
+  const [isHistorialModalOpen, setIsHistorialModalOpen] = useState(false)
   const [modalType, setModalType] = useState('create') // create, edit, view
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage] = useState(5)
@@ -26,17 +28,17 @@ const Clientes = () => {
     direccion: '',
     notas: '',
   })
-  
+
   const queryClient = useQueryClient()
 
   // Obtener clientes
   const { data: clientesData, isLoading } = useQuery(
     ['clientes', currentPage, itemsPerPage, searchTerm],
     async () => {
-      const response = await clientesApi.getAll({ 
-        buscar: searchTerm, 
-        limite: itemsPerPage, 
-        pagina: currentPage 
+      const response = await clientesApi.getAll({
+        buscar: searchTerm,
+        limite: itemsPerPage,
+        pagina: currentPage
       })
       const data = handleApiResponse(response)
       // El backend devuelve { datos: [...], paginacion: {...} }
@@ -109,7 +111,7 @@ const Clientes = () => {
   // Manejar envío del formulario
   const handleSubmit = (e) => {
     e.preventDefault()
-    
+
     if (modalType === 'create') {
       createMutation.mutate(formData)
     } else if (modalType === 'edit') {
@@ -159,8 +161,8 @@ const Clientes = () => {
       render: (_, row) => (
         <div className="text-sm">
           <div>Inventarios: {row.estadisticas?.totalInventarios || 0}</div>
-          <div>Último: {row.estadisticas?.ultimoInventario ? 
-            new Date(row.estadisticas.ultimoInventario).toLocaleDateString() : 
+          <div>Último: {row.estadisticas?.ultimoInventario ?
+            new Date(row.estadisticas.ultimoInventario).toLocaleDateString() :
             'Nunca'
           }</div>
         </div>
@@ -170,9 +172,9 @@ const Clientes = () => {
       key: 'activo',
       title: 'Estado',
       render: (value) => (
-        <StatusBadge 
-          status={value ? 'Activo' : 'Inactivo'} 
-          variant={value ? 'success' : 'danger'} 
+        <StatusBadge
+          status={value ? 'Activo' : 'Inactivo'}
+          variant={value ? 'success' : 'danger'}
         />
       ),
     },
@@ -213,7 +215,7 @@ const Clientes = () => {
           <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
           <p className="text-gray-600">Gestiona tus clientes y negocios</p>
         </div>
-        
+
         <Button
           variant="primary"
           icon={<Plus className="w-4 h-4" />}
@@ -266,8 +268,8 @@ const Clientes = () => {
         onClose={() => setIsModalOpen(false)}
         title={
           modalType === 'create' ? 'Nuevo Cliente' :
-          modalType === 'edit' ? 'Editar Cliente' :
-          'Detalles del Cliente'
+            modalType === 'edit' ? 'Editar Cliente' :
+              'Detalles del Cliente'
         }
         size="md"
       >
@@ -297,12 +299,12 @@ const Clientes = () => {
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Último Inventario:</span>
                   <span className="text-sm font-medium text-gray-900">
-                    {selectedCliente?.estadisticas?.ultimoInventario 
+                    {selectedCliente?.estadisticas?.ultimoInventario
                       ? new Date(selectedCliente.estadisticas.ultimoInventario).toLocaleDateString('es-ES', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })
                       : 'Nunca'}
                   </span>
                 </div>
@@ -314,9 +316,20 @@ const Clientes = () => {
                 <p className="mt-1 text-sm text-gray-900">{selectedCliente.notas}</p>
               </div>
             )}
-            
-            {/* Botón para importar PDF */}
-            <div className="pt-4 border-t border-gray-200">
+
+            {/* Acciones adicionales */}
+            <div className="pt-4 border-t border-gray-200 grid grid-cols-2 gap-4">
+              <Button
+                variant="outline"
+                icon={<FileText className="w-4 h-4" />}
+                onClick={() => {
+                  setIsModalOpen(false)
+                  setIsHistorialModalOpen(true)
+                }}
+                className="w-full justify-center"
+              >
+                Ver Historial
+              </Button>
               <Button
                 variant="primary"
                 icon={<FileText className="w-4 h-4" />}
@@ -324,9 +337,9 @@ const Clientes = () => {
                   setIsModalOpen(false)
                   setIsImportarPDFModalOpen(true)
                 }}
-                className="w-full"
+                className="w-full justify-center"
               >
-                Importar Inventario desde PDF
+                Importar PDF
               </Button>
             </div>
           </div>
@@ -339,7 +352,7 @@ const Clientes = () => {
               onChange={(e) => setFormData(prev => ({ ...prev, nombre: e.target.value }))}
               required
             />
-            
+
             <Input
               label="Teléfono"
               name="telefono"
@@ -347,7 +360,7 @@ const Clientes = () => {
               onChange={(e) => setFormData(prev => ({ ...prev, telefono: e.target.value }))}
               required
             />
-            
+
             <Input
               label="Dirección"
               name="direccion"
@@ -355,7 +368,7 @@ const Clientes = () => {
               onChange={(e) => setFormData(prev => ({ ...prev, direccion: e.target.value }))}
               required
             />
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
               <textarea
@@ -394,6 +407,17 @@ const Clientes = () => {
         onClose={() => {
           setIsImportarPDFModalOpen(false)
           setSelectedCliente(null)
+        }}
+        cliente={selectedCliente}
+      />
+
+      {/* Modal Historial */}
+      <ClienteHistorialModal
+        isOpen={isHistorialModalOpen}
+        onClose={() => {
+          setIsHistorialModalOpen(false)
+          // Optionally re-open the details modal if desired, or just close everything
+          // openModal('view', selectedCliente) 
         }}
         cliente={selectedCliente}
       />

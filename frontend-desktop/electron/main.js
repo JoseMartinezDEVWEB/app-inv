@@ -3,6 +3,8 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import backendServer from './backend-server.js'
 
+process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true'
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 // Detectar si estamos en desarrollo basándonos en si existe node_modules
@@ -25,9 +27,9 @@ function createWindow() {
       enableRemoteModule: false,
       preload: path.join(__dirname, 'preload.js')
     },
-    icon: isDev 
-      ? path.join(__dirname, '../../logo_transparent-1UMhnOlZ.png')
-      : path.join(process.resourcesPath, 'logo_transparent-1UMhnOlZ.png'),
+    icon: isDev
+      ? path.join(__dirname, '../build/icon.png')
+      : path.join(__dirname, '../build/icon.ico'),
     show: false,
     title: 'Gestor de Inventario J4 Pro - Desktop',
     frame: false,

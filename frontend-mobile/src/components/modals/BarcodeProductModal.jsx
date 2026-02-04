@@ -22,7 +22,8 @@ const BarcodeProductModal = ({
   codigoBarras,
   onConfirm,
   costoInicial = '',
-  cantidadInicial = '1'
+  cantidadInicial = '1',
+  cantidadAnterior = null // Nueva prop para cantidad del inventario importado
 }) => {
   const [cantidad, setCantidad] = useState(cantidadInicial);
   const [costo, setCosto] = useState(costoInicial);
@@ -32,9 +33,10 @@ const BarcodeProductModal = ({
       // Si el producto tiene costo, usarlo como valor inicial
       const costoProducto = producto.costo || producto.costoBase || '';
       setCosto(costoProducto ? String(costoProducto) : '');
-      setCantidad(cantidadInicial || '1');
+      // Si hay cantidad anterior del inventario importado, usarla como valor inicial
+      setCantidad(cantidadAnterior ? String(cantidadAnterior) : (cantidadInicial || '1'));
     }
-  }, [visible, producto, cantidadInicial]);
+  }, [visible, producto, cantidadInicial, cantidadAnterior]);
 
   const handleConfirm = () => {
     const cantidadNum = parseFloat(cantidad) || 1;
@@ -299,6 +301,18 @@ const styles = StyleSheet.create({
   productCost: {
     fontSize: 15,
     color: '#10b981',
+    fontWeight: '600',
+    flex: 1,
+  },
+  cantidadAnteriorRow: {
+    backgroundColor: '#fef3c7',
+    padding: 8,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  cantidadAnterior: {
+    fontSize: 14,
+    color: '#92400e',
     fontWeight: '600',
     flex: 1,
   },

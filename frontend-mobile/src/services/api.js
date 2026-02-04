@@ -411,6 +411,9 @@ export const sesionesApi = {
     // Funciones de timer
     pauseTimer: (id) => api.patch(`/sesiones-inventario/${id}/timer/pause`),
     resumeTimer: (id) => api.patch(`/sesiones-inventario/${id}/timer/resume`),
+    
+    // Obtener sesiones por cliente
+    getByClient: (clienteId, params) => api.get('/sesiones-inventario', { params: { clienteId, ...params } }),
 };
 
 export const productosApi = { 

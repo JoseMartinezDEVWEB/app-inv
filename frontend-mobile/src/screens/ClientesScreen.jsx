@@ -18,6 +18,7 @@ import { showMessage } from 'react-native-flash-message';
 import { LinearGradient } from 'expo-linear-gradient';
 import ClienteModal from '../components/ClienteModal';
 import ImportarPDFModal from '../components/ImportarPDFModal';
+import ClienteHistorialModal from '../components/ClienteHistorialModal';
 import localDb from '../services/localDb';
 import syncService from '../services/syncService';
 import { useNetInfo } from '@react-native-community/netinfo';
@@ -80,7 +81,7 @@ const SyncIndicator = ({ status }) => {
 const ClienteCard = ({ item, onEdit, onDelete, onView }) => {
   // Determinar estado de sincronización
   const syncStatus = item._syncStatus || (item.is_dirty ? 'pending' : 'synced');
-  
+
   return (
     <View style={[styles.clienteCard, syncStatus === 'pending' && styles.cardPending]}>
       <View style={styles.cardTopRow}>
@@ -121,12 +122,13 @@ const ClientesScreen = ({ navigation }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalVisible, setModalVisible] = useState(false);
   const [isViewModalVisible, setViewModalVisible] = useState(false);
+  const [isHistorialModalVisible, setHistorialModalVisible] = useState(false);
   const [isImportarPDFModalVisible, setImportarPDFModalVisible] = useState(false);
   const [selectedCliente, setSelectedCliente] = useState(null);
   const [syncStats, setSyncStats] = useState({ pendientes: 0 });
   const queryClient = useQueryClient();
   const netInfo = useNetInfo();
-  
+
   // Obtener contexto de autenticación para business_id
   const { user } = useAuth();
   const businessId = user?.contablePrincipalId || user?._id || user?.id;
@@ -140,15 +142,15 @@ const ClientesScreen = ({ navigation }) => {
     async () => {
       // SIEMPRE leer de SQLite local primero (Offline-First)
       const clientesLocales = await localDb.obtenerClientes(searchTerm, businessId);
-      
+
       // Si hay conexión, sincronizar en segundo plano (no bloquea UI)
       if (netInfo.isConnected) {
         syncService.syncWithCloud().catch(console.error);
       }
-      
+
       return { datos: clientesLocales };
     },
-    { 
+    {
       staleTime: 5000, // Considerar datos frescos por 5 segundos
       cacheTime: 300000, // Mantener en caché 5 minutos
     }
@@ -180,12 +182,12 @@ const ClientesScreen = ({ navigation }) => {
     async (clienteData) => {
       // Paso 1: Guardar localmente PRIMERO (Optimistic UI)
       const clienteLocal = await localDb.crearClienteLocal(clienteData, businessId, user?._id || user?.id);
-      
+
       // Paso 2: Disparar sincronización en segundo plano (no esperar)
       if (netInfo.isConnected) {
         syncService.syncWithCloud().catch(console.error);
       }
-      
+
       return { data: { datos: clienteLocal } };
     },
     {
@@ -193,19 +195,19 @@ const ClientesScreen = ({ navigation }) => {
         // Invalidar queries para refrescar lista inmediatamente
         queryClient.invalidateQueries(['clientes']);
         queryClient.invalidateQueries(['clientesParaSesion']);
-        
-        showMessage({ 
-          message: netInfo.isConnected 
-            ? 'Cliente creado exitosamente' 
-            : 'Cliente guardado localmente (se sincronizará al conectar)', 
-          type: 'success' 
+
+        showMessage({
+          message: netInfo.isConnected
+            ? 'Cliente creado exitosamente'
+            : 'Cliente guardado localmente (se sincronizará al conectar)',
+          type: 'success'
         });
         setModalVisible(false);
       },
       onError: (error) => {
-        showMessage({ 
-          message: error?.message || 'Error al crear cliente', 
-          type: 'danger' 
+        showMessage({
+          message: error?.message || 'Error al crear cliente',
+          type: 'danger'
         });
       },
     }
@@ -218,29 +220,29 @@ const ClientesScreen = ({ navigation }) => {
     async ({ id, data }) => {
       // Actualizar localmente primero
       await localDb.actualizarClienteLocal(id, data);
-      
+
       // Sincronizar en segundo plano
       if (netInfo.isConnected) {
         syncService.syncWithCloud().catch(console.error);
       }
-      
+
       return { data: { datos: data } };
     },
     {
       onSuccess: () => {
         queryClient.invalidateQueries(['clientes']);
         queryClient.invalidateQueries(['clientesParaSesion']);
-        
-        showMessage({ 
+
+        showMessage({
           message: 'Cliente actualizado exitosamente',
-          type: 'success' 
+          type: 'success'
         });
         setModalVisible(false);
       },
       onError: (error) => {
-        showMessage({ 
-          message: error?.message || 'Error al actualizar cliente', 
-          type: 'danger' 
+        showMessage({
+          message: error?.message || 'Error al actualizar cliente',
+          type: 'danger'
         });
       },
     }
@@ -253,28 +255,28 @@ const ClientesScreen = ({ navigation }) => {
     async (id) => {
       // Soft delete local
       await localDb.eliminarClienteLocal(id);
-      
+
       // Sincronizar
       if (netInfo.isConnected) {
         syncService.syncWithCloud().catch(console.error);
       }
-      
+
       return { data: { success: true } };
     },
     {
       onSuccess: () => {
         queryClient.invalidateQueries(['clientes']);
         queryClient.invalidateQueries(['clientesParaSesion']);
-        
-        showMessage({ 
+
+        showMessage({
           message: 'Cliente eliminado exitosamente',
-          type: 'success' 
+          type: 'success'
         });
       },
       onError: (error) => {
-        showMessage({ 
-          message: error?.message || 'Error al eliminar cliente', 
-          type: 'danger' 
+        showMessage({
+          message: error?.message || 'Error al eliminar cliente',
+          type: 'danger'
         });
       },
     }
@@ -352,9 +354,9 @@ const ClientesScreen = ({ navigation }) => {
         <FlatList
           data={clientesData?.datos || []}
           renderItem={({ item }) => (
-            <ClienteCard 
-              item={item} 
-              onEdit={handleOpenModal} 
+            <ClienteCard
+              item={item}
+              onEdit={handleOpenModal}
               onDelete={handleDelete}
               onView={handleViewCliente}
             />
@@ -386,10 +388,10 @@ const ClientesScreen = ({ navigation }) => {
         <View style={styles.titleRow}>
           <Text style={styles.title}>Clientes</Text>
           {/* Indicador de conexión */}
-          <Ionicons 
-            name={netInfo.isConnected ? "cloud-done-outline" : "cloud-offline-outline"} 
-            size={18} 
-            color={netInfo.isConnected ? "#22c55e" : "#ef4444"} 
+          <Ionicons
+            name={netInfo.isConnected ? "cloud-done-outline" : "cloud-offline-outline"}
+            size={18}
+            color={netInfo.isConnected ? "#22c55e" : "#ef4444"}
             style={{ marginLeft: 8 }}
           />
         </View>
@@ -417,6 +419,12 @@ const ClientesScreen = ({ navigation }) => {
         visible={isModalVisible}
         onClose={() => setModalVisible(false)}
         onSave={handleSaveCliente}
+        cliente={selectedCliente}
+      />
+
+      <ClienteHistorialModal
+        visible={isHistorialModalVisible}
+        onClose={() => setHistorialModalVisible(false)}
         cliente={selectedCliente}
       />
 
@@ -462,6 +470,19 @@ const ClientesScreen = ({ navigation }) => {
               <View style={styles.separator} />
 
               <TouchableOpacity
+                style={[styles.importPDFButton, { backgroundColor: '#0ea5e9', marginBottom: 10 }]}
+                onPress={() => {
+                  setViewModalVisible(false);
+                  setHistorialModalVisible(true);
+                }}
+              >
+                <Ionicons name="time-outline" size={20} color="#ffffff" />
+                <Text style={styles.importPDFButtonText}>
+                  Ver Historial
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
                 style={styles.importPDFButton}
                 onPress={handleOpenImportarPDF}
               >
@@ -483,6 +504,15 @@ const ClientesScreen = ({ navigation }) => {
           setSelectedCliente(null);
         }}
         cliente={selectedCliente}
+        onVerSesion={(sesionId, sesionData) => {
+          setImportarPDFModalVisible(false);
+          setSelectedCliente(null);
+          // Navegar a la pantalla de detalle del inventario
+          navigation.navigate('Inventarios', {
+            screen: 'InventarioDetalle',
+            params: { sesionId }
+          });
+        }}
       />
     </View>
   );
@@ -535,16 +565,16 @@ const styles = StyleSheet.create({
   // Indicador de sincronización
   syncIndicator: { marginLeft: 4 },
   // Barra de estado de sincronización
-  syncStatusBar: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    paddingVertical: 6, 
-    paddingHorizontal: 12, 
-    backgroundColor: '#fef3c7', 
+  syncStatusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#fef3c7',
     borderRadius: 8,
     marginHorizontal: 20,
-    marginBottom: 10 
+    marginBottom: 10
   },
   syncStatusText: { fontSize: 12, color: '#92400e', marginLeft: 6 },
 });

@@ -1,9 +1,9 @@
 {
-  "appId": "com.j4pro.gestor-inventario-desktop",
-  "productName": "Gestor Inventario J4 Pro",
-  "copyright": "Copyright © 2025 J4 Pro",
+  "appId": "com.j4pro.tech-stock",
+  "productName": "TECH STOCK J4-PRO",
+  "copyright": "Copyright © 2026 J4 Pro",
   "directories": {
-    "output": "dist-installer",
+    "output": "C:/Users/ASUS/Desktop/instalador-inv",
     "buildResources": "build"
   },
   "files": [
@@ -16,20 +16,21 @@
     {
       "from": "resources/backend",
       "to": "backend",
-      "filter": ["**/*"]
-    },
-    {
-      "from": "../logo_transparent-1UMhnOlZ.png",
-      "to": "logo_transparent-1UMhnOlZ.png"
+      "filter": [
+        "**/*"
+      ]
     }
   ],
   "win": {
     "target": [
       {
         "target": "nsis",
-        "arch": ["x64"]
+        "arch": [
+          "x64"
+        ]
       }
     ],
+    "icon": "build/icon.ico",
     "artifactName": "${productName}-Setup-${version}.${ext}"
   },
   "nsis": {
@@ -39,20 +40,28 @@
     "deleteAppDataOnUninstall": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "Gestor Inventario J4 Pro",
+    "shortcutName": "TECH STOCK J4-PRO",
+    "installerIcon": "build/icon.ico",
+    "uninstallerIcon": "build/icon.ico",
     "language": "1034",
     "warningsAsErrors": false
   },
   "mac": {
-    "target": ["dmg", "zip"],
+    "target": [
+      "dmg",
+      "zip"
+    ],
     "category": "public.app-category.business",
-    "icon": "../logo_transparent-1UMhnOlZ.png",
+    "icon": "build/icon.png",
     "artifactName": "${productName}-${version}.${ext}"
   },
   "linux": {
-    "target": ["AppImage", "deb"],
+    "target": [
+      "AppImage",
+      "deb"
+    ],
     "category": "Office",
-    "icon": "../logo_transparent-1UMhnOlZ.png",
+    "icon": "build/icon.png",
     "artifactName": "${productName}-${version}.${ext}"
   }
 }

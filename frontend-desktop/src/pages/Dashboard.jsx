@@ -27,13 +27,13 @@ const Dashboard = () => {
     valorTotalInventarios: 0,
   })
 
-  // Obtener estadísticas de clientes
+  // Obtener estadísticas de clientes (total en BD)
   const { data: clientesData } = useQuery(
     'clientes-stats',
     async () => {
       const response = await clientesApi.getAll({ limite: 1, pagina: 1 })
       const datos = handleApiResponse(response)
-      return datos.paginacion?.totalRegistros ?? 0
+      return datos.paginacion?.total ?? datos.paginacion?.totalRegistros ?? 0
     }
   )
 
@@ -239,30 +239,37 @@ const Dashboard = () => {
           <div className="p-4">
             {sesionesData?.sesiones?.length > 0 ? (
               <div className="space-y-3">
-                {sesionesData.sesiones.map((sesion, index) => (
-                  <div key={sesion._id} className="flex items-center space-x-4">
-                    <div className={`w-2 h-2 rounded-full ${sesion.estado === 'completada' ? 'bg-success-500' :
-                      sesion.estado === 'en_progreso' ? 'bg-warning-500' :
-                        'bg-primary-500'
-                      }`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">
-                        {sesion.numeroSesion}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {sesion.clienteNegocio?.nombre}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-gray-900">
-                        ${sesion.totales?.valorTotalInventario?.toLocaleString() || '0'}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {new Date(sesion.fecha).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                {sesionesData.sesiones.map((sesion) => {
+                  const sesionId = sesion._id ?? sesion.id
+                  return (
+                    <Link
+                      key={sesionId}
+                      to={sesionId ? `/inventarios/${sesionId}` : '/inventarios'}
+                      className="flex items-center space-x-4 p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${sesion.estado === 'completada' ? 'bg-success-500' :
+                        sesion.estado === 'en_progreso' ? 'bg-warning-500' :
+                          'bg-primary-500'
+                        }`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900">
+                          {sesion.numeroSesion}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {sesion.clienteNegocio?.nombre}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-gray-900">
+                          ${sesion.totales?.valorTotalInventario?.toLocaleString() || '0'}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {new Date(sesion.fecha).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </Link>
+                  )
+                })}
               </div>
             ) : (
               <div className="text-center py-8">

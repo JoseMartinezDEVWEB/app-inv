@@ -97,15 +97,39 @@ class BackendServer {
       this._backendLogsBuffer = ''
       this._backendLastLines = []
 
+      // Determinar si estamos en producción basado en el path del backend
+      const isProduction = backendPath.includes('resources')
+
+      let command = 'node'
+      let args = ['src/server.js']
+      let spawnEnv = {
+        ...process.env,
+        PORT: String(this.port),
+        NODE_ENV: isProduction ? 'production' : 'development',
+        DB_PATH: path.join(backendPath, 'database', 'inventario.db')
+      }
+
+      if (isProduction) {
+        console.log('🏭 Modo Producción detectado: Usando Node.js embebido en Electron')
+
+        // En producción, usar el ejecutable de Electron como Node.js
+        command = process.execPath
+
+        // Agregar flag para que Electron se comporte como Node.js
+        args = ['--no-sandbox', 'src/server.js']
+        spawnEnv.ELECTRON_RUN_AS_NODE = '1'
+
+        console.log('📍 Ejecutable:', command)
+        console.log('📍 Args:', args)
+        console.log('📍 Backend Path:', backendPath)
+      } else {
+        console.log('🔧 Modo Desarrollo: Usando Node.js del sistema')
+      }
+
       // Iniciar servidor backend
-      this.process = spawn('node', ['src/server.js'], {
+      this.process = spawn(command, args, {
         cwd: backendPath,
-        env: {
-          ...process.env,
-          PORT: String(this.port), // Asegurar que sea string
-          NODE_ENV: 'development',
-          DB_PATH: path.join(backendPath, 'database', 'inventario.db'),
-        },
+        env: spawnEnv,
         // Usar pipes para poder parsear logs y detectar "Servidor iniciado..."
         stdio: ['ignore', 'pipe', 'pipe'],
       })

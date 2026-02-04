@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from 'react-query'
 import { Upload, FileText, X, CheckCircle, AlertCircle, Loader, Check } from 'lucide-react'
 import Modal from './ui/Modal'
@@ -21,6 +22,7 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
   const [error, setError] = useState(null)
   const [reintentoHecho, setReintentoHecho] = useState(false)
   const [guardando, setGuardando] = useState(false)
+  const [fechaInventario, setFechaInventario] = useState(new Date().toISOString().split('T')[0]) // Fecha del inventario
   const inputFileRef = useRef(null)
   const queryClient = useQueryClient()
 
@@ -34,6 +36,7 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
       setProcesando(false)
       setProgreso(0)
       setReintentoHecho(false)
+      setFechaInventario(new Date().toISOString().split('T')[0])
     }
   }, [isOpen])
 
@@ -43,19 +46,26 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
   const handleFileSelect = (e) => {
     const files = Array.from(e.target.files)
     
-    // Validar que sean PDFs
-    const pdfFiles = files.filter(file => file.type === 'application/pdf')
+    // Validar que sean PDFs o Excel
+    const archivosValidos = files.filter(file => 
+      file.type === 'application/pdf' || 
+      file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      file.type === 'application/vnd.ms-excel' ||
+      file.name?.endsWith('.pdf') ||
+      file.name?.endsWith('.xlsx') ||
+      file.name?.endsWith('.xls')
+    )
     
-    if (pdfFiles.length !== files.length) {
-      toast.error('Solo se permiten archivos PDF')
+    if (archivosValidos.length !== files.length) {
+      toast.error('Solo se permiten archivos PDF, XLSX o XLS')
     }
     
-    if (pdfFiles.length > 10) {
-      toast.error('Máximo 10 archivos PDF permitidos')
+    if (archivosValidos.length > 10) {
+      toast.error('Máximo 10 archivos permitidos')
       return
     }
     
-    setArchivos(pdfFiles)
+    setArchivos(archivosValidos)
     setError(null)
   }
 
@@ -138,6 +148,11 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
       archivos.forEach(archivo => {
         formData.append('files', archivo)
       })
+      
+      // Agregar fecha del inventario si está disponible
+      if (fechaInventario) {
+        formData.append('fechaInventario', fechaInventario)
+      }
 
       // Simular progreso inicial (animación)
       let progresoSimulado = 0
@@ -270,7 +285,7 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      title="Importar Inventario desde PDF"
+      title="Importar Inventario desde Archivo"
       size="lg"
     >
       <div className="space-y-6">
@@ -351,7 +366,7 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
               >
                 <Upload className="w-12 h-12 mx-auto text-gray-400 mb-4" />
                 <p className="text-gray-600 mb-2">
-                  Haga clic para seleccionar archivos PDF
+                  Haga clic para seleccionar archivos (PDF, XLSX, XLS)
                 </p>
                 <p className="text-sm text-gray-500">
                   Máximo 10 archivos, 50MB cada uno
@@ -359,11 +374,36 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
                 <input
                   ref={inputFileRef}
                   type="file"
-                  accept="application/pdf"
+                  accept=".pdf,.xlsx,.xls,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                   multiple
                   onChange={handleFileSelect}
                   className="hidden"
                 />
+              </div>
+
+              {/* Campo de fecha del inventario */}
+              <div className="bg-blue-50 border-2 border-blue-500 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <label className="text-sm font-bold text-blue-900">
+                    Fecha del Inventario Original *
+                  </label>
+                </div>
+                <p className="text-xs text-gray-600 mb-3">
+                  Especifique la fecha en que se realizó originalmente este inventario
+                </p>
+                <input
+                  type="date"
+                  value={fechaInventario}
+                  onChange={(e) => setFechaInventario(e.target.value)}
+                  className="w-full px-4 py-2 border-2 border-blue-500 rounded-lg text-gray-900 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-2 italic">
+                  Formato: Año-Mes-Día (ej: 2026-01-15)
+                </p>
               </div>
 
               {/* Lista de archivos seleccionados */}
@@ -628,12 +668,13 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
             <Button
               variant="outline"
               onClick={() => {
-                const id = resultado?.sesion?._id
+                const id = resultado?.sesion?._id ?? resultado?.sesion?.id
                 if (id) {
-                  window.location.href = `/inventarios/${id}`
+                  onClose?.()
+                  navigate(`/inventarios/${id}`)
                 }
               }}
-              disabled={!resultado?.sesion?._id}
+              disabled={!(resultado?.sesion?._id ?? resultado?.sesion?.id)}
             >
               Ver sesión
             </Button>

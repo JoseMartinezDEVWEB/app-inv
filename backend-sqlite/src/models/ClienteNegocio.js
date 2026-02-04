@@ -226,6 +226,7 @@ class ClienteNegocio {
       datos: clientes,
       paginacion: {
         total,
+        totalRegistros: total,
         pagina,
         limite,
         totalPaginas: Math.ceil(total / limite),

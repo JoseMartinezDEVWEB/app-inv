@@ -34,6 +34,8 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
       setProcesando(false)
       setProgreso(0)
       setReintentoHecho(false)
+      setFechaInventario(new Date().toISOString().split('T')[0])
+      setFechaInventario(new Date().toISOString().split('T')[0])
     }
   }, [isOpen])
 
@@ -44,7 +46,14 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
     const files = Array.from(e.target.files)
     
     // Validar que sean PDFs
-    const pdfFiles = files.filter(file => file.type === 'application/pdf')
+    const archivosValidos = files.filter(file => 
+      file.type === 'application/pdf' || 
+      file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      file.type === 'application/vnd.ms-excel' ||
+      file.name?.endsWith('.pdf') ||
+      file.name?.endsWith('.xlsx') ||
+      file.name?.endsWith('.xls')
+    )
     
     if (pdfFiles.length !== files.length) {
       toast.error('Solo se permiten archivos PDF')
@@ -55,7 +64,7 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
       return
     }
     
-    setArchivos(pdfFiles)
+    setArchivos(archivosValidos)
     setError(null)
   }
 
@@ -138,6 +147,11 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
       archivos.forEach(archivo => {
         formData.append('files', archivo)
       })
+      
+      // Agregar fecha del inventario si está disponible
+      if (fechaInventario) {
+        formData.append('fechaInventario', fechaInventario)
+      }
 
       // Simular progreso inicial (animación)
       let progresoSimulado = 0
@@ -270,7 +284,7 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      title="Importar Inventario desde PDF"
+      title="Importar Inventario desde Archivo"
       size="lg"
     >
       <div className="space-y-6">
@@ -342,7 +356,7 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
 
         {/* Contenido según el paso actual */}
         <div className="min-h-[300px]">
-          {/* PASO 1: Seleccionar PDF */}
+          {/* PASO 1: Seleccionar archivos */}
           {pasoActual === 1 && (
             <div className="space-y-4">
               <div
@@ -351,7 +365,7 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
               >
                 <Upload className="w-12 h-12 mx-auto text-gray-400 mb-4" />
                 <p className="text-gray-600 mb-2">
-                  Haga clic para seleccionar archivos PDF
+                  Haga clic para seleccionar archivos (PDF, XLSX, XLS)
                 </p>
                 <p className="text-sm text-gray-500">
                   Máximo 10 archivos, 50MB cada uno
@@ -359,7 +373,7 @@ const ImportarPDFModal = ({ isOpen, onClose, cliente }) => {
                 <input
                   ref={inputFileRef}
                   type="file"
-                  accept="application/pdf"
+                  accept=".pdf,.xlsx,.xls,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                   multiple
                   onChange={handleFileSelect}
                   className="hidden"

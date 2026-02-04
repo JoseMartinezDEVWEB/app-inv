@@ -76,7 +76,7 @@ const ImportarPDFModal = ({ visible, onClose, cliente, onVerSesion }) => {
   const handleSelectFiles = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
+        type: ['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'],
         multiple: true,
         copyToCacheDirectory: true,
       });
@@ -85,27 +85,32 @@ const ImportarPDFModal = ({ visible, onClose, cliente, onVerSesion }) => {
         // DocumentPicker puede devolver un solo archivo o un array
         const files = result.assets || [result];
         
-        // Validar que sean PDFs
-        const pdfFiles = files.filter(file => 
-          file.mimeType === 'application/pdf' || file.name?.endsWith('.pdf')
+        // Validar que sean PDFs o Excel
+        const archivosValidos = files.filter(file => 
+          file.mimeType === 'application/pdf' || 
+          file.mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+          file.mimeType === 'application/vnd.ms-excel' ||
+          file.name?.endsWith('.pdf') ||
+          file.name?.endsWith('.xlsx') ||
+          file.name?.endsWith('.xls')
         );
 
-        if (pdfFiles.length !== files.length) {
+        if (archivosValidos.length !== files.length) {
           showMessage({
-            message: 'Solo se permiten archivos PDF',
+            message: 'Solo se permiten archivos PDF, XLSX o XLS',
             type: 'warning',
           });
         }
 
-        if (pdfFiles.length > 10) {
+        if (archivosValidos.length > 10) {
           showMessage({
-            message: 'Máximo 10 archivos PDF permitidos',
+            message: 'Máximo 10 archivos permitidos',
             type: 'warning',
           });
           return;
         }
 
-        setArchivos(pdfFiles);
+        setArchivos(archivosValidos);
         setResultado(null);
       }
     } catch (error) {
@@ -142,6 +147,11 @@ const ImportarPDFModal = ({ visible, onClose, cliente, onVerSesion }) => {
           name: archivo.name,
         });
       });
+      
+      // Agregar fecha del inventario si está disponible
+      if (fechaInventario) {
+        formData.append('fechaInventario', fechaInventario);
+      }
 
       // Progreso simulado inicial (hasta 30%)
       let simulado = 0;
@@ -204,7 +214,17 @@ const ImportarPDFModal = ({ visible, onClose, cliente, onVerSesion }) => {
   const handleSiguientePaso = () => {
     if (pasoActual === 1) {
       if (archivos.length === 0) {
-        showMessage({ message: 'Seleccione al menos un archivo PDF', type: 'warning' });
+        showMessage({ message: 'Seleccione al menos un archivo (PDF, XLSX o XLS)', type: 'warning' });
+        return;
+      }
+      if (!fechaInventario || fechaInventario.trim() === '') {
+        showMessage({ message: 'Debe especificar la fecha del inventario', type: 'warning' });
+        return;
+      }
+      // Validar formato de fecha
+      const fechaRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!fechaRegex.test(fechaInventario)) {
+        showMessage({ message: 'Formato de fecha inválido. Use YYYY-MM-DD', type: 'warning' });
         return;
       }
       setPasoActual(2);
@@ -223,6 +243,7 @@ const ImportarPDFModal = ({ visible, onClose, cliente, onVerSesion }) => {
     setProcesando(false);
     setError(null);
     setReintentoHecho(false);
+    setFechaInventario(new Date().toISOString().split('T')[0]);
     onClose();
   };
 
@@ -237,7 +258,7 @@ const ImportarPDFModal = ({ visible, onClose, cliente, onVerSesion }) => {
         <View style={styles.modalContainer}>
           {/* Header */}
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Importar Inventario desde PDF</Text>
+            <Text style={styles.modalTitle}>Importar Inventario desde Archivo</Text>
             <TouchableOpacity onPress={handleClose} disabled={procesando}>
               <Ionicons name="close" size={24} color="#64748b" />
             </TouchableOpacity>
@@ -294,12 +315,34 @@ const ImportarPDFModal = ({ visible, onClose, cliente, onVerSesion }) => {
                 >
                   <Ionicons name="cloud-upload-outline" size={48} color="#3b82f6" />
                   <Text style={styles.selectButtonText}>
-                    Seleccionar archivos PDF
+                    Seleccionar archivos (PDF, XLSX, XLS)
                   </Text>
                   <Text style={styles.selectButtonSubtext}>
                     Máximo 10 archivos, 50MB cada uno
                   </Text>
                 </TouchableOpacity>
+
+                {/* Campo de fecha del inventario */}
+                <View style={styles.dateContainer}>
+                  <View style={styles.dateHeader}>
+                    <Ionicons name="calendar-outline" size={20} color="#3b82f6" />
+                    <Text style={styles.dateLabel}>Fecha del Inventario Original *</Text>
+                  </View>
+                  <Text style={styles.dateDescription}>
+                    Especifique la fecha en que se realizó originalmente este inventario
+                  </Text>
+                  <TextInput
+                    style={styles.dateInput}
+                    value={fechaInventario}
+                    onChangeText={setFechaInventario}
+                    placeholder="YYYY-MM-DD (ej: 2026-01-15)"
+                    placeholderTextColor="#94a3b8"
+                    keyboardType="default"
+                  />
+                  <Text style={styles.dateHint}>
+                    Formato: Año-Mes-Día (ej: 2026-01-15)
+                  </Text>
+                </View>
 
                 {/* Lista de archivos seleccionados */}
                 {archivos.length > 0 && (
@@ -368,7 +411,7 @@ const ImportarPDFModal = ({ visible, onClose, cliente, onVerSesion }) => {
                 <View style={{ width: 96, height: 96, borderRadius: 48, borderWidth: 8, borderColor: '#bfdbfe', borderTopColor: '#2563eb', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
                   <Ionicons name="document-text" size={36} color="#2563eb" />
                 </View>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 8 }}>Procesando archivos PDF...</Text>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 8 }}>Procesando archivos...</Text>
                 <Text style={{ fontSize: 13, color: '#475569', marginBottom: 16 }}>Analizando y extrayendo datos del inventario</Text>
                 <View style={styles.progressBar}>
                   <View style={[styles.progressFill, { width: `${progreso}%` }]} />
@@ -404,7 +447,7 @@ const ImportarPDFModal = ({ visible, onClose, cliente, onVerSesion }) => {
                   <View style={styles.resultItem}>
                     <Text style={styles.resultLabel}>Productos:</Text>
                     <Text style={styles.resultValue}>
-                      {resultado.resumen?.totalProductos}
+                      {resultado.resumen?.totalProductos || resultado.resumen?.productosCreados || 0}
                     </Text>
                   </View>
 
@@ -412,7 +455,7 @@ const ImportarPDFModal = ({ visible, onClose, cliente, onVerSesion }) => {
                     <Text style={styles.resultLabel}>Total General:</Text>
                     <Text style={styles.resultValue}>
                       $
-                      {resultado.resumen?.totalGeneral?.toLocaleString('es-DO', {
+                      {(resultado.resumen?.totalGeneral || 0).toLocaleString('es-DO', {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
@@ -439,38 +482,38 @@ const ImportarPDFModal = ({ visible, onClose, cliente, onVerSesion }) => {
                   <View style={styles.balanceContainer}>
                     <Text style={styles.balanceTitle}>Balance General</Text>
                     <View style={styles.balanceGrid}>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Efectivo:</Text><Text style={styles.balanceValue}>${resultado.resumen.balanceGeneral.efectivo_caja_banco?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Ctas. por Cobrar:</Text><Text style={styles.balanceValue}>${resultado.resumen.balanceGeneral.cuentas_por_cobrar?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Inventario:</Text><Text style={styles.balanceValue}>${resultado.resumen.balanceGeneral.valor_inventario?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Activos Fijos:</Text><Text style={styles.balanceValue}>${resultado.resumen.balanceGeneral.activos_fijos?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Deuda a Negocio:</Text><Text style={styles.balanceValue}>${resultado.resumen.balanceGeneral.deuda_a_negocio?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Total Corrientes:</Text><Text style={styles.balanceValue}>${resultado.resumen.balanceGeneral.total_corrientes?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Total Fijos:</Text><Text style={styles.balanceValue}>${resultado.resumen.balanceGeneral.total_fijos?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Total Activos:</Text><Text style={styles.balanceValue}>${resultado.resumen.balanceGeneral.total_activos?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Ctas. por Pagar:</Text><Text style={styles.balanceValue}>${resultado.resumen.balanceGeneral.cuentas_por_pagar?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Total Pasivos:</Text><Text style={styles.balanceValue}>${resultado.resumen.balanceGeneral.total_pasivos?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Capital Contable:</Text><Text style={styles.balanceValue}>${resultado.resumen.balanceGeneral.capital_contable?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Pasivos + Capital:</Text><Text style={styles.balanceValue}>${resultado.resumen.balanceGeneral.total_pasivos_mas_capital?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Ventas del Mes:</Text><Text style={styles.balanceValue}>${resultado.resumen.balanceGeneral.ventas_del_mes?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Gastos Generales:</Text><Text style={styles.balanceValue}>${resultado.resumen.balanceGeneral.gastos_generales?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Utilidad Neta:</Text><Text style={styles.balanceValue}>${resultado.resumen.balanceGeneral.utilidad_neta?.toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Efectivo:</Text><Text style={styles.balanceValue}>${(resultado.resumen.balanceGeneral.efectivo_caja_banco || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Ctas. por Cobrar:</Text><Text style={styles.balanceValue}>${(resultado.resumen.balanceGeneral.cuentas_por_cobrar || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Inventario:</Text><Text style={styles.balanceValue}>${(resultado.resumen.balanceGeneral.valor_inventario || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Activos Fijos:</Text><Text style={styles.balanceValue}>${(resultado.resumen.balanceGeneral.activos_fijos || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Deuda a Negocio:</Text><Text style={styles.balanceValue}>${(resultado.resumen.balanceGeneral.deuda_a_negocio || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Total Corrientes:</Text><Text style={styles.balanceValue}>${(resultado.resumen.balanceGeneral.total_corrientes || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Total Fijos:</Text><Text style={styles.balanceValue}>${(resultado.resumen.balanceGeneral.total_fijos || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Total Activos:</Text><Text style={styles.balanceValue}>${(resultado.resumen.balanceGeneral.total_activos || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Ctas. por Pagar:</Text><Text style={styles.balanceValue}>${(resultado.resumen.balanceGeneral.cuentas_por_pagar || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Total Pasivos:</Text><Text style={styles.balanceValue}>${(resultado.resumen.balanceGeneral.total_pasivos || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Capital Contable:</Text><Text style={styles.balanceValue}>${(resultado.resumen.balanceGeneral.capital_contable || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Pasivos + Capital:</Text><Text style={styles.balanceValue}>${(resultado.resumen.balanceGeneral.total_pasivos_mas_capital || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Ventas del Mes:</Text><Text style={styles.balanceValue}>${(resultado.resumen.balanceGeneral.ventas_del_mes || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Gastos Generales:</Text><Text style={styles.balanceValue}>${(resultado.resumen.balanceGeneral.gastos_generales || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Utilidad Neta:</Text><Text style={styles.balanceValue}>${(resultado.resumen.balanceGeneral.utilidad_neta || 0).toLocaleString()}</Text></View>
                       <View style={styles.balanceItem}><Text style={styles.balanceLabel}>% Neto:</Text><Text style={styles.balanceValue}>{resultado.resumen.balanceGeneral.porcentaje_neto ?? 0}%</Text></View>
                       <View style={styles.balanceItem}><Text style={styles.balanceLabel}>% Bruto:</Text><Text style={styles.balanceValue}>{resultado.resumen.balanceGeneral.porcentaje_bruto ?? 0}%</Text></View>
                     </View>
                   </View>
                 )}
 
-                {/* Distribución de saldo */}
-                {resultado.resumen?.distribucionSaldo && (
+                {/* Distribución de saldo - Mostrar solo si hay datos */}
+                {resultado.resumen?.distribucionSaldo && Object.keys(resultado.resumen.distribucionSaldo).length > 0 && (
                   <View style={[styles.balanceContainer, { marginTop: 12 }] }>
                     <Text style={styles.balanceTitle}>Distribución de saldo</Text>
                     <View style={styles.balanceGrid}>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Efectivo/Caja/Banco:</Text><Text style={styles.balanceValue}>${resultado.resumen.distribucionSaldo.efectivo_caja_banco?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Inventario:</Text><Text style={styles.balanceValue}>${resultado.resumen.distribucionSaldo.inventario_mercancia?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Activos Fijos:</Text><Text style={styles.balanceValue}>${resultado.resumen.distribucionSaldo.activos_fijos?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Ctas. por Cobrar:</Text><Text style={styles.balanceValue}>${resultado.resumen.distribucionSaldo.cuentas_por_cobrar?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Ctas. por Pagar:</Text><Text style={styles.balanceValue}>${resultado.resumen.distribucionSaldo.cuentas_por_pagar?.toLocaleString()}</Text></View>
-                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Otros:</Text><Text style={styles.balanceValue}>${resultado.resumen.distribucionSaldo.otros?.toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Efectivo/Caja/Banco:</Text><Text style={styles.balanceValue}>${(resultado.resumen.distribucionSaldo.efectivo_caja_banco || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Inventario:</Text><Text style={styles.balanceValue}>${(resultado.resumen.distribucionSaldo.inventario_mercancia || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Activos Fijos:</Text><Text style={styles.balanceValue}>${(resultado.resumen.distribucionSaldo.activos_fijos || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Ctas. por Cobrar:</Text><Text style={styles.balanceValue}>${(resultado.resumen.distribucionSaldo.cuentas_por_cobrar || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Ctas. por Pagar:</Text><Text style={styles.balanceValue}>${(resultado.resumen.distribucionSaldo.cuentas_por_pagar || 0).toLocaleString()}</Text></View>
+                      <View style={styles.balanceItem}><Text style={styles.balanceLabel}>Otros:</Text><Text style={styles.balanceValue}>${(resultado.resumen.distribucionSaldo.otros || 0).toLocaleString()}</Text></View>
                     </View>
                   </View>
                 )}
@@ -581,6 +624,47 @@ const styles = StyleSheet.create({
   clienteNombre: {
     fontSize: 16,
     color: '#1e3a8a',
+  },
+  dateContainer: {
+    marginBottom: 20,
+    backgroundColor: '#f0f9ff',
+    borderWidth: 2,
+    borderColor: '#3b82f6',
+    borderRadius: 12,
+    padding: 16,
+  },
+  dateHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  dateLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e40af',
+  },
+  dateDescription: {
+    fontSize: 13,
+    color: '#475569',
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  dateInput: {
+    backgroundColor: '#ffffff',
+    borderWidth: 2,
+    borderColor: '#3b82f6',
+    borderRadius: 8,
+    padding: 14,
+    fontSize: 16,
+    color: '#1e293b',
+    fontWeight: '600',
+  },
+  dateHint: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 6,
+    fontStyle: 'italic',
   },
   selectButton: {
     borderWidth: 2,

@@ -12,7 +12,8 @@ import {
   Tag,
   ShoppingCart,
   Users,
-  Send
+  Send,
+  Menu
 } from 'lucide-react'
 import Button from '../components/ui/Button'
 import Card from '../components/ui/Card'
@@ -35,6 +36,7 @@ const ProductosGenerales = () => {
   const { onlineColaboradores, isConnected, enviarInventarioAColaboradores, obtenerColaboradoresEnLinea } = useSocket()
   const [showModal, setShowModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [showCategoryMenu, setShowCategoryMenu] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
@@ -173,11 +175,11 @@ const ProductosGenerales = () => {
     // Los productos ya vienen procesados del backend, solo necesitamos mostrarlos
     // El backend ya los ha creado/actualizado en la base de datos
     const toastId = toast.loading(`Procesando ${products.length} productos...`);
-    
+
     try {
       // Los productos ya están en la base de datos, solo invalidar la query
       queryClient.invalidateQueries('productos-generales');
-      
+
       toast.dismiss(toastId);
       toast.success(`Se importaron ${products.length} productos correctamente`);
     } catch (error) {
@@ -219,7 +221,7 @@ const ProductosGenerales = () => {
         buscar: '',
         categoria: ''
       })
-      
+
       const data = handleApiResponse(response)
       const todosLosProductos = data.productos || []
 
@@ -414,7 +416,7 @@ const ProductosGenerales = () => {
         <div className="flex gap-2 items-center">
           {/* Colaboradores en línea (solo para admins) */}
           {user?.rol === 'administrador' && (
-            <div 
+            <div
               className="flex items-center space-x-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors"
               onClick={() => {
                 if (isConnected) {
@@ -472,40 +474,60 @@ const ProductosGenerales = () => {
       {/* Filtros y búsqueda */}
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
+          <div className="flex-1 max-w-2xl">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
                 placeholder="Buscar productos..."
                 value={searchTerm}
                 onChange={handleSearch}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-900 placeholder-gray-500"
+                className="w-full pl-10 pr-4 py-3 text-lg border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-900 placeholder-gray-500 shadow-sm"
               />
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="relative">
             <button
-              onClick={() => handleCategoryFilter('')}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${selectedCategory === ''
-                ? 'bg-primary-100 text-primary-700'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+              onClick={() => setShowCategoryMenu(!showCategoryMenu)}
+              className="flex items-center space-x-2 px-4 py-3 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors shadow-sm"
             >
-              Todas
+              <Menu className="w-5 h-5 text-gray-600" />
+              <span className="font-medium text-gray-700">
+                {selectedCategory || 'Categorías'}
+              </span>
             </button>
-            {categorias.map((categoria) => (
-              <button
-                key={categoria}
-                onClick={() => handleCategoryFilter(categoria)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${selectedCategory === categoria
-                  ? 'bg-primary-100 text-primary-700'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-              >
-                {categoria}
-              </button>
-            ))}
+
+            {showCategoryMenu && (
+              <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border border-gray-100 p-2 z-50 max-h-96 overflow-y-auto">
+                <button
+                  onClick={() => {
+                    handleCategoryFilter('')
+                    setShowCategoryMenu(false)
+                  }}
+                  className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors mb-1 ${selectedCategory === ''
+                    ? 'bg-primary-50 text-primary-700'
+                    : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                >
+                  Todas las categorías
+                </button>
+                {categorias.map((categoria) => (
+                  <button
+                    key={categoria}
+                    onClick={() => {
+                      handleCategoryFilter(categoria)
+                      setShowCategoryMenu(false)
+                    }}
+                    className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors mb-1 ${selectedCategory === categoria
+                      ? 'bg-primary-50 text-primary-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                  >
+                    {categoria}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </Card>
