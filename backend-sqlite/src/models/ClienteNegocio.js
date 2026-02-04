@@ -108,8 +108,12 @@ class ClienteNegocio {
   static buscarPorId(id) {
     const db = dbManager.getDatabase()
     
+    // Verificar si la columna uuid existe
+    const tableInfo = db.prepare("PRAGMA table_info(clientes_negocios)").all()
+    const hasUuid = tableInfo.some(col => col.name === 'uuid')
+    
     // Verificar si es UUID o ID numérico
-    const isUuid = typeof id === 'string' && id.includes('-')
+    const isUuid = hasUuid && typeof id === 'string' && id.includes('-')
     
     const stmt = db.prepare(`
       SELECT 
@@ -292,8 +296,12 @@ class ClienteNegocio {
       valores.push(datos.notas)
     }
 
+    // Verificar si la columna uuid existe
+    const tableInfo = db.prepare("PRAGMA table_info(clientes_negocios)").all()
+    const hasUuid = tableInfo.some(col => col.name === 'uuid')
+    
     // Verificar si es UUID o ID numérico
-    const isUuid = typeof id === 'string' && id.includes('-')
+    const isUuid = hasUuid && typeof id === 'string' && id.includes('-')
     valores.push(id)
 
     const stmt = db.prepare(`
@@ -305,7 +313,7 @@ class ClienteNegocio {
     stmt.run(...valores)
     
     // Buscar por ID numérico si actualizamos por UUID
-    if (isUuid) {
+    if (isUuid && hasUuid) {
       const findStmt = db.prepare('SELECT id FROM clientes_negocios WHERE uuid = ?')
       const found = findStmt.get(id)
       return found ? ClienteNegocio.buscarPorId(found.id) : null
