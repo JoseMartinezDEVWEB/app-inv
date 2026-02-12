@@ -62,6 +62,21 @@ export const desactivarProductoGeneral = async (req, res) => {
   res.json(respuestaExito(null, 'Producto desactivado'))
 }
 
+export const eliminarTodosProductosGenerales = async (req, res) => {
+  console.log('⚡ [API] Solicitud recibida: Eliminar TODOS los productos generales');
+  try {
+    const cantidadEliminada = ProductoGeneral.eliminarTodos();
+    console.log(`✅ [API] Eliminación completada. Total eliminados: ${cantidadEliminada}`);
+    res.json(respuestaExito({
+      cantidad: cantidadEliminada,
+      mensaje: `Se eliminaron ${cantidadEliminada} productos correctamente`
+    }, `Se eliminaron ${cantidadEliminada} productos correctamente`));
+  } catch (error) {
+    console.error('❌ [API] Error al eliminar todos los productos:', error);
+    res.status(500).json({ exito: false, mensaje: 'Error interno al eliminar productos: ' + error.message });
+  }
+}
+
 export const obtenerCategorias = async (req, res) => {
   const categorias = ProductoGeneral.obtenerCategorias()
 
@@ -173,6 +188,7 @@ export default {
   crearProductoGeneral,
   actualizarProductoGeneral,
   desactivarProductoGeneral,
+  eliminarTodosProductosGenerales,
   obtenerCategorias,
   buscarPorCodigoBarras,
   // Cliente

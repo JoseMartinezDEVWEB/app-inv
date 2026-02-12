@@ -14,7 +14,8 @@ export const useSocket = () => {
 
   // Obtener contador de colaboradores en línea
   const obtenerColaboradoresEnLinea = useCallback(() => {
-    if (isConnected && user?.rol === 'administrador') {
+    const rolesAutorizados = ['administrador', 'contable', 'contador']
+    if (isConnected && rolesAutorizados.includes(user?.rol)) {
       console.log('📡 [useSocket] Solicitando contador de colaboradores...')
       webSocketService.emit('get_online_colaborators')
     } else {
@@ -55,12 +56,15 @@ export const useSocket = () => {
     const handleConnected = () => {
       console.log('✅ [useSocket] WebSocket conectado, usuario:', user?.rol)
       setIsConnected(true)
-      // Si es admin, obtener el contador inicial después de un pequeño delay
-      if (user?.rol === 'administrador') {
-        console.log('👑 [useSocket] Usuario es admin, solicitando contador en 1 segundo...')
-        setTimeout(() => {
-          obtenerColaboradoresEnLinea()
-        }, 1000)
+
+      const rolesAutorizados = ['administrador', 'contable', 'contador']
+      if (rolesAutorizados.includes(user?.rol)) {
+        console.log('👑 [useSocket] Usuario autorizado, solicitando sincronización inicial...')
+        // Solicitar inmediatamente
+        obtenerColaboradoresEnLinea()
+        // Y después de un pequeño delay para asegurar estabilidad
+        setTimeout(obtenerColaboradoresEnLinea, 500)
+        setTimeout(obtenerColaboradoresEnLinea, 1500)
       }
     }
 
@@ -79,34 +83,24 @@ export const useSocket = () => {
 
     listenersSetupRef.current = true
 
-    // Verificar estado inicial
+    // Verificar estado inicial y forzar sincronización si ya está conectado
     const status = webSocketService.getConnectionStatus()
-    console.log('🔍 [useSocket] Estado inicial:', { 
-      isConnected: status.isConnected, 
-      userRol: user?.rol,
-      socketId: status.socketId 
-    })
-    
     setIsConnected(status.isConnected)
-    if (status.isConnected && user?.rol === 'administrador') {
-      // Solicitar contador inicial inmediatamente y luego periódicamente
-      console.log('👑 [useSocket] Admin ya conectado, solicitando contador inicial...')
-      // Solicitar inmediatamente
+
+    const rolesAutorizados = ['administrador', 'contable', 'contador']
+    if (status.isConnected && rolesAutorizados.includes(user?.rol)) {
       obtenerColaboradoresEnLinea()
-      // Y también después de un pequeño delay para asegurar que el servidor responda
-      setTimeout(() => {
-        obtenerColaboradoresEnLinea()
-      }, 1000)
+      setTimeout(obtenerColaboradoresEnLinea, 1000)
     }
 
-    // Polling periódico para actualizar contador si es admin (cada 3 segundos)
+    // Polling periódico (Safety net) cada 5 segundos
     let intervalId = null
-    if (user?.rol === 'administrador' && status.isConnected) {
-      console.log('⏰ [useSocket] Iniciando polling cada 3 segundos...')
+    if (rolesAutorizados.includes(user?.rol)) {
       intervalId = setInterval(() => {
-        console.log('🔄 [useSocket] Polling: solicitando contador...')
-        obtenerColaboradoresEnLinea()
-      }, 3000) // Actualizar cada 3 segundos
+        if (webSocketService.isConnected) {
+          obtenerColaboradoresEnLinea()
+        }
+      }, 5000)
     }
 
     // Cleanup
@@ -146,19 +140,19 @@ export const useSocket = () => {
     return () => clearInterval(interval)
   }, [isAuthenticated, token])
 
-    // Función para enviar inventario a colaboradores
-    const enviarInventarioAColaboradores = useCallback((productos) => {
-      if (!isConnected) {
-        throw new Error('No hay conexión con el servidor')
-      }
+  // Función para enviar inventario a colaboradores
+  const enviarInventarioAColaboradores = useCallback((productos) => {
+    if (!isConnected) {
+      throw new Error('No hay conexión con el servidor')
+    }
 
-      if (user?.rol !== 'administrador') {
-        throw new Error('Solo los administradores pueden enviar inventario')
-      }
+    if (user?.rol !== 'administrador') {
+      throw new Error('Solo los administradores pueden enviar inventario')
+    }
 
-      // Emitir evento de envío de inventario (nuevo evento send_inventory)
-      webSocketService.emit('send_inventory', { productos })
-    }, [isConnected, user?.rol])
+    // Emitir evento de envío de inventario (nuevo evento send_inventory)
+    webSocketService.emit('send_inventory', { productos })
+  }, [isConnected, user?.rol])
 
   return {
     isConnected,

@@ -250,104 +250,126 @@ def procesar_excel(archivo_path: str) -> List[Dict[str, Any]]:
     """Procesa un archivo Excel y retorna una lista de diccionarios"""
     try:
         print(f"[DEBUG] Iniciando procesamiento Excel: {archivo_path}", file=sys.stderr)
-        # Leer Excel
-        df = pd.read_excel(archivo_path, dtype=str) # Leer todo como string para evitar conversiones automáticas erróneas
-        print(f"[DEBUG] Excel leído. Filas: {len(df)}, Columnas: {list(df.columns)}", file=sys.stderr)
         
-        # Normalizar nombres de columnas (minusculas, sin acentos, sin espacios extra)
-        df.columns = df.columns.astype(str).str.strip().str.lower()
+        # Leer TODAS las hojas del Excel
+        # sheet_name=None devuelve un dict {nombre_hoja: DataFrame}
+        xls = pd.read_excel(archivo_path, sheet_name=None, dtype=str)
         
-        # Mapeo de posibles nombres de columnas - ENFOQUE: Nombre, Cantidad, Costo, Total
-        mapa_columnas = {
-            'nombre': ['nombre', 'producto', 'descripción', 'descripcion', 'articulo', 'item'],
-            'cantidad': ['cantidad', 'cant', 'qty', 'unidad', 'unidades', 'stock', 'existencia'],
-            'costo': ['costo', 'costo unitario', 'precio unitario', 'valor unitario', 'precio', 'pvp'],
-            'total': ['total', 'valor total', 'importe', 'monto total'],
-            'categoria': ['categoria', 'categoría', 'grupo', 'familia', 'departamento']
-        }
+        all_productos = []
         
-        # Identificar columnas
-        columnas_encontradas = {}
-        for campo_destino, posibles_nombres in mapa_columnas.items():
-            for posible in posibles_nombres:
-                match = next((col for col in df.columns if posible in col), None)
-                if match:
-                    columnas_encontradas[campo_destino] = match
-                    break
+        print(f"[DEBUG] Excel leído. Hojas encontradas: {list(xls.keys())}", file=sys.stderr)
         
-        # Si no encontramos columna nombre, es crítico
-        if 'nombre' not in columnas_encontradas:
-            # Intentar usar la primera columna de texto como nombre si no se encontró explícitamente
-            if len(df.columns) > 0:
-                columnas_encontradas['nombre'] = df.columns[0]
-            else:
-                return {'error': 'No se pudo identificar la columna de Nombre del producto'}
-
-        productos = []
-        
-        for _, row in df.iterrows():
-            nombre = limpiar_texto(row.get(columnas_encontradas.get('nombre')))
+        for sheet_name, df in xls.items():
+            print(f"[DEBUG] Procesando hoja: {sheet_name}. Filas: {len(df)}", file=sys.stderr)
             
-            # Saltar filas vacías o headers
-            if not nombre or len(nombre) < 2:
-                continue
+            # Normalizar nombres de columnas (minusculas, sin acentos, sin espacios extra)
+            df.columns = df.columns.astype(str).str.strip().str.lower()
             
-            # Filtrar headers comunes
-            headers_comunes = ['nombre', 'descripcion', 'articulo', 'producto', 'item', 'cantidad', 'costo', 'precio', 'total']
-            if nombre.lower().strip() in headers_comunes:
-                continue
+            # Mapeo de posibles nombres de columnas - ENFOQUE: Nombre, Cantidad, Costo, Total, Código
+            mapa_columnas = {
+                'nombre': ['nombre', 'producto', 'descripción', 'descripcion', 'articulo', 'item', 'description'],
+                'cantidad': ['cantidad', 'cant', 'qty', 'unidad', 'unidades', 'stock', 'existencia'],
+                'costo': ['costo', 'costo unitario', 'precio unitario', 'valor unitario', 'precio', 'pvp', 'cost'],
+                'total': ['total', 'valor total', 'importe', 'monto total'],
+                'categoria': ['categoria', 'categoría', 'grupo', 'familia', 'departamento', 'category'],
+                'codigo': ['codigo', 'código', 'barcode', 'sku', 'ref', 'referencia', 'id', 'cod', 'code']
+            }
             
-            # Extraer cantidad (PRIORIDAD ALTA)
-            cantidad = 1  # Valor por defecto
-            if 'cantidad' in columnas_encontradas:
-                cantidad_val = parsear_numero(row.get(columnas_encontradas.get('cantidad')))
-                if cantidad_val > 0:
-                    cantidad = int(cantidad_val) if cantidad_val <= 100000 else 1
+            # Identificar columnas
+            columnas_encontradas = {}
+            for campo_destino, posibles_nombres in mapa_columnas.items():
+                for posible in posibles_nombres:
+                    match = next((col for col in df.columns if posible in col), None)
+                    if match:
+                        columnas_encontradas[campo_destino] = match
+                        break
             
-            # Extraer costo unitario (PRIORIDAD ALTA)
-            costo = 0
-            if 'costo' in columnas_encontradas:
-                costo = parsear_numero(row.get(columnas_encontradas.get('costo')))
-            
-            # Si tenemos total pero no costo, calcular costo = total / cantidad
-            if 'total' in columnas_encontradas and costo == 0 and cantidad > 0:
-                total_val = parsear_numero(row.get(columnas_encontradas.get('total')))
-                if total_val > 0:
-                    costo = total_val / cantidad
-            
-            # Si tenemos total pero no cantidad, calcular cantidad = total / costo
-            if 'total' in columnas_encontradas and cantidad == 1 and costo > 0:
-                total_val = parsear_numero(row.get(columnas_encontradas.get('total')))
-                if total_val > 0:
-                    cantidad = int(total_val / costo) or 1
-            
-            # Si no encontramos costo, buscar en otras columnas numéricas
-            if costo == 0:
-                for col in df.columns:
-                    if col not in [columnas_encontradas.get('nombre'), columnas_encontradas.get('cantidad'), columnas_encontradas.get('total')]:
-                        val = parsear_numero(row.get(col))
-                        if val > 0 and val < 1000000:
-                            costo = val
-                            break
-            
-            # Agregar producto si tenemos nombre válido (incluso sin costo)
-            # El usuario puede editar el costo después
-            if nombre and len(nombre) >= 2:
-                producto = {
-                    'nombre': nombre,
-                    'codigoBarras': None,  # No enfocarse en código de barras
-                    'cantidad': cantidad,
-                    'precio': costo if costo > 0 else 0,  # Costo unitario
-                    'costoBase': costo if costo > 0 else 0,
-                    'categoria': limpiar_texto(row.get(columnas_encontradas.get('categoria'))) if 'categoria' in columnas_encontradas else 'General'
-                }
-                productos.append(producto)
-                if costo > 0:
-                    print(f"[DEBUG] Producto Excel agregado: {nombre[:30]}... (cantidad: {cantidad}, costo: {costo})", file=sys.stderr)
+            # Si no encontramos columna nombre en esta hoja, intentamos con la primera columna de texto
+            # Pero si la hoja está vacía o no tiene estructura válida, la saltamos
+            if 'nombre' not in columnas_encontradas:
+                if len(df.columns) > 0:
+                     # Heurística: la columna de nombre suele ser la que tiene strings más largos
+                     # O simplemente la primera/segunda columna
+                     columnas_encontradas['nombre'] = df.columns[0]
                 else:
-                    print(f"[DEBUG] Producto Excel sin costo agregado: {nombre[:30]}... (cantidad: {cantidad})", file=sys.stderr)
-            
-        return productos
+                    print(f"[DEBUG] Saltando hoja {sheet_name}: No se identificó columna nombre", file=sys.stderr)
+                    continue
+
+            for _, row in df.iterrows():
+                nombre = limpiar_texto(row.get(columnas_encontradas.get('nombre')))
+                
+                # Saltar filas vacías o headers
+                if not nombre or len(nombre) < 2:
+                    continue
+                
+                # Filtrar headers comunes
+                headers_comunes = ['nombre', 'descripcion', 'articulo', 'producto', 'item', 'cantidad', 'costo', 'precio', 'total', 'codigo', 'barcode']
+                if nombre.lower().strip() in headers_comunes:
+                    continue
+                
+                # Extraer cantidad (PRIORIDAD ALTA)
+                cantidad = 1  # Valor por defecto
+                if 'cantidad' in columnas_encontradas:
+                    cantidad_val = parsear_numero(row.get(columnas_encontradas.get('cantidad')))
+                    if cantidad_val > 0:
+                        cantidad = int(cantidad_val) if cantidad_val <= 100000 else 1
+                
+                # Extraer costo unitario (PRIORIDAD ALTA)
+                costo = 0
+                if 'costo' in columnas_encontradas:
+                    costo = parsear_numero(row.get(columnas_encontradas.get('costo')))
+                
+                # Si tenemos total pero no costo, calcular costo = total / cantidad
+                if 'total' in columnas_encontradas and costo == 0 and cantidad > 0:
+                    total_val = parsear_numero(row.get(columnas_encontradas.get('total')))
+                    if total_val > 0:
+                        costo = total_val / cantidad
+                
+                # Si tenemos total pero no cantidad, calcular cantidad = total / costo
+                if 'total' in columnas_encontradas and cantidad == 1 and costo > 0:
+                    total_val = parsear_numero(row.get(columnas_encontradas.get('total')))
+                    if total_val > 0:
+                        cantidad = int(total_val / costo) or 1
+                
+                # Si no encontramos costo, buscar en otras columnas numéricas
+                if costo == 0:
+                    for col in df.columns:
+                        if col not in [columnas_encontradas.get('nombre'), columnas_encontradas.get('cantidad'), columnas_encontradas.get('total')]:
+                            val = parsear_numero(row.get(col))
+                            if val > 0 and val < 1000000:
+                                costo = val
+                                break
+                
+                # Extraer código de barras
+                codigo_barras = None
+                if 'codigo' in columnas_encontradas:
+                    val_codigo = row.get(columnas_encontradas.get('codigo'))
+                    if not pd.isna(val_codigo):
+                        codigo_barras = str(val_codigo).strip()
+                        if codigo_barras.lower() in ['nan', 'none', 'null', '']:
+                             codigo_barras = None
+
+                # Agregar producto si tenemos nombre válido
+                if nombre and len(nombre) >= 2:
+                    categoria = 'General'
+                    if 'categoria' in columnas_encontradas:
+                        cat_val = limpiar_texto(row.get(columnas_encontradas.get('categoria')))
+                        if cat_val and len(cat_val) > 2:
+                            categoria = cat_val
+
+                    producto = {
+                        'nombre': nombre,
+                        'codigoBarras': codigo_barras,
+                        'cantidad': cantidad,
+                        'precio': costo if costo > 0 else 0,
+                        'costoBase': costo if costo > 0 else 0,
+                        'categoria': categoria,
+                        'unidad': 'unidad'
+                    }
+                    all_productos.append(producto)
+        
+        print(f"[DEBUG] Total productos encontrados en todas las hojas: {len(all_productos)}", file=sys.stderr)
+        return all_productos
 
     except Exception as e:
         print(f"[DEBUG] ERROR procesando Excel: {str(e)}", file=sys.stderr)
@@ -489,11 +511,12 @@ def procesar_pdf(archivo_path: str, api_key: str = None) -> List[Dict[str, Any]]
                         
                         header = [str(c).lower().strip() if c else '' for c in tabla[0]]
                         
-                        # Buscar índices de columnas - ENFOQUE: Nombre, Cantidad, Costo, Total
+                        # Buscar índices de columnas - ENFOQUE: Nombre, Cantidad, Costo, Total, Código
                         idx_nombre = -1
                         idx_costo = -1
                         idx_cantidad = -1
                         idx_total = -1
+                        idx_codigo = -1
                         
                         for i, col in enumerate(header):
                             col_lower = col.lower()
@@ -501,15 +524,19 @@ def procesar_pdf(archivo_path: str, api_key: str = None) -> List[Dict[str, Any]]
                             if 'nombre' in col_lower or 'descrip' in col_lower or 'articulo' in col_lower or 'producto' in col_lower or 'item' in col_lower:
                                 if idx_nombre == -1:  # Tomar el primero que encuentre
                                     idx_nombre = i
-                            # Prioridad 2: Cantidad
+                            # Prioridad 2: Código/Barcode
+                            elif 'codigo' in col_lower or 'código' in col_lower or 'barcode' in col_lower or 'sku' in col_lower or 'ref' in col_lower:
+                                if idx_codigo == -1:
+                                    idx_codigo = i
+                            # Prioridad 3: Cantidad
                             elif 'cantidad' in col_lower or 'cant' in col_lower or 'qty' in col_lower or 'unidad' in col_lower:
                                 if idx_cantidad == -1:
                                     idx_cantidad = i
-                            # Prioridad 3: Costo/Precio unitario
+                            # Prioridad 4: Costo/Precio unitario
                             elif ('costo' in col_lower or 'precio' in col_lower or 'valor unitario' in col_lower) and 'total' not in col_lower:
                                 if idx_costo == -1:
                                     idx_costo = i
-                            # Prioridad 4: Total (si existe, puede ayudar a calcular cantidad o costo)
+                            # Prioridad 5: Total (si existe, puede ayudar a calcular cantidad o costo)
                             elif 'total' in col_lower and ('costo' not in col_lower and 'precio' not in col_lower):
                                 if idx_total == -1:
                                     idx_total = i
@@ -523,7 +550,7 @@ def procesar_pdf(archivo_path: str, api_key: str = None) -> List[Dict[str, Any]]
                             p_nombre = ""
                             p_precio = 0
                             p_cantidad = 1
-                            p_codigo = ""
+                            p_codigo = None
                             
                             # Extraer nombre (OBLIGATORIO)
                             if idx_nombre != -1 and len(fila) > idx_nombre:
@@ -541,6 +568,12 @@ def procesar_pdf(archivo_path: str, api_key: str = None) -> List[Dict[str, Any]]
                             headers_comunes = ['nombre', 'descripcion', 'articulo', 'producto', 'item', 'codigo', 'cantidad', 'costo', 'precio', 'total', 'subtotal']
                             if p_nombre.lower().strip() in headers_comunes:
                                 continue
+
+                            # Extraer Código (si column detected)
+                            if idx_codigo != -1 and len(fila) > idx_codigo:
+                                raw_code = limpiar_texto(fila[idx_codigo])
+                                if raw_code and len(raw_code) > 1 and raw_code.lower() not in ['none', 'null', 'nan']:
+                                    p_codigo = raw_code
 
                             # Extraer cantidad (PRIORIDAD ALTA)
                             p_cantidad = 1  # Valor por defecto
@@ -589,17 +622,18 @@ def procesar_pdf(archivo_path: str, api_key: str = None) -> List[Dict[str, Any]]
                                         p_costo = val
                                         break
                             
-                            # Solo agregar si tenemos nombre y costo válidos
-                            if p_costo > 0:
+                            # Solo agregar si tenemos nombre válido
+                            if len(p_nombre) >= 2:
                                 productos.append({
                                     'nombre': p_nombre,
-                                    'codigoBarras': None,  # No enfocarse en código de barras
+                                    'codigoBarras': p_codigo,
                                     'cantidad': p_cantidad,
                                     'precio': p_costo,  # Costo unitario
                                     'categoria': 'General',
+                                    'unidad': 'unidad',
                                     'costoBase': p_costo
                                 })
-                                print(f"[DEBUG] Producto agregado desde tabla: {p_nombre[:30]}... (cantidad: {p_cantidad}, costo: {p_costo})", file=sys.stderr)
+                                print(f"[DEBUG] Producto agregado desde tabla: {p_nombre[:30]}... (cod: {p_codigo}, costo: {p_costo})", file=sys.stderr)
                 
                 # ESTRATEGIA 2: Extraer de texto (formato "Reporte de inventario" o genérico)
                 texto = page.extract_text()

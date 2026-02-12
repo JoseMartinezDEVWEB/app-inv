@@ -182,7 +182,9 @@ export const productosApi = {
   getGeneralById: (id) => api.get(`/productos/generales/${id}`),
   createGeneral: (productoData) => api.post('/productos/generales', productoData),
   updateGeneral: (id, productoData) => api.put(`/productos/generales/${id}`, productoData),
+  updateGeneral: (id, productoData) => api.put(`/productos/generales/${id}`, productoData),
   deleteGeneral: (id) => api.delete(`/productos/generales/${id}`),
+  deleteAllGenerales: () => api.delete('/productos/generales/eliminar-todos'),
   getCategorias: () => api.get('/productos/generales/categorias'),
   buscarPorCodigoBarras: (codigo) => api.get(`/productos/generales/buscar/codigo-barras/${codigo}`),
   buscarPorNombre: (nombre) => api.get('/productos/generales', { params: { buscar: nombre, limite: 20 } }),
@@ -227,7 +229,7 @@ export const solicitudesConexionApi = {
   solicitar: (data) => api.post('/solicitudes-conexion/solicitar', data),
   verificarEstado: (solicitudId) => api.get(`/solicitudes-conexion/estado/${solicitudId}`),
   agregarProductoOffline: (solicitudId, productoData) => api.post(`/solicitudes-conexion/${solicitudId}/productos-offline`, { productoData }),
-  
+
   // Estados de conexión (colaboradores)
   ping: (solicitudId) => api.post(`/solicitudes-conexion/${solicitudId}/ping`),
   conectar: (solicitudId) => api.post(`/solicitudes-conexion/${solicitudId}/conectar`),
@@ -242,7 +244,7 @@ export const solicitudesConexionApi = {
   obtenerProductosOffline: (solicitudId) => api.get(`/solicitudes-conexion/${solicitudId}/productos-offline`),
   sincronizar: (solicitudId, temporalIds) => api.post(`/solicitudes-conexion/${solicitudId}/sincronizar`, { temporalIds }),
   desconectar: (solicitudId) => api.post(`/solicitudes-conexion/${solicitudId}/desconectar`),
-  
+
   // Cola de productos (Admin)
   obtenerColasPendientes: () => api.get('/solicitudes-conexion/colas-pendientes'),
   obtenerDetalleCola: (colaId) => api.get(`/solicitudes-conexion/colas/${colaId}`),
@@ -272,16 +274,16 @@ export const saludApi = {
  */
 export const syncApi = {
   // Enviar cambios locales al servidor (PUSH)
-  pushBatch: (changes, deviceId) => api.post('/sync/batch', { 
-    changes, 
-    deviceId, 
-    timestamp: Date.now() 
+  pushBatch: (changes, deviceId) => api.post('/sync/batch', {
+    changes,
+    deviceId,
+    timestamp: Date.now()
   }),
-  
+
   // Descargar cambios del servidor (PULL)
-  pullUpdates: (lastSync, tables = 'clientes,productos,sesiones') => 
+  pullUpdates: (lastSync, tables = 'clientes,productos,sesiones') =>
     api.get('/sync/pull', { params: { lastSync, tables } }),
-  
+
   // Obtener estado de sincronización
   getStatus: () => api.get('/sync/status'),
 }

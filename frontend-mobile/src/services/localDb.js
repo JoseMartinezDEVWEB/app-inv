@@ -32,7 +32,7 @@ const localDb = {
     init: async () => {
         try {
             const database = await getDatabase();
-            
+
             // Habilitar claves foráneas
             await database.execAsync('PRAGMA foreign_keys = ON;');
 
@@ -211,7 +211,7 @@ const localDb = {
                     createdAt TEXT
                 );
             `);
-            
+
             // Migraciones de columnas
             const addColumnIfNotExists = async (table, column, type) => {
                 try {
@@ -233,11 +233,11 @@ const localDb = {
                 await addColumnIfNotExists(table, 'business_id', 'TEXT');
                 await addColumnIfNotExists(table, 'created_by', 'TEXT');
             }
-            
+
             // Migraciones específicas
             await addColumnIfNotExists('clientes', 'notas', 'TEXT');
             await addColumnIfNotExists('sesiones', 'clienteNegocioId', 'TEXT');
-            
+
             // Agregar columna nombreUsuario a usuarios si no existe
             await addColumnIfNotExists('usuarios', 'nombreUsuario', 'TEXT');
 
@@ -303,7 +303,7 @@ const localDb = {
                 ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, 0)`,
                 [
                     id, uuid, p.nombre, p.codigoBarras || '', p.precioVenta || 0, p.stock || 0,
-                    p.descripcion || '', p.categoria || '', p.unidad || '', 
+                    p.descripcion || '', p.categoria || '', p.unidad || '',
                     p.costo || 0, p.sku || '', p.imagen || '',
                     timestamp
                 ]
@@ -319,7 +319,7 @@ const localDb = {
         try {
             const database = await getDatabase();
             const timestamp = Date.now();
-            
+
             await database.runAsync(
                 `UPDATE productos SET 
                     nombre = ?, codigoBarras = ?, precioVenta = ?, stock = ?, 
@@ -344,12 +344,25 @@ const localDb = {
             const database = await getDatabase();
             const timestamp = Date.now();
             await database.runAsync(
-                'UPDATE productos SET deleted = 1, is_dirty = 1, last_updated = ? WHERE _id = ?', 
+                'UPDATE productos SET deleted = 1, is_dirty = 1, last_updated = ? WHERE _id = ?',
                 [timestamp, id]
             );
             return true;
         } catch (error) {
             console.error('Error eliminando producto local:', error);
+            return false;
+        }
+    },
+
+    eliminarTodosProductos: async () => {
+        try {
+            const database = await getDatabase();
+            // Borrado físico total porque es una operación de "reset"
+            await database.execAsync('DELETE FROM productos');
+            console.log('✅ [localDb] Todos los productos eliminados localmente');
+            return true;
+        } catch (error) {
+            console.error('❌ [localDb] Error eliminando todos los productos:', error);
             return false;
         }
     },
@@ -384,7 +397,7 @@ const localDb = {
         try {
             const database = await getDatabase();
             console.log(`🔄 [localDb] Iniciando sincronización masiva de ${productos.length} productos...`);
-            
+
             // Iniciar transacción
             await database.execAsync('BEGIN TRANSACTION');
 
@@ -396,7 +409,7 @@ const localDb = {
                 // 2. Insertar productos en bloques de 50
                 const BATCH_SIZE = 50;
                 const batches = [];
-                
+
                 for (let i = 0; i < productos.length; i += BATCH_SIZE) {
                     batches.push(productos.slice(i, i + BATCH_SIZE));
                 }
@@ -405,7 +418,7 @@ const localDb = {
 
                 for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
                     const batch = batches[batchIndex];
-                    
+
                     // Insertar cada producto del lote
                     for (const producto of batch) {
                         const id = producto._id || producto.id || `prod_${Date.now()}_${Math.random()}`;
@@ -440,7 +453,7 @@ const localDb = {
                             // Continuar con el siguiente producto
                         }
                     }
-                    
+
                     console.log(`✅ [localDb] Lote ${batchIndex + 1}/${batches.length} insertado`);
                 }
 
@@ -531,20 +544,20 @@ const localDb = {
         try {
             const database = await getDatabase();
             const timestamp = Date.now();
-            
+
             // Primero verificamos si existe la columna datosFinancieros
             const info = await database.getAllAsync('PRAGMA table_info(sesiones)');
             const hasColumn = info.some(c => c.name === 'datosFinancieros');
-            
+
             if (!hasColumn) {
                 await database.execAsync('ALTER TABLE sesiones ADD COLUMN datosFinancieros TEXT');
             }
-            
+
             await database.runAsync(
                 `UPDATE sesiones SET datosFinancieros = ?, is_dirty = 1, last_updated = ? WHERE _id = ?`,
                 [JSON.stringify(datosFinancieros), timestamp, sesionId]
             );
-            
+
             console.log('✅ Datos financieros actualizados localmente');
             return true;
         } catch (error) {
@@ -558,14 +571,14 @@ const localDb = {
         try {
             const database = await getDatabase();
             const timestamp = Date.now();
-            
+
             await database.runAsync(
                 `UPDATE productos_contados 
                  SET cantidad = ?, costo = ?, is_dirty = 1, last_updated = ?
                  WHERE sesionId = ? AND (productoId = ? OR id = ?)`,
                 [data.cantidad || data.cantidadContada, data.costo || data.costoProducto, timestamp, sesionId, productoId, productoId]
             );
-            
+
             return true;
         } catch (error) {
             console.error('Error actualizando conteo local:', error);
@@ -578,14 +591,14 @@ const localDb = {
         try {
             const database = await getDatabase();
             const timestamp = Date.now();
-            
+
             await database.runAsync(
                 `UPDATE productos_contados 
                  SET deleted = 1, is_dirty = 1, last_updated = ?
                  WHERE sesionId = ? AND (productoId = ? OR id = ?)`,
                 [timestamp, sesionId, productoId, productoId]
             );
-            
+
             return true;
         } catch (error) {
             console.error('Error eliminando conteo local:', error);
@@ -598,12 +611,12 @@ const localDb = {
         try {
             const database = await getDatabase();
             const timestamp = Date.now();
-            
+
             await database.runAsync(
                 `UPDATE sesiones SET estado = 'completada', is_dirty = 1, last_updated = ? WHERE _id = ?`,
                 [timestamp, sesionId]
             );
-            
+
             console.log('✅ Sesión completada localmente');
             return true;
         } catch (error) {
@@ -641,12 +654,12 @@ const localDb = {
                     ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, 1, ?, 0)`,
                     [
                         uuid,
-                        data.sesionId, 
-                        data.productoId, 
-                        data.nombreProducto, 
+                        data.sesionId,
+                        data.productoId,
+                        data.nombreProducto,
                         data.skuProducto,
-                        data.cantidad, 
-                        data.costo, 
+                        data.cantidad,
+                        data.costo,
                         new Date().toISOString(),
                         timestamp
                     ]
@@ -670,7 +683,7 @@ const localDb = {
                 ...row,
                 cantidadContada: row.cantidad,
                 costoProducto: row.costo,
-                _id: row.id.toString(), 
+                _id: row.id.toString(),
                 local: true
             }));
         } catch (error) {
@@ -737,27 +750,27 @@ const localDb = {
                     is_dirty, sync_status, last_updated, deleted, createdAt, updatedAt
                 ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 1, 'pending', ?, 0, ?, ?)`,
                 [
-                    id, uuid, 
-                    cliente.nombre, 
-                    cliente.documento || '', 
+                    id, uuid,
+                    cliente.nombre,
+                    cliente.documento || '',
                     cliente.email || '',
-                    cliente.telefono || '', 
+                    cliente.telefono || '',
                     cliente.direccion || '',
                     cliente.notas || '',
                     businessId,
                     userId,
                     timestamp,
-                    now, 
+                    now,
                     now
                 ]
             );
-            
+
             console.log(`✅ Cliente creado localmente: ${cliente.nombre} (pending sync)`);
-            
-            return { 
-                ...cliente, 
-                _id: id, 
-                id_uuid: uuid, 
+
+            return {
+                ...cliente,
+                _id: id,
+                id_uuid: uuid,
                 is_dirty: 1,
                 sync_status: 'pending',
                 business_id: businessId,
@@ -775,7 +788,7 @@ const localDb = {
         try {
             const database = await getDatabase();
             const timestamp = Date.now();
-            
+
             for (const producto of productos) {
                 const uuid = producto.id_uuid || generateUUID();
                 const id = producto._id || producto.id || uuid;
@@ -857,7 +870,7 @@ const localDb = {
                 `UPDATE ${tabla} SET is_dirty = 0 WHERE id_uuid IN (${placeholders})`,
                 ids_uuid
             );
-            
+
             await database.runAsync(
                 `DELETE FROM ${tabla} WHERE deleted = 1 AND is_dirty = 0 AND id_uuid IN (${placeholders})`,
                 ids_uuid
@@ -871,20 +884,20 @@ const localDb = {
     guardarSesiones: async (sesiones) => {
         try {
             if (!Array.isArray(sesiones) || sesiones.length === 0) return;
-            
+
             const database = await getDatabase();
             const timestamp = Date.now();
-            
+
             for (const sesion of sesiones) {
                 const id = sesion._id || sesion.id || generateUUID();
                 const uuid = sesion.id_uuid || generateUUID();
-                
+
                 // Verificar si ya existe
                 const existente = await database.getFirstAsync(
                     'SELECT _id FROM sesiones WHERE _id = ?',
                     [id]
                 );
-                
+
                 if (existente) {
                     // Actualizar sesión existente
                     await database.runAsync(
@@ -924,7 +937,7 @@ const localDb = {
                     );
                 }
             }
-            
+
             console.log(`✅ Guardadas ${sesiones.length} sesiones localmente`);
         } catch (error) {
             console.error('Error guardando sesiones:', error);
@@ -939,7 +952,7 @@ const localDb = {
             // Primero verificar si la columna nombreUsuario existe
             const tableInfo = await database.getAllAsync(`PRAGMA table_info(usuarios)`);
             const hasNombreUsuario = tableInfo.some(col => col.name === 'nombreUsuario');
-            
+
             let usuario;
             if (hasNombreUsuario) {
                 // Buscar por email, nombreUsuario o nombre
@@ -954,11 +967,11 @@ const localDb = {
                     [emailOrName, emailOrName]
                 );
             }
-            
+
             if (!usuario || usuario.password !== password) {
                 return { success: false, error: 'Credenciales inválidas' };
             }
-            
+
             const { password: _, ...u } = usuario;
             return { success: true, usuario: { ...u, _id: usuario._id, loginLocal: true } };
         } catch (e) {
@@ -966,26 +979,26 @@ const localDb = {
             return { success: false, error: e.message };
         }
     },
-    
+
     // ... Otras funciones de usuarios e invitaciones se mantienen igual ...
     obtenerUsuarios: async () => { /* ... */ return []; },
-    registrarUsuarioLocal: async (u) => { /* ... */ return {success: false}; },
+    registrarUsuarioLocal: async (u) => { /* ... */ return { success: false }; },
     crearInvitacionLocal: async (d) => { /* ... */ throw new Error('Not impl'); },
     verificarCodigoInvitacion: async (c) => { /* ... */ return null; },
     listarInvitaciones: async () => { /* ... */ return []; },
     listarColaboradoresConCodigo: async () => { /* ... */ return []; },
-    
+
     obtenerConteosPendientes: async (sesionId) => {
         try {
             const database = await getDatabase();
-            const query = sesionId 
+            const query = sesionId
                 ? 'SELECT * FROM productos_contados WHERE sesionId = ? AND is_dirty = 1'
                 : 'SELECT * FROM productos_contados WHERE is_dirty = 1';
             const params = sesionId ? [sesionId] : [];
             return await database.getAllAsync(query, params);
         } catch (e) { return []; }
     },
-    
+
     agregarAColaSincronizacion: async (tipo, payload) => {
         try {
             const database = await getDatabase();
@@ -996,10 +1009,10 @@ const localDb = {
             return result.lastInsertRowId;
         } catch (e) { return 0; }
     },
-    obtenerTareasPendientes: async () => { return []; }, 
-    marcarTareaCompletada: async () => {},
-    marcarTareaFallida: async () => {},
-    limpiarTareasCompletadas: async () => {},
+    obtenerTareasPendientes: async () => { return []; },
+    marcarTareaCompletada: async () => { },
+    marcarTareaFallida: async () => { },
+    limpiarTareasCompletadas: async () => { },
     obtenerEstadisticasSincronizacion: async () => {
         try {
             const database = await getDatabase();
@@ -1011,7 +1024,7 @@ const localDb = {
                     (SELECT COUNT(*) FROM clientes WHERE is_dirty = 1)
                 ) as total
             `);
-            
+
             // Estadísticas detalladas por tabla
             const detalles = await database.getFirstAsync(`
                 SELECT 
@@ -1020,11 +1033,11 @@ const localDb = {
                     (SELECT COUNT(*) FROM sesiones WHERE is_dirty = 1) as sesionesPendientes,
                     (SELECT COUNT(*) FROM productos_contados WHERE is_dirty = 1) as conteosPendientes
             `);
-            
-            return { 
-                total: sucios?.total || 0, 
-                pendientes: sucios?.total || 0, 
-                completadas: 0, 
+
+            return {
+                total: sucios?.total || 0,
+                pendientes: sucios?.total || 0,
+                completadas: 0,
                 errores: 0,
                 detalles: detalles || {}
             };
@@ -1037,21 +1050,21 @@ const localDb = {
      */
     sincronizarClientesDesdeServidor: async (clientes) => {
         if (!Array.isArray(clientes) || clientes.length === 0) return;
-        
+
         try {
             const database = await getDatabase();
             const timestamp = Date.now();
-            
+
             for (const cliente of clientes) {
                 const uuid = cliente.uuid || cliente.id_uuid;
                 const id = cliente._id || cliente.id || uuid;
-                
+
                 // Verificar si existe
                 const existente = await database.getFirstAsync(
                     'SELECT _id, is_dirty FROM clientes WHERE _id = ? OR id_uuid = ?',
                     [id, uuid]
                 );
-                
+
                 if (existente) {
                     // Solo actualizar si no tiene cambios locales pendientes
                     if (!existente.is_dirty) {
@@ -1101,7 +1114,7 @@ const localDb = {
                     );
                 }
             }
-            
+
             console.log(`✅ ${clientes.length} clientes sincronizados desde servidor`);
         } catch (error) {
             console.error('Error sincronizando clientes desde servidor:', error);
@@ -1178,7 +1191,7 @@ const localDb = {
         try {
             const database = await getDatabase();
             const timestamp = new Date().toISOString();
-            
+
             await database.runAsync(
                 `INSERT OR REPLACE INTO productos_colaborador 
                 (temporalId, solicitudId, nombre, sku, codigoBarras, cantidad, costo, timestamp, sincronizado) 
@@ -1240,10 +1253,10 @@ const localDb = {
         try {
             const database = await getDatabase();
             const timestamp = Date.now();
-            
+
             const campos = ['last_updated = ?', 'is_dirty = 1', "sync_status = 'pending'", 'updatedAt = ?'];
             const valores = [timestamp, new Date().toISOString()];
-            
+
             if (datos.nombre !== undefined) {
                 campos.push('nombre = ?');
                 valores.push(datos.nombre);
@@ -1264,14 +1277,14 @@ const localDb = {
                 campos.push('notas = ?');
                 valores.push(datos.notas);
             }
-            
+
             valores.push(id);
-            
+
             await database.runAsync(
                 `UPDATE clientes SET ${campos.join(', ')} WHERE _id = ? OR id_uuid = ?`,
                 [...valores, id]
             );
-            
+
             return true;
         } catch (error) {
             console.error('Error actualizando cliente local:', error);
@@ -1286,12 +1299,12 @@ const localDb = {
         try {
             const database = await getDatabase();
             const timestamp = Date.now();
-            
+
             await database.runAsync(
                 `UPDATE clientes SET deleted = 1, is_dirty = 1, sync_status = 'pending', last_updated = ? WHERE _id = ? OR id_uuid = ?`,
                 [timestamp, id, id]
             );
-            
+
             return true;
         } catch (error) {
             console.error('Error eliminando cliente local:', error);

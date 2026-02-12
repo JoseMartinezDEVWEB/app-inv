@@ -2524,34 +2524,151 @@ const InventarioDetalleNuevo = () => {
     }
   }, [id, sesion?.timerEnMarcha])
 
+  // Debounce para evitar llamadas excesivas a la API
+  const [pendingUpdates, setPendingUpdates] = useState({})
+
+  // Referencia actualizada para evitar problemas de closure en el debounce
+  const updateProductRef = useRef()
+
   const updateProductMutation = useMutation(
-    ({ productoId, field, value }) => {
+    async ({ productoId, field, value }) => {
       // Si es nombreProducto, también necesitamos el productoClienteId para actualizar correctamente
       const updateData = { [field]: value }
 
       // Si estamos actualizando el nombre, también necesitamos el productoClienteId
-      if (field === 'nombreProducto') {
-        const producto = productosContados.find(p => p.productoId === productoId)
-        if (producto && producto.productoClienteId) {
-          updateData.productoClienteId = producto.productoClienteId
-        }
+      // Buscar en el estado actual (que puede tener actualizaciones optimistas)
+      const producto = productosContados.find(p => p.productoId === productoId)
+      if (producto && producto.productoClienteId) {
+        updateData.productoClienteId = producto.productoClienteId
       }
 
       return sesionesApi.updateProduct(id, productoId, updateData)
     },
     {
-      onSuccess: () => {
-        refetch() // Refrescar datos de la sesión
-        toast.success('Producto actualizado')
+      onMutate: async ({ productoId, field, value }) => {
+        // Cancelar refetches salientes
+        await queryClient.cancelQueries(['sesion', id])
+
+        // Snapshot del valor anterior
+        const previousSesion = queryClient.getQueryData(['sesion', id])
+
+        // Actualización optimista
+        queryClient.setQueryData(['sesion', id], old => {
+          if (!old || !old.productosContados) return old
+
+          return {
+            ...old,
+            productosContados: old.productosContados.map(p => {
+              // El backend usa 'id' pero frontend mapea a 'productoId'. 
+              // Aquí manipulamos el raw data del backend
+              const pId = p.id || p._id || p.productoId
+              if (String(pId) === String(productoId)) {
+                const newP = { ...p, [field]: value }
+                // Recalcular total si cambia costo o cantidad (logica simple de frontend)
+                if (field === 'costoProducto' || field === 'cantidadContada') {
+                  const cant = field === 'cantidadContada' ? parseFloat(value) || 0 : (p.cantidadContada || 0)
+                  const cost = field === 'costoProducto' ? parseFloat(value) || 0 : (p.costoProducto || 0)
+                  newP.valorTotal = cant * cost
+                }
+                return newP
+              }
+              return p
+            })
+          }
+        })
+
+        return { previousSesion }
       },
-      onError: handleApiError
+      onSuccess: (response) => {
+        // ACTUALIZAR CACHE CON RESPUESTA DEL SERVER
+        // Esto asegura que si el frontend calculó mal o falta algo, el server lo corrige INMEDIATAMENTE
+        if (response?.data?.datos) {
+          queryClient.setQueryData(['sesion', id], response.data.datos)
+        } else {
+          queryClient.invalidateQueries(['sesion', id])
+        }
+
+        // Quitar de pendientes
+        setPendingUpdates(prev => {
+          const next = { ...prev }
+          // Limpiar flags si es necesario
+          return next
+        })
+      },
+      onError: (err, newTodo, context) => {
+        // Revertir a estado anterior si falla
+        if (context?.previousSesion) {
+          queryClient.setQueryData(['sesion', id], context.previousSesion)
+        }
+        handleApiError(err)
+      }
     }
   )
 
+  updateProductRef.current = updateProductMutation.mutate
+
+  // Función debounced creada con useCallbackpara no recrearse en cada render
+  // Usamos un Map para debounce independiente por producto+campo
+  const debounceMap = useRef(new Map())
+
   const handleUpdateProductField = (productoId, field, value) => {
     // Si el campo es nombreProducto, mantener como string, de lo contrario convertir a número
-    const processedValue = field === 'nombreProducto' ? String(value || '').trim() : (parseFloat(value) || 0)
-    updateProductMutation.mutate({ productoId, field, value: processedValue })
+    const processedValue = field === 'nombreProducto' ? String(value || '') : (parseFloat(value) || 0)
+
+    // Actualización local inmediata para inputs (feedback visual instantáneo)
+    // Esto requiere que el input value venga del estado local o query cache. 
+    // Como 'productosContados' viene de query cache, onMutate optimista maneja esto.
+
+    const key = `${productoId}-${field}`
+
+    // Limpiar timeout anterior
+    if (debounceMap.current.has(key)) {
+      clearTimeout(debounceMap.current.get(key))
+    }
+
+    // Actualizar cache optimista INMEDIATAMENTE para que el input no "salte"
+    // Hacemos esto disparando la mutación pero con debounce solo para la llamada de red?
+    // No, react-query no soporta debounce nativo fácil sin custom hooks.
+    // Haremos debounce de la LLAMADA a mutate, pero necesitamos actualizar el estado local visual.
+    // Como no tenemos estado local por fila aquí (es una lista grande), 
+    // dependemos de que el parent o el input tenga su estado o actualicemos cache.
+    // Vamos a actualizar cache queryClient directamente sin llamar API aun.
+
+    queryClient.setQueryData(['sesion', id], old => {
+      if (!old || !old.productosContados) return old
+      return {
+        ...old,
+        productosContados: old.productosContados.map(p => {
+          const pId = p.id || p._id || p.productoId
+          // Comparar como strings para evitar problemas de tipos
+          if (String(pId) === String(productoId)) {
+            // Asegurar que el nuevo valor sea del tipo correcto para cálculos
+            const val = field === 'nombreProducto' ? processedValue : (parseFloat(processedValue) || 0)
+            const newP = { ...p, [field]: val }
+
+            // Recalculo ROBUSTO del total
+            if (field === 'costoProducto' || field === 'cantidadContada') {
+              const cant = field === 'cantidadContada' ? (parseFloat(processedValue) || 0) : (parseFloat(p.cantidadContada) || 0)
+              const cost = field === 'costoProducto' ? (parseFloat(processedValue) || 0) : (parseFloat(p.costoProducto) || 0)
+              newP.valorTotal = cant * cost
+              console.log(`[Optimistic Update] Prod: ${pId}, Cant: ${cant}, Cost: ${cost}, Total: ${newP.valorTotal}`)
+            }
+            return newP
+          }
+          return p
+        })
+      }
+    })
+
+    // Programar la llamada a la API
+    const timeoutId = setTimeout(() => {
+      if (updateProductRef.current) {
+        updateProductRef.current({ productoId, field, value: processedValue })
+      }
+      debounceMap.current.delete(key)
+    }, 800) // 800ms de espera para "fluidez"
+
+    debounceMap.current.set(key, timeoutId)
   }
 
   // Mutación para crear producto general
@@ -3758,7 +3875,7 @@ const InventarioDetalleNuevo = () => {
                       <td className="px-3 py-2 text-gray-800 text-sm">
                         <input
                           type="text"
-                          value={producto.nombreProducto || ''}
+                          defaultValue={producto.nombreProducto || ''}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               handleUpdateProductField(producto.productoId, 'nombreProducto', e.target.value);
@@ -3786,7 +3903,7 @@ const InventarioDetalleNuevo = () => {
                       <td className="px-2 py-2 text-center bg-white text-gray-900 font-semibold text-sm">
                         <input
                           type="number"
-                          value={safeToFixed(producto.cantidadContada, 1)}
+                          defaultValue={producto.cantidadContada}
                           onKeyDown={(e) => { if (e.key === 'Enter') { handleUpdateProductField(producto.productoId, 'cantidadContada', e.target.value); e.currentTarget.blur() } }}
                           onBlur={(e) => handleUpdateProductField(producto.productoId, 'cantidadContada', e.target.value)}
                           className="w-full text-center bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-blue-400 rounded px-1 font-semibold"
@@ -3820,7 +3937,7 @@ const InventarioDetalleNuevo = () => {
                       <td className="px-2 py-2 text-center bg-white text-gray-900 font-semibold text-sm">
                         <input
                           type="number"
-                          value={safeToFixed(producto.costoProducto, 2)}
+                          defaultValue={producto.costoProducto}
                           onKeyDown={(e) => { if (e.key === 'Enter') { handleUpdateProductField(producto.productoId, 'costoProducto', e.target.value); e.currentTarget.blur() } }}
                           onBlur={(e) => handleUpdateProductField(producto.productoId, 'costoProducto', e.target.value)}
                           className="w-full text-center bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-blue-400 rounded px-1 font-semibold"

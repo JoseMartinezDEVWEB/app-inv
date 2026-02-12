@@ -71,6 +71,12 @@ router.delete(
   productosController.desactivarProductoGeneral
 )
 
+router.delete(
+  '/generales/eliminar-todos',
+  validarRol('administrador'),
+  productosController.eliminarTodosProductosGenerales
+)
+
 // ===== IMPORTACIÓN DE PRODUCTOS =====
 // Middleware wrapper para manejar errores de Multer
 const handleFileUpload = (req, res, next) => {

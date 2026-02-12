@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react'
 import { authApi, handleApiResponse, handleApiError } from '../services/api'
 import webSocketService from '../services/websocket'
+import { initConfig } from '../config/env'
 import toast from 'react-hot-toast'
 
 // Estado inicial
@@ -33,7 +34,7 @@ const authReducer = (state, action) => {
         isLoading: true,
         error: null,
       }
-    
+
     case AUTH_ACTIONS.LOGIN_SUCCESS:
       return {
         ...state,
@@ -44,7 +45,7 @@ const authReducer = (state, action) => {
         isLoading: false,
         error: null,
       }
-    
+
     case AUTH_ACTIONS.LOGIN_ERROR:
       return {
         ...state,
@@ -55,7 +56,7 @@ const authReducer = (state, action) => {
         isLoading: false,
         error: action.payload,
       }
-    
+
     case AUTH_ACTIONS.LOGOUT:
       return {
         ...state,
@@ -66,25 +67,25 @@ const authReducer = (state, action) => {
         isLoading: false,
         error: null,
       }
-    
+
     case AUTH_ACTIONS.SET_LOADING:
       return {
         ...state,
         isLoading: action.payload,
       }
-    
+
     case AUTH_ACTIONS.UPDATE_USER:
       return {
         ...state,
         user: { ...state.user, ...action.payload },
       }
-    
+
     case AUTH_ACTIONS.CLEAR_ERROR:
       return {
         ...state,
         error: null,
       }
-    
+
     default:
       return state
   }
@@ -115,10 +116,10 @@ export const AuthProvider = ({ children }) => {
         const user = localStorage.getItem('user')
 
         // Validar que los datos no sean "undefined" o null
-        if (token && refreshToken && user && 
-            token !== 'undefined' && refreshToken !== 'undefined' && user !== 'undefined') {
+        if (token && refreshToken && user &&
+          token !== 'undefined' && refreshToken !== 'undefined' && user !== 'undefined') {
           const userData = JSON.parse(user)
-          
+
           dispatch({
             type: AUTH_ACTIONS.LOGIN_SUCCESS,
             payload: {
@@ -128,7 +129,8 @@ export const AuthProvider = ({ children }) => {
             },
           })
 
-          // Conectar WebSocket
+          // Cargar configuración y conectar WebSocket
+          await initConfig()
           webSocketService.connect(token)
         } else {
           // Limpiar datos inválidos del localStorage
@@ -156,7 +158,7 @@ export const AuthProvider = ({ children }) => {
   const login = async (credentials) => {
     try {
       dispatch({ type: AUTH_ACTIONS.LOGIN_START })
-      
+
       const response = await authApi.login(credentials)
       const { usuario, accessToken, refreshToken } = handleApiResponse(response)
 
@@ -175,11 +177,12 @@ export const AuthProvider = ({ children }) => {
         },
       })
 
-      // Conectar WebSocket
+      // Cargar configuración y conectar WebSocket
+      await initConfig()
       webSocketService.connect(accessToken)
 
       toast.success(`¡Bienvenido, ${usuario?.nombre || usuario?.email || 'Usuario'}!`)
-      
+
       return { success: true, user: usuario }
     } catch (error) {
       const errorMessage = handleApiError(error)
@@ -236,7 +239,7 @@ export const AuthProvider = ({ children }) => {
   const updateUser = (userData) => {
     const updatedUser = { ...state.user, ...userData }
     localStorage.setItem('user', JSON.stringify(updatedUser))
-    
+
     dispatch({
       type: AUTH_ACTIONS.UPDATE_USER,
       payload: userData,
@@ -256,16 +259,16 @@ export const AuthProvider = ({ children }) => {
   // Función para verificar si el usuario tiene permisos
   const hasPermission = (permission) => {
     if (!state.user) return false
-    
+
     const role = state.user.rol
-    
+
     // Definir permisos por rol
     const permissions = {
       administrador: ['all'],
       contable: ['inventarios', 'reportes', 'clientes'],
       contador: ['inventarios', 'clientes'],
     }
-    
+
     const userPermissions = permissions[role] || []
     return userPermissions.includes('all') || userPermissions.includes(permission)
   }

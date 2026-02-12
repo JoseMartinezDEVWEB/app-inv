@@ -115,39 +115,66 @@ export const actualizarProducto = async (req, res) => {
   }
 
   // El productoId en la URL es el ID del producto contado (productos_contados.id)
-  // Necesitamos obtener el productoClienteId desde el producto contado
+  // Verificar si el producto contado existe
   const db = dbManager.getDatabase()
   const productoContadoStmt = db.prepare(`
-    SELECT productoClienteId FROM productos_contados 
+    SELECT * FROM productos_contados 
     WHERE id = ? AND sesionInventarioId = ?
   `)
   const productoContado = productoContadoStmt.get(parseInt(productoId), parseInt(id))
 
   if (!productoContado) {
-    throw new AppError('Producto no encontrado en la sesión', 404)
+    throw new AppError('Producto no encontrado en la sesión (puede haber sido eliminado)', 404)
   }
 
-  // Agregar o actualizar (reutilizar la misma función)
-  const datosProducto = {
-    ...req.body,
-    productoClienteId: req.body.productoClienteId || productoContado.productoClienteId,
-    agregadoPorId: req.usuario.id,
+  try {
+    // Preparar datos para actualización
+    const datosProducto = {
+      ...req.body,
+      // Si viene productoClienteId, usarlo, de lo contrario mantener el existente
+      productoClienteId: req.body.productoClienteId || productoContado.productoClienteId,
+      agregadoPorId: req.usuario.id,
+      id: parseInt(productoId), // Pasamos ID explícito para actualizar por ID
+    }
+
+    // Si estamos actualizando nombre/costo, asegurarnos de que se pasen explícitamente si cambiaron
+    // O si no vienen en el body, usar los del producto contado para no perderlos
+    if (datosProducto.nombreProducto === undefined) {
+      datosProducto.nombreProducto = productoContado.nombreProducto
+    }
+
+    if (datosProducto.costoProducto === undefined) {
+      datosProducto.costoProducto = productoContado.costoProducto
+    }
+
+    // Si solo estamos actualizando datos informativos y no cantidades, podemos optimizar
+    // pero por seguridad usamos la lógica centralizada
+    SesionInventario.agregarProductoContado(id, datosProducto)
+
+    // Registrar en historial (solo si es un cambio significativo para no llenar el log)
+    // Opcional: Podríamos filtrar updates muy frecuentes
+    HistorialSesion.registrar({
+      sesionId: id,
+      usuarioId: req.usuario.id,
+      accion: 'producto_actualizado',
+      descripcion: `Producto actualizado: ${productoContado.nombreProducto}`,
+      metadata: { productoId, cambios: Object.keys(req.body) },
+    })
+
+    // Retorno optimizado: No devolver toda la sesión si no es necesario,
+    // pero el frontend actual espera la sesión completa.
+    // TODO: Para mayor fluidez, el frontend debería actualizar su estado localmente
+    // y aquí podríamos devolver solo el producto actualizado o un OK.
+    const sesionActualizada = SesionInventario.buscarPorId(id)
+
+    res.json(respuestaExito(sesionActualizada, 'Producto actualizado'))
+  } catch (error) {
+    console.error('❌ Error al actualizar producto:', error)
+    if (error.code === 'SQLITE_CONSTRAINT') {
+      throw new AppError('Error de restricción en base de datos al actualizar producto', 400)
+    }
+    throw new AppError(`Error al actualizar producto: ${error.message}`, 500)
   }
-
-  SesionInventario.agregarProductoContado(id, datosProducto)
-
-  // Registrar en historial
-  HistorialSesion.registrar({
-    sesionId: id,
-    usuarioId: req.usuario.id,
-    accion: 'producto_actualizado',
-    descripcion: `Producto actualizado`,
-    metadata: { productoId },
-  })
-
-  const sesionActualizada = SesionInventario.buscarPorId(id)
-
-  res.json(respuestaExito(sesionActualizada, 'Producto actualizado'))
 }
 
 // Remover producto de sesión
@@ -339,7 +366,7 @@ export const obtenerAgendaResumen = async (req, res) => {
     const fechaHasta = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
     const db = dbManager.getDatabase()
-    
+
     // Obtener conteo de sesiones por día del mes
     const query = `
       SELECT 
@@ -368,7 +395,7 @@ export const obtenerAgendaDia = async (req, res) => {
   const { fecha = new Date().toISOString().split('T')[0] } = req.query
 
   const db = dbManager.getDatabase()
-  
+
   // Obtener sesiones del día específico con información del cliente
   const query = `
     SELECT 
@@ -384,7 +411,7 @@ export const obtenerAgendaDia = async (req, res) => {
 
   try {
     const sesionesRaw = db.prepare(query).all(contadorId, fecha)
-    
+
     // Formatear las sesiones
     const sesiones = sesionesRaw.map(s => ({
       _id: s.id,

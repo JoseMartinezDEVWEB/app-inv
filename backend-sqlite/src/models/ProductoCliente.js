@@ -144,6 +144,7 @@ class ProductoCliente {
       productos: productos,
       paginacion: {
         total,
+        totalRegistros: total, // Alias para compatibilidad con frontend
         pagina,
         limite,
         totalPaginas: Math.ceil(total / limite),

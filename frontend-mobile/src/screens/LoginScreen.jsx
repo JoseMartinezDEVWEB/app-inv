@@ -41,7 +41,7 @@ const LoginScreen = ({ navigation }) => {
       ...prev,
       [field]: value
     }))
-    
+
     // Limpiar error del campo
     if (errors[field]) {
       setErrors(prev => ({
@@ -54,17 +54,17 @@ const LoginScreen = ({ navigation }) => {
   // Validar formulario
   const validateForm = () => {
     const newErrors = {}
-    
+
     if (!formData.email) {
       newErrors.email = 'El email o usuario es requerido'
     }
     // NO validar formato de email, puede ser nombre de usuario
-    
+
     if (!formData.password) {
       newErrors.password = 'La contraseña es requerida'
     }
     // NO validar longitud mínima, permitir cualquier contraseña
-    
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -74,10 +74,10 @@ const LoginScreen = ({ navigation }) => {
     if (!validateForm()) {
       return
     }
-    
+
     showAnimation('login', 1200)
     const result = await login(formData)
-    
+
     if (!result.success) {
       Alert.alert('Error', result.error)
     }
@@ -144,7 +144,7 @@ const LoginScreen = ({ navigation }) => {
       if (nuevaSolicitudId) {
         await AsyncStorage.setItem('solicitudId', String(nuevaSolicitudId))
       }
-      
+
       setShowCodigoInput(false)
       setCodigo('')
       setNombreColaborador('')
@@ -165,13 +165,14 @@ const LoginScreen = ({ navigation }) => {
     } catch (error) {
       console.error('Error al crear solicitud de conexión:', error)
       const mensajeError = error.response?.data?.mensaje || error.message || 'Error de conexión'
+      const currentApi = axios.defaults.baseURL || 'Cargando...'
       Alert.alert(
-        'Error al Conectar', 
-        mensajeError + '\n\nSugerencias:\n' +
+        'Error al Conectar',
+        mensajeError + `\n\nURL actual: ${currentApi}\n\nSugerencias:\n` +
         '• Verifica que el código sea correcto\n' +
-        '• Asegúrate de estar en la misma red que el administrador\n' +
-        '• Verifica que el servidor backend esté corriendo\n' +
-        '• El colaborador debe estar activo en el sistema'
+        '• Asegúrate de estar en la misma red (WiFi) que el PC\n' +
+        '• El PC debe tener el Firewall abierto para J4 Pro\n' +
+        '• El colaborador debe estar activo'
       )
     } finally {
       setLoadingCodigo(false)
@@ -194,8 +195,8 @@ const LoginScreen = ({ navigation }) => {
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.logoContainer}>
-              <Image 
-                source={require('../../assets/icon.png')} 
+              <Image
+                source={require('../../assets/icon.png')}
                 style={styles.logoImage}
                 resizeMode="contain"
               />
@@ -222,7 +223,7 @@ const LoginScreen = ({ navigation }) => {
             </View>
 
             <Text style={styles.formTitle}>Iniciar Sesión</Text>
-            
+
             {/* Email */}
             <View style={styles.inputContainer}>
               <View style={styles.inputWrapper}>
@@ -337,7 +338,7 @@ const LoginScreen = ({ navigation }) => {
                 </TouchableOpacity>
               </View>
             )}
-            
+
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

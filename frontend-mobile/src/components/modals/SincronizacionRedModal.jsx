@@ -19,7 +19,7 @@ const SincronizacionRedModal = ({ visible, onClose, productos, onSuccess, solici
   const [etapa, setEtapa] = useState('inicial') // inicial, buscando, servidores, manual, enviando
   const [servidores, setServidores] = useState([])
   const [ipManual, setIpManual] = useState('')
-  const [puertoManual, setPuertoManual] = useState('3000')
+  const [puertoManual, setPuertoManual] = useState('4500')
   const [cargando, setCargando] = useState(false)
 
   useEffect(() => {
@@ -28,7 +28,7 @@ const SincronizacionRedModal = ({ visible, onClose, productos, onSuccess, solici
       setEtapa('inicial')
       setServidores([])
       setIpManual('')
-      setPuertoManual('3000')
+      setPuertoManual('4500')
     }
   }, [visible])
 
@@ -37,8 +37,8 @@ const SincronizacionRedModal = ({ visible, onClose, productos, onSuccess, solici
     setCargando(true)
 
     try {
-      const encontrados = await networkDiscoveryService.escanearRedLocal([3000, 3001, 5000, 8000])
-      
+      const encontrados = await networkDiscoveryService.escanearRedLocal([4500, 3000, 3001, 5000])
+
       if (encontrados.length > 0) {
         setServidores(encontrados)
         setEtapa('servidores')
@@ -76,7 +76,7 @@ const SincronizacionRedModal = ({ visible, onClose, productos, onSuccess, solici
     try {
       const resultado = await networkDiscoveryService.probarConexionDirecta(
         ipManual,
-        parseInt(puertoManual) || 3000
+        parseInt(puertoManual) || 4500
       )
 
       if (resultado.exito) {
@@ -146,7 +146,7 @@ const SincronizacionRedModal = ({ visible, onClose, productos, onSuccess, solici
       }
     } catch (error) {
       console.error('Error enviando productos:', error)
-      
+
       let mensajeError = 'No se pudieron enviar los productos'
       if (error.response?.data?.mensaje) {
         mensajeError = error.response.data.mensaje

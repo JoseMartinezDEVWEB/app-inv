@@ -33,11 +33,13 @@ class WebSocketService {
 
     if (!WS_URL) {
       if (!this._warnedNoWs) {
-        console.warn('[WebSocket] VITE_WS_URL no definido; se omite la conexión en tiempo real.')
+        console.warn('[WebSocket] URL de WebSocket no definida; se omite la conexión.')
         this._warnedNoWs = true
       }
       return null
     }
+
+    console.log(`🔌 [WebSocket] Intentando conectar a: ${WS_URL}`)
 
     if (this.socket) {
       this.disconnect()
@@ -75,7 +77,7 @@ class WebSocketService {
       console.log('🔌 Desconectado del servidor WebSocket:', reason)
       this.isConnected = false
       this.emitLocal('disconnected', { reason })
-      
+
       if (reason === 'io server disconnect') {
         // El servidor desconectó, intentar reconectar
         this.handleReconnect()
@@ -83,13 +85,19 @@ class WebSocketService {
     })
 
     this.socket.on('connect_error', (error) => {
-      console.error('❌ Error de conexión WebSocket:', error)
+      console.error('❌ [WebSocket] Error de conexión:', {
+        message: error.message,
+        description: error.description,
+        context: error.context,
+        type: error.type
+      })
       this.isConnected = false
 
       const message = this.extractErrorMessage(error)
       this.lastErrorMessage = message
 
       if (this.isAuthError(message)) {
+        console.warn('🔐 [WebSocket] Error de autenticación detectado')
         toast.error(message || 'Sesión inválida. Inicia sesión nuevamente.')
         this.emitLocal('auth_error', { message: message || 'Token inválido o expirado' })
         this.disconnect()
@@ -178,7 +186,7 @@ class WebSocketService {
 
     this.reconnectAttempts++
     console.log(`🔄 Intentando reconectar... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
-    
+
     setTimeout(() => {
       if (this.socket && this.currentToken) {
         this.socket.auth = {

@@ -91,7 +91,7 @@ const ProductosGeneralesScreen = () => {
 
     const handleSendInventory = async (data) => {
       console.log('📦 [ProductosGeneralesScreen] Recibido send_inventory:', data.productos?.length || 0, 'productos', 'timestamp:', data.timestamp);
-      
+
       if (!data.productos || data.productos.length === 0) {
         console.warn('⚠️ [ProductosGeneralesScreen] No hay productos para sincronizar');
         return;
@@ -118,16 +118,16 @@ const ProductosGeneralesScreen = () => {
         // Usar el método de sincronización masiva de localDb (actualiza SQLite)
         await localDb.sincronizarProductosMasivo(data.productos);
         console.log('✅ [ProductosGeneralesScreen] Sincronización completada exitosamente');
-        
+
         // Invalidar query para refrescar la lista desde SQLite
         queryClient.invalidateQueries('productos');
         queryClient.invalidateQueries(['productos', searchTerm, netInfo.isConnected]);
-        
+
         // Mostrar mensaje de éxito
         Alert.alert(
           '¡Inventario actualizado!',
           `Se sincronizaron ${data.productos.length} productos correctamente. La búsqueda ahora mostrará los nuevos datos.`,
-          [{ 
+          [{
             text: 'OK',
             onPress: () => {
               // Refrescar manualmente la lista desde SQLite
@@ -195,16 +195,55 @@ const ProductosGeneralesScreen = () => {
     try {
       // Los productos ya están en la base de datos, solo invalidar la query
       queryClient.invalidateQueries('productos');
-      showMessage({ 
-        message: `Se importaron ${products.length} productos correctamente`, 
-        type: 'success' 
+      showMessage({
+        message: `Se importaron ${products.length} productos correctamente`,
+        type: 'success'
       });
     } catch (error) {
-      showMessage({ 
-        message: `Error al finalizar la importación: ${error.message}`, 
-        type: 'danger' 
+      showMessage({
+        message: `Error al finalizar la importación: ${error.message}`,
+        type: 'danger'
       });
     }
+  };
+
+  const handleDeleteAll = () => {
+    Alert.alert(
+      '⚠️ ¿ELIMINAR TODO?',
+      'Esta acción borrará TODOS los productos de la base de datos (nube y local). Se usa para empezar de cero antes de importar. NO SE PUEDE DESHACER.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'SÍ, ELIMINAR TODO',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // 1. Eliminar en el servidor
+              const response = await productosApi.deleteAllGenerales();
+
+              if (response.data?.exito || response.status === 200) {
+                // 2. Eliminar localmente
+                await localDb.eliminarTodosProductos();
+
+                // 3. Actualizar UI
+                queryClient.invalidateQueries('productos');
+                refetch();
+
+                showMessage({
+                  message: 'Inventario eliminado correctamente',
+                  description: 'Se han borrado todos los productos locales y remotos.',
+                  type: 'success',
+                  duration: 4000,
+                });
+              }
+            } catch (error) {
+              console.error('Error eliminando todo:', error);
+              handleApiError(error);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const renderContent = () => {
@@ -252,9 +291,14 @@ const ProductosGeneralesScreen = () => {
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text style={styles.title}>Productos Generales</Text>
-          <TouchableOpacity onPress={() => setImportModalVisible(true)} style={{ padding: 5 }}>
-            <Ionicons name="cloud-upload-outline" size={24} color="#1e40af" />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity onPress={handleDeleteAll} style={{ padding: 8, marginRight: 5 }}>
+              <Ionicons name="trash-outline" size={24} color="#ef4444" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setImportModalVisible(true)} style={{ padding: 5 }}>
+              <Ionicons name="cloud-upload-outline" size={24} color="#1e40af" />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 

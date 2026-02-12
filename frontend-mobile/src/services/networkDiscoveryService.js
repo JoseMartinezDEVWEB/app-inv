@@ -26,7 +26,7 @@ class NetworkDiscoveryService {
   async obtenerIPLocal() {
     try {
       const state = await NetInfo.fetch()
-      
+
       if (!state.isConnected) {
         throw new Error('No hay conexión de red')
       }
@@ -65,7 +65,7 @@ class NetworkDiscoveryService {
 
     try {
       const infoRed = await this.obtenerIPLocal()
-      
+
       if (!infoRed || !infoRed.ip) {
         throw new Error('No se pudo obtener la IP local')
       }
@@ -78,7 +78,7 @@ class NetworkDiscoveryService {
 
       // IPs comunes a probar primero (routers y servidores típicos)
       const ipsComunes = [1, 100, 101, 102, 10, 20, 50]
-      
+
       // Agregar la IP actual del dispositivo a la lista
       const currentLastOctet = parseInt(partes[3])
       if (!ipsComunes.includes(currentLastOctet)) {
@@ -112,7 +112,7 @@ class NetworkDiscoveryService {
 
       try {
         const url = `http://${ip}:${puerto}/api/info-conexion`
-        
+
         // Timeout corto para no esperar mucho
         // IMPORTANTE: Usar cleanAxios para evitar conflictos con interceptores de api.js
         const response = await cleanAxios.get(url, {
@@ -124,7 +124,7 @@ class NetworkDiscoveryService {
           const info = response.data || {}
           const puertoReal = Number(info.puerto) || puerto
           console.log(`✅ Servidor encontrado: ${ip}:${puertoReal}`)
-          
+
           this.servidoresEncontrados.push({
             ip,
             puerto: puertoReal,
@@ -133,7 +133,7 @@ class NetworkDiscoveryService {
             version: info.nodeEnv || 'Desconocida',
             timestamp: new Date().toISOString(),
           })
-          
+
           return true
         }
       } catch (error) {
@@ -144,7 +144,7 @@ class NetworkDiscoveryService {
         }
       }
     }
-    
+
     return false
   }
 
@@ -162,7 +162,7 @@ class NetworkDiscoveryService {
   async probarConexionDirecta(ip, puerto = 3000) {
     try {
       const url = `http://${ip}:${puerto}/api/info-conexion`
-      
+
       // IMPORTANTE: Usar cleanAxios para evitar conflictos con interceptores de api.js
       const response = await cleanAxios.get(url, {
         timeout: 5000,

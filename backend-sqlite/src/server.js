@@ -77,8 +77,14 @@ logger.info('🔧 Inicializando base de datos...')
 dbManager.initialize()
 
 // Ejecutar migraciones
+// Ejecutar migraciones
 logger.info('📦 Ejecutando migraciones...')
 runMigrations()
+
+// Ejecutar seeds (datos iniciales si es DB nueva)
+logger.info('🌱 Verificando datos iniciales...')
+import seedInitialData from './seeds/initialData.js'
+seedInitialData()
 
 // Inicializar Socket.IO
 logger.info('🔌 Inicializando WebSockets...')
@@ -96,8 +102,10 @@ const isLocalNetworkOrigin = (origin) => {
   // Permitir localhost y loopback
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true
 
+  // Permitir esquemas de Electron y extensiones (Producción/Dev)
+  if (/^(file|app|devtools|chrome-extension|vscode-webview):\/\//i.test(origin)) return true
+
   // Permitir redes privadas típicas (LAN)
-  // 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12
   if (/^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/i.test(origin)) return true
   if (/^https?:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/i.test(origin)) return true
   if (/^https?:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?$/i.test(origin)) return true
@@ -270,7 +278,7 @@ server.listen(PORT, '0.0.0.0', () => {
   logger.info(`📁 Base de datos: ${config.database.path}`)
   logger.info(`🚀 API disponible en: http://${localIp}:${PORT}/api`)
   logger.info(`🔌 WebSocket disponible en: http://${localIp}:${PORT}`)
-  
+
   console.log('\n' + '='.repeat(60))
   console.log(`✅ Backend SQLite - Gestor de Inventario J4 Pro`)
   console.log('='.repeat(60))
@@ -304,17 +312,17 @@ server.on('error', (error) => {
 // Manejo de señales de terminación
 const gracefulShutdown = (signal) => {
   logger.info(`\n${signal} recibido, cerrando servidor...`)
-  
+
   server.close(() => {
     logger.info('Servidor HTTP cerrado')
-    
+
     // Cerrar conexión a base de datos
     dbManager.close()
-    
+
     logger.info('Apagado completo')
     process.exit(0)
   })
-  
+
   // Forzar cierre después de 10 segundos
   setTimeout(() => {
     logger.error('Forzando cierre después de timeout')

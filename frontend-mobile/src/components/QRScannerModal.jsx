@@ -41,7 +41,7 @@ const QRScannerModal = ({ visible, onClose, onSuccess, mode = 'invitacion' }) =>
     try {
       const { status } = await BarCodeScanner.requestPermissionsAsync()
       setHasPermission(status === 'granted')
-      
+
       if (status !== 'granted') {
         Alert.alert(
           'Permiso necesario',
@@ -60,13 +60,13 @@ const QRScannerModal = ({ visible, onClose, onSuccess, mode = 'invitacion' }) =>
 
   const handleBarCodeScanned = async ({ type, data }) => {
     if (scanned || isProcessing) return
-    
+
     setScanned(true)
     Vibration.vibrate(100) // Vibraciรณn de feedback
-    
+
     try {
       setIsProcessing(true)
-      
+
       // Parsear datos del QR (siempre JSON)
       let qrData
       try {
@@ -89,19 +89,19 @@ const QRScannerModal = ({ visible, onClose, onSuccess, mode = 'invitacion' }) =>
         // IMPORTANTE: Usar cleanAxios (instancia limpia) para evitar conflictos con interceptores
         const verifyUrl = `${j4proUrl}/api/red/info`
         console.log('🔍 [QRScanner] Verificando servidor en:', verifyUrl)
-        
+
         let verifyResp
         try {
-          verifyResp = await cleanAxios.get(verifyUrl, { 
-            timeout: 8000, 
-            validateStatus: () => true 
+          verifyResp = await cleanAxios.get(verifyUrl, {
+            timeout: 8000,
+            validateStatus: () => true
           })
           console.log('✅ [QRScanner] Respuesta del servidor:', verifyResp.status, verifyResp.data)
         } catch (networkError) {
           console.error('❌ [QRScanner] Error de red al verificar servidor:', networkError.message)
-          throw new Error(`No se pudo conectar al servidor: ${networkError.message}. Verifica que estés en la misma red WiFi.`)
+          throw new Error(`No se pudo conectar al servidor: ${networkError.message}.\n\n• Verifica que estés en el mismo WiFi.\n• Asegúrate que el Firewall de Windows no esté bloqueando J4 Pro en el PC.\n• El servidor debe estar iniciado en Desktop.`)
         }
-        
+
         if (verifyResp.status !== 200 || !verifyResp.data?.ok || !verifyResp.data?.apiUrl) {
           console.error('❌ [QRScanner] Respuesta inválida:', verifyResp.status, verifyResp.data)
           throw new Error('Este QR no corresponde a un servidor J4 Pro válido o el servidor no responde correctamente')
@@ -157,19 +157,19 @@ const QRScannerModal = ({ visible, onClose, onSuccess, mode = 'invitacion' }) =>
       } else {
         throw new Error(response.data.mensaje || 'Error al conectar')
       }
-      
+
     } catch (error) {
       console.error('Error al procesar QR:', error)
-      
+
       const errorMsg = error.response?.data?.mensaje || error.message || 'Error al procesar el cรณdigo QR'
-      
+
       Alert.alert(
         'Error',
         errorMsg,
         [
           { text: 'Cerrar', onPress: onClose },
-          { 
-            text: 'Reintentar', 
+          {
+            text: 'Reintentar',
             onPress: () => {
               setScanned(false)
               setIsProcessing(false)
@@ -252,7 +252,7 @@ const QRScannerModal = ({ visible, onClose, onSuccess, mode = 'invitacion' }) =>
                 onBarCodeScanned={scanned ? undefined : handleBarCodeScanned}
                 style={StyleSheet.absoluteFillObject}
               />
-              
+
               {/* Overlay del marco de escaneo */}
               <View style={styles.overlay}>
                 <View style={styles.scanFrame}>

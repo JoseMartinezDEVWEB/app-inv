@@ -140,24 +140,61 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente }) => {
         if (!element) return
 
         const printWindow = window.open('', '_blank')
+
+        // Copiar todos los estilos de la ventana principal para mantener el diseño
+        const styles = Array.from(document.styleSheets)
+            .map(sheet => {
+                try {
+                    return Array.from(sheet.cssRules).map(rule => rule.cssText).join('')
+                } catch (e) {
+                    return ''
+                }
+            }).join('')
+
         printWindow.document.write(`
       <html>
         <head>
-          <title>Imprimir Reporte</title>
-          <script src="https://cdn.tailwindcss.com"></script>
-          <style>@media print { body { -webkit-print-color-adjust: exact; } }</style>
+          <title>Reporte de Inventario - ${cliente?.nombre || 'J4 Pro'}</title>
+          <style>
+              ${styles}
+              @media print {
+                  body { 
+                      -webkit-print-color-adjust: exact; 
+                      print-color-adjust: exact;
+                      background: white !important;
+                      margin: 0 !important;
+                      padding: 0 !important;
+                  }
+                  .no-print { display: none !important; }
+                  #reporte-content-body {
+                      box-shadow: none !important;
+                      border: none !important;
+                      margin: 0 !important;
+                      padding: 10mm !important;
+                      width: 100% !important;
+                      max-width: none !important;
+                  }
+                  table { page-break-inside: auto; }
+                  tr { page-break-inside: avoid; page-break-after: auto; }
+                  thead { display: table-header-group; }
+                  tfoot { display: table-footer-group; }
+              }
+          </style>
         </head>
-        <body class="p-8">
-          ${element.innerHTML}
+        <body>
+          <div id="reporte-content-body">
+            ${element.innerHTML}
+          </div>
+          <script>
+            window.onload = () => {
+                window.print();
+                setTimeout(() => window.close(), 500);
+            };
+          </script>
         </body>
       </html>
     `)
         printWindow.document.close()
-        printWindow.focus()
-        setTimeout(() => {
-            printWindow.print()
-            printWindow.close()
-        }, 1000)
     }
 
     // --- RENDER ---

@@ -151,6 +151,7 @@ class ProductoGeneral {
       productos: productos,
       paginacion: {
         total,
+        totalRegistros: total, // Alias para compatibilidad con frontend
         pagina,
         limite,
         totalPaginas: Math.ceil(total / limite),
@@ -318,6 +319,21 @@ class ProductoGeneral {
     const stmt = db.prepare('UPDATE productos_generales SET activo = 0 WHERE id = ?')
     stmt.run(id)
     return true
+  }
+
+  // Eliminar TODOS los productos (Para renovación de BD)
+  static eliminarTodos() {
+    const db = dbManager.getDatabase()
+
+    // Iniciar transacción
+    const borrarTodo = db.transaction(() => {
+      // 1. Borrar todos los productos generales
+      const stmt = db.prepare('DELETE FROM productos_generales')
+      const info = stmt.run()
+      return info.changes
+    })
+
+    return borrarTodo()
   }
 
   // Actualizar estadísticas

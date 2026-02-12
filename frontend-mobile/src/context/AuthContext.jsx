@@ -39,7 +39,7 @@ const authReducer = (state, action) => {
         isLoading: true,
         error: null,
       }
-    
+
     case AUTH_ACTIONS.LOGIN_SUCCESS:
       return {
         ...state,
@@ -50,7 +50,7 @@ const authReducer = (state, action) => {
         isLoading: false,
         error: null,
       }
-    
+
     case AUTH_ACTIONS.LOGIN_ERROR:
       return {
         ...state,
@@ -61,7 +61,7 @@ const authReducer = (state, action) => {
         isLoading: false,
         error: action.payload,
       }
-    
+
     case AUTH_ACTIONS.LOGOUT:
       return {
         ...state,
@@ -72,25 +72,25 @@ const authReducer = (state, action) => {
         isLoading: false,
         error: null,
       }
-    
+
     case AUTH_ACTIONS.SET_LOADING:
       return {
         ...state,
         isLoading: action.payload,
       }
-    
+
     case AUTH_ACTIONS.UPDATE_USER:
       return {
         ...state,
         user: { ...state.user, ...action.payload },
       }
-    
+
     case AUTH_ACTIONS.CLEAR_ERROR:
       return {
         ...state,
         error: null,
       }
-    
+
     default:
       return state
   }
@@ -135,10 +135,10 @@ export const AuthProvider = ({ children }) => {
 
           // Verificar si el token está expirado
           const tokenExpired = isTokenExpired(access)
-          
+
           if (tokenExpired) {
             console.log('⚠️ Token expirado detectado al iniciar app')
-            
+
             // Si es un token local (generado por la app), limpiar y permitir nuevo login
             if (access.startsWith('local-token-')) {
               console.log('🔐 Token local expirado - limpiando credenciales')
@@ -150,7 +150,7 @@ export const AuthProvider = ({ children }) => {
               dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
               return
             }
-            
+
             // Si es colaborador temporal, no tiene refresh token - hacer logout silencioso
             if (isTempCollaborator) {
               console.log('🔐 Colaborador temporal con token expirado - cerrando sesión')
@@ -175,7 +175,7 @@ export const AuthProvider = ({ children }) => {
 
                 if (newAccessToken) {
                   console.log('✅ Token refrescado exitosamente')
-                  
+
                   // Guardar nuevos tokens
                   await Promise.all([
                     setInternetCredentials('auth_token', 'token', newAccessToken),
@@ -209,16 +209,16 @@ export const AuthProvider = ({ children }) => {
                 } else {
                   console.log('🔐 Token de refresh inválido - requiere nuevo login')
                 }
-                
+
                 // Si falla el refresh, limpiar todo y hacer logout silencioso
                 await Promise.all([
                   resetInternetCredentials('auth_token'),
                   resetInternetCredentials('refresh_token'),
                   resetInternetCredentials('user_data'),
                 ])
-                
+
                 dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
-                
+
                 // No mostrar mensaje si es 401 (esperado al iniciar sin sesión válida)
                 if (refreshError.response?.status !== 401) {
                   showMessage({
@@ -254,7 +254,7 @@ export const AuthProvider = ({ children }) => {
             tokenLength: access?.length,
             tokenStartsWith: access?.substring(0, 20)
           })
-          
+
           // Si tiene token válido, continuar (incluso sin refresh token para colaboradores)
           if (access) {
             console.log('✅ [AuthContext] Token encontrado, procediendo con conexión WebSocket')
@@ -282,10 +282,10 @@ export const AuthProvider = ({ children }) => {
             } else {
               console.warn('⚠️ [AuthContext] Modo offline activado - no se conectará al WebSocket')
             }
-        } else {
-          console.warn('⚠️ [AuthContext] ===== NO HAY TOKEN DE ACCESO =====')
-          console.warn('⚠️ [AuthContext] No hay token de acceso - no se puede conectar WebSocket')
-          dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
+          } else {
+            console.warn('⚠️ [AuthContext] ===== NO HAY TOKEN DE ACCESO =====')
+            console.warn('⚠️ [AuthContext] No hay token de acceso - no se puede conectar WebSocket')
+            dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false })
           }
         } else {
           // No hay credenciales - estado inicial normal, no mostrar advertencia
@@ -305,12 +305,12 @@ export const AuthProvider = ({ children }) => {
   const login = async (credentials) => {
     try {
       dispatch({ type: AUTH_ACTIONS.LOGIN_START })
-      
+
       // PRIMERO: Intentar login con API remota si hay conexión
       // Esto es importante para admin/contador que necesitan tokens válidos
       if (!config.isOffline) {
         console.log('🌐 Intentando login con API remota primero...')
-        
+
         try {
           const response = await authApi.login(credentials)
           const { usuario, accessToken, refreshToken } = handleApiResponse(response)
@@ -342,17 +342,17 @@ export const AuthProvider = ({ children }) => {
             description: `Hola, ${usuario.nombre}`,
             type: 'success',
           })
-          
+
           return { success: true, user: usuario }
         } catch (apiError) {
           console.log('⚠️ Login remoto falló, intentando login local como fallback...', apiError.message)
           // Continuar con login local como fallback
         }
       }
-      
+
       // SEGUNDO: Intentar login local como fallback (modo offline o si API falló)
       console.log('🔐 Intentando login local...')
-      
+
       const loginResult = await localDb.loginLocal(
         credentials.email,
         credentials.password
@@ -360,7 +360,7 @@ export const AuthProvider = ({ children }) => {
 
       if (loginResult.success) {
         console.log('✅ Login local exitoso (modo offline)')
-        
+
         const usuario = loginResult.usuario
         const accessToken = 'local-token-' + Date.now()
         const refreshToken = 'local-refresh-' + Date.now()
@@ -387,7 +387,7 @@ export const AuthProvider = ({ children }) => {
           description: `Hola, ${usuario.nombre}. Algunas funciones pueden estar limitadas.`,
           type: 'success',
         })
-        
+
         return { success: true, user: usuario, offline: true }
       }
 
@@ -398,7 +398,7 @@ export const AuthProvider = ({ children }) => {
         payload: errorMessage,
       })
       return { success: false, error: errorMessage }
-      
+
     } catch (error) {
       console.error('❌ Error en login:', error)
       const errorMessage = error.message || 'Error al iniciar sesión'
@@ -502,7 +502,7 @@ export const AuthProvider = ({ children }) => {
   // Usar ref para controlar si ya estamos procesando un error de auth
   const isHandlingAuthError = React.useRef(false)
   const lastAuthErrorTime = React.useRef(0)
-  
+
   useEffect(() => {
     const handleWsAuthError = async ({ message }) => {
       // Evitar múltiples ejecuciones simultáneas
@@ -511,12 +511,12 @@ export const AuthProvider = ({ children }) => {
         console.log('⏳ Ya se está procesando un error de auth o se procesó recientemente, ignorando...')
         return
       }
-      
+
       isHandlingAuthError.current = true
       lastAuthErrorTime.current = now
-      
+
       console.error('🔐 Error de autenticación en WebSocket:', message)
-      
+
       try {
         // Verificar si hay un refresh token disponible
         const refreshCredentials = await getInternetCredentials('refresh_token')
@@ -544,7 +544,7 @@ export const AuthProvider = ({ children }) => {
 
             if (newAccessToken) {
               console.log('✅ Token refrescado después de error WS')
-              
+
               // Guardar nuevos tokens
               await Promise.all([
                 setInternetCredentials('auth_token', 'token', newAccessToken),
@@ -569,7 +569,7 @@ export const AuthProvider = ({ children }) => {
                 webSocketService.connect(newAccessToken)
                 isHandlingAuthError.current = false
               }, 1000)
-              
+
               return
             }
           } catch (error) {
@@ -602,7 +602,7 @@ export const AuthProvider = ({ children }) => {
   const lastWsCheckTime = React.useRef(0)
   const wsReconnectAttempts = React.useRef(0)
   const maxWsReconnectAttempts = 3 // Máximo 3 intentos antes de pausar
-  
+
   useEffect(() => {
     if (!state.isAuthenticated || !state.token || config.isOffline) return
 
@@ -615,20 +615,20 @@ export const AuthProvider = ({ children }) => {
     const checkWebSocketConnection = () => {
       const now = Date.now()
       const wsStatus = webSocketService.getConnectionStatus()
-      
+
       // Evitar verificaciones muy frecuentes (mínimo 10 segundos entre verificaciones)
       if ((now - lastWsCheckTime.current) < 10000) {
         return
       }
-      
+
       // Si hay un error de auth reciente, no intentar reconectar
       if (wsStatus.lastError && wsStatus.lastError.toLowerCase().includes('token')) {
         console.log('⚠️ [AuthContext] Error de token detectado, no se reintentará automáticamente')
         return
       }
-      
+
       lastWsCheckTime.current = now
-      
+
       console.log('🔍 [AuthContext] Verificando estado WebSocket:', {
         isAuthenticated: state.isAuthenticated,
         hasToken: !!state.token,
@@ -647,7 +647,7 @@ export const AuthProvider = ({ children }) => {
           }, 60000)
           return
         }
-        
+
         wsReconnectAttempts.current++
         console.log(`🔌 [AuthContext] WebSocket no conectado, intento ${wsReconnectAttempts.current}/${maxWsReconnectAttempts}...`)
         webSocketService.connect(state.token)
@@ -676,9 +676,9 @@ export const AuthProvider = ({ children }) => {
     const handleInventarioRecibido = async (data) => {
       try {
         console.log('📦 Inventario recibido del admin:', data.productos?.length || 0, 'productos')
-        
+
         const productos = data.productos || []
-        
+
         if (productos.length === 0) {
           console.warn('⚠️ Inventario recibido sin productos')
           return
@@ -706,7 +706,7 @@ export const AuthProvider = ({ children }) => {
         // Guardar productos en SQLite local (usando transacción para sobrescribir)
         console.log('💾 Guardando productos en base de datos local...')
         const resultado = await localDb.guardarProductos(productosFormateados)
-        
+
         console.log(`✅ Inventario guardado: ${resultado.count || productosFormateados.length} productos`)
 
         // Mostrar notificación al usuario
@@ -733,20 +733,20 @@ export const AuthProvider = ({ children }) => {
       }
     }
 
-    webSocketService.on('dispatch_inventory', handleInventarioRecibido)
-    
+    webSocketService.on('send_inventory', handleInventarioRecibido)
+
     return () => {
-      webSocketService.off('dispatch_inventory', handleInventarioRecibido)
+      webSocketService.off('send_inventory', handleInventarioRecibido)
     }
   }, [state.isAuthenticated])
 
   // Función para actualizar datos del usuario
   const updateUser = async (userData) => {
     const updatedUser = { ...state.user, ...userData }
-    
+
     try {
       await setInternetCredentials('user_data', 'user', JSON.stringify(updatedUser))
-      
+
       dispatch({
         type: AUTH_ACTIONS.UPDATE_USER,
         payload: userData,
@@ -769,16 +769,16 @@ export const AuthProvider = ({ children }) => {
   // Función para verificar si el usuario tiene permisos
   const hasPermission = (permission) => {
     if (!state.user) return false
-    
+
     const role = state.user.rol
-    
+
     // Definir permisos por rol
     const permissions = {
       administrador: ['all'],
-      contable: ['inventarios', 'reportes', 'clientes'],
-      contador: ['inventarios', 'clientes'],
+      contable: ['all'], // Dar 'all' temporalmente para paridad con admin en mobile
+      contador: ['all'], // Dar 'all' temporalmente para paridad con admin en mobile
     }
-    
+
     const userPermissions = permissions[role] || []
     return userPermissions.includes('all') || userPermissions.includes(permission)
   }

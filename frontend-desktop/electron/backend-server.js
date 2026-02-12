@@ -97,8 +97,27 @@ class BackendServer {
       this._backendLogsBuffer = ''
       this._backendLastLines = []
 
+      // Configurar sistema de logs en archivo para debugging en producción
+      const appData = process.env.APPDATA || (process.platform === 'darwin' ? process.env.HOME + '/Library/Preferences' : '/var/local')
+      const logDir = path.join(appData, 'TECH STOCK J4-PRO', 'logs')
+      if (!fs.existsSync(logDir)) {
+        try { fs.mkdirSync(logDir, { recursive: true }) } catch (e) { }
+      }
+      const logFile = path.join(logDir, 'backend-startup.log')
+
+      const logToFile = (msg) => {
+        try {
+          const timestamp = new Date().toISOString()
+          fs.appendFileSync(logFile, `[${timestamp}] ${msg}\n`)
+        } catch (e) { }
+      }
+
+      logToFile('--- Iniciando nuevo intento de arranque del backend ---')
+
       // Determinar si estamos en producción basado en el path del backend
       const isProduction = backendPath.includes('resources')
+      logToFile(`Modo producción detectado: ${isProduction}`)
+      logToFile(`Backend path: ${backendPath}`)
 
       let command = 'node'
       let args = ['src/server.js']
@@ -110,21 +129,30 @@ class BackendServer {
       }
 
       if (isProduction) {
-        console.log('🏭 Modo Producción detectado: Usando Node.js embebido en Electron')
+        // En producción, buscamos el node.exe empaquetado
+        const bundledNodePath = path.join(backendPath, 'bin', 'node.exe')
+        logToFile(`Buscando node.exe empaquetado en: ${bundledNodePath}`)
 
-        // En producción, usar el ejecutable de Electron como Node.js
-        command = process.execPath
+        if (fs.existsSync(bundledNodePath)) {
+          console.log('📦 Usando Node.js empaquetado (Standalone)')
+          logToFile('✅ Node.exe empaquetado encontrado. Usándolo.')
+          command = bundledNodePath
+          // No necesitamos ELECTRON_RUN_AS_NODE porque es un node real
+        } else {
+          console.warn('⚠️ No se encontró Node.js empaquetado. Intentando fallback a sistema...')
+          logToFile('❌ Node.exe empaquetado NO encontrado. Intentando fallback.')
 
-        // Agregar flag para que Electron se comporte como Node.js
-        args = ['--no-sandbox', 'src/server.js']
-        spawnEnv.ELECTRON_RUN_AS_NODE = '1'
-
-        console.log('📍 Ejecutable:', command)
-        console.log('📍 Args:', args)
-        console.log('📍 Backend Path:', backendPath)
+          // Fallaks anteriores...
+          command = process.execPath
+          args = ['--no-sandbox', 'src/server.js']
+          spawnEnv.ELECTRON_RUN_AS_NODE = '1'
+        }
       } else {
         console.log('🔧 Modo Desarrollo: Usando Node.js del sistema')
       }
+
+      logToFile(`Comando final: ${command}`)
+      logToFile(`Argumentos: ${JSON.stringify(args)}`)
 
       // Iniciar servidor backend
       this.process = spawn(command, args, {

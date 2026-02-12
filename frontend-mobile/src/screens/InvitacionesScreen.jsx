@@ -161,7 +161,7 @@ const InvitacionesScreen = () => {
                 </View>
                 <Text style={styles.meta}>Expira: {new Date(item.expiraEn).toLocaleString()}</Text>
               </View>
-              {item.estado === 'pendiente' && (hasRole('contable') || hasRole('administrador')) && (
+              {item.estado === 'pendiente' && (hasRole('contable') || hasRole('administrador') || hasRole('contador')) && (
                 <TouchableOpacity style={styles.iconButton} onPress={() => {
                   Alert.alert('Confirmar', '¿Cancelar invitación?', [
                     { text: 'No', style: 'cancel' },
@@ -190,20 +190,20 @@ const InvitacionesScreen = () => {
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     {/* Estado de conexión */}
                     <View style={[
-                      styles.badge, 
-                      colab.estadoConexion === 'conectado' ? styles.badgeOk : 
-                      colab.estadoConexion === 'esperando_reconexion' ? styles.badgePending : 
-                      styles.badgeGray
+                      styles.badge,
+                      colab.estadoConexion === 'conectado' ? styles.badgeOk :
+                        colab.estadoConexion === 'esperando_reconexion' ? styles.badgePending :
+                          styles.badgeGray
                     ]}>
-                      <Ionicons 
-                        name={colab.estadoConexion === 'conectado' ? 'wifi' : colab.estadoConexion === 'esperando_reconexion' ? 'wifi-outline' : 'cloud-offline-outline'} 
-                        size={12} 
-                        color={colab.estadoConexion === 'conectado' ? '#166534' : colab.estadoConexion === 'esperando_reconexion' ? '#854d0e' : '#374151'} 
+                      <Ionicons
+                        name={colab.estadoConexion === 'conectado' ? 'wifi' : colab.estadoConexion === 'esperando_reconexion' ? 'wifi-outline' : 'cloud-offline-outline'}
+                        size={12}
+                        color={colab.estadoConexion === 'conectado' ? '#166534' : colab.estadoConexion === 'esperando_reconexion' ? '#854d0e' : '#374151'}
                         style={{ marginRight: 4 }}
                       />
                       <Text style={{ fontSize: 10, fontWeight: '700' }}>
-                        {colab.estadoConexion === 'conectado' ? 'Conectado' : 
-                         colab.estadoConexion === 'esperando_reconexion' ? 'Reconectando' : 'Desconectado'}
+                        {colab.estadoConexion === 'conectado' ? 'Conectado' :
+                          colab.estadoConexion === 'esperando_reconexion' ? 'Reconectando' : 'Desconectado'}
                       </Text>
                     </View>
                     {/* Estado activo/inactivo */}
@@ -254,9 +254,9 @@ const InvitacionesScreen = () => {
               { minutos: 259200, label: '6 meses' }, // 6 meses (180 días)
               { minutos: 518400, label: '12 meses' } // 12 meses (360 días)
             ].map(({ minutos, label }) => (
-              <TouchableOpacity 
-                key={minutos} 
-                onPress={() => setForm({ ...form, expiraEnMinutos: minutos })} 
+              <TouchableOpacity
+                key={minutos}
+                onPress={() => setForm({ ...form, expiraEnMinutos: minutos })}
                 style={[styles.durationChip, form.expiraEnMinutos === minutos ? styles.durationChipActive : null]}
               >
                 <Text style={[styles.durationText, form.expiraEnMinutos === minutos ? styles.durationTextActive : null]}>

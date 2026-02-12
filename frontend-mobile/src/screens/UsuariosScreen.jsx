@@ -28,7 +28,7 @@ const UsuariosScreen = () => {
     onSuccess: (response) => {
       const mensaje = response.data?.mensaje || 'Usuario creado';
       const codigoAcceso = response.data?.datos?.codigoAcceso;
-      
+
       if (codigoAcceso) {
         // Mostrar alerta especial con el código de acceso del colaborador
         Alert.alert(
@@ -39,7 +39,7 @@ const UsuariosScreen = () => {
       } else {
         showMessage({ message: mensaje, type: 'success' });
       }
-      
+
       setModalCrear(false);
       resetForm();
       queryClient.invalidateQueries(['usuarios-subordinados']);
@@ -119,7 +119,7 @@ const UsuariosScreen = () => {
 
   if (!hasRole('contable') && !hasRole('administrador') && !hasRole('contador')) {
     return (
-      <View style={styles.center}> 
+      <View style={styles.center}>
         <Text style={styles.info}>No tienes permisos para acceder a esta sección</Text>
       </View>
     )
@@ -164,7 +164,7 @@ const UsuariosScreen = () => {
               <Text style={[styles.roleChipText, form.rol === 'contador' ? styles.roleChipTextActive : null]}>Contador</Text>
             </TouchableOpacity>
           </View>
-          {hasRole('administrador') && form.rol === 'contador' && (
+          {(hasRole('administrador') || hasRole('contable') || hasRole('contador')) && form.rol === 'contador' && (
             <TextInput
               style={styles.input}
               placeholder="Límite de colaboradores (ej. 3). Vacío = sin límite"
@@ -179,7 +179,7 @@ const UsuariosScreen = () => {
             </TouchableOpacity>
             <TouchableOpacity style={[styles.button, styles.primary]} onPress={() => {
               const payload = { ...form }
-              if (hasRole('administrador') && form.rol === 'contador' && form.limiteColaboradores !== '' && form.limiteColaboradores != null) {
+              if ((hasRole('administrador') || hasRole('contable')) && form.rol === 'contador' && form.limiteColaboradores !== '' && form.limiteColaboradores != null) {
                 payload.limiteColaboradores = Number(form.limiteColaboradores)
               } else {
                 delete payload.limiteColaboradores
@@ -224,7 +224,7 @@ const UsuariosScreen = () => {
               const id = usuarioSel?._id ?? usuarioSel?.id
               if (!id) return
               const data = { nombre: form.nombre, email: form.email, telefono: form.telefono, rol: form.rol }
-              if (hasRole('administrador') && usuarioSel?.rol === 'contador') {
+              if ((hasRole('administrador') || hasRole('contable')) && usuarioSel?.rol === 'contador') {
                 data.limiteColaboradores = form.limiteColaboradores === '' || form.limiteColaboradores == null ? null : Number(form.limiteColaboradores)
               }
               updateMutation.mutate({ id, data })

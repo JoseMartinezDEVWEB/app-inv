@@ -137,6 +137,24 @@ const ProductosGenerales = () => {
     }
   )
 
+  // Mutación para eliminar TODOS los productos
+  const deleteAllMutation = useMutation(
+    async () => {
+      const response = await productosApi.deleteAllGenerales()
+      return handleApiResponse(response)
+    },
+    {
+      onSuccess: (data) => {
+        queryClient.invalidateQueries('productos-generales')
+        toast.success(data.mensaje || 'Todos los productos han sido eliminados')
+      },
+      onError: (err) => {
+        console.error('❌ [Frontend] Error al eliminar todo:', err);
+        handleApiError(err);
+      }
+    }
+  )
+
   const productos = productosData?.productos || []
   const paginacion = productosData?.paginacion || {}
   const categorias = categoriasData?.categorias || categoriasData || []
@@ -163,6 +181,14 @@ const ProductosGenerales = () => {
     }
   }
 
+  const handleDeleteAllProducts = () => {
+    if (window.confirm('⚠️ ¿ESTÁS SEGURO? Esta acción eliminará TODOS los productos generales de la base de datos. Esto se usa para renovar la base de datos antes de una importación masiva. NO SE PUEDE DESHACER.')) {
+      if (window.confirm('Confirma nuevamente: ¿Deseas borrar TODO el inventario?')) {
+        deleteAllMutation.mutate()
+      }
+    }
+  }
+
   const handleSubmitProduct = (productoData) => {
     if (editingProduct) {
       updateMutation.mutate({ id: editingProduct._id, productoData })
@@ -172,14 +198,9 @@ const ProductosGenerales = () => {
   }
 
   const handleImportProducts = async (products) => {
-    // Los productos ya vienen procesados del backend, solo necesitamos mostrarlos
-    // El backend ya los ha creado/actualizado en la base de datos
     const toastId = toast.loading(`Procesando ${products.length} productos...`);
-
     try {
-      // Los productos ya están en la base de datos, solo invalidar la query
       queryClient.invalidateQueries('productos-generales');
-
       toast.dismiss(toastId);
       toast.success(`Se importaron ${products.length} productos correctamente`);
     } catch (error) {
@@ -214,10 +235,9 @@ const ProductosGenerales = () => {
     const toastId = toast.loading('Obteniendo productos...')
 
     try {
-      // Obtener todos los productos (sin paginación)
       const response = await productosApi.getAllGenerales({
         pagina: 1,
-        limite: 10000, // Límite alto para obtener todos
+        limite: 10000,
         buscar: '',
         categoria: ''
       })
@@ -232,12 +252,11 @@ const ProductosGenerales = () => {
         return
       }
 
-      // Formatear productos para enviar (solo campos necesarios: nombre, costo, codigo_barra, cantidad)
       const productosFormateados = todosLosProductos.map(producto => ({
         nombre: producto.nombre,
         costo: producto.costoBase || 0,
         codigo_barra: producto.codigoBarras || '',
-        cantidad: 0, // Por defecto 0, ya que esto es el inventario general
+        cantidad: 0,
         codigoBarras: producto.codigoBarras || '',
         categoria: producto.categoria || '',
         unidad: producto.unidad || '',
@@ -246,11 +265,8 @@ const ProductosGenerales = () => {
 
       toast.dismiss(toastId)
       toast.loading(`Enviando inventario a ${onlineColaboradores} colaborador(es)...`, { id: toastId })
-
-      // Enviar a través de Socket.io
       enviarInventarioAColaboradores(productosFormateados)
 
-      // Escuchar resultado (esto se maneja en el servicio de websocket)
       setTimeout(() => {
         toast.dismiss(toastId)
         toast.success(`Inventario enviado a ${onlineColaboradores} colaborador(es)`)
@@ -278,7 +294,6 @@ const ProductosGenerales = () => {
     }
 
     webSocketService.on('sync_finished_ok', handleResultado)
-
     return () => {
       webSocketService.off('sync_finished_ok', handleResultado)
     }
@@ -420,7 +435,6 @@ const ProductosGenerales = () => {
               className="flex items-center space-x-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors"
               onClick={() => {
                 if (isConnected) {
-                  console.log('🔄 Actualizando contador manualmente...')
                   obtenerColaboradoresEnLinea()
                 }
               }}
@@ -429,27 +443,34 @@ const ProductosGenerales = () => {
               <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
               <Users className={`w-4 h-4 ${isConnected ? 'text-blue-600' : 'text-gray-400'}`} />
               <span className="text-sm font-medium text-gray-700">
-                Colaboradores activos:
+                Colaboradores:
               </span>
               <span className={`text-sm font-bold ${isConnected ? 'text-blue-600' : 'text-gray-400'}`}>
                 {isConnected ? (onlineColaboradores ?? 0) : '--'}
               </span>
-              {!isConnected && (
-                <span className="text-xs text-gray-500 ml-1">(Sin conexión)</span>
-              )}
             </div>
           )}
           {user?.rol === 'administrador' && (
             <>
               <Button
+                onClick={handleDeleteAllProducts}
+                disabled={deleteAllMutation.isLoading}
+                variant="outline"
+                className="flex items-center space-x-2 bg-red-50 hover:bg-red-100 border-red-200 text-red-700"
+                title="Eliminar todos los productos"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{deleteAllMutation.isLoading ? 'Eliminando...' : 'Eliminar Todo'}</span>
+              </Button>
+              <Button
                 onClick={handleEnviarProductosAColaboradores}
                 disabled={!isConnected || onlineColaboradores === 0 || isEnviandoInventario}
                 variant="outline"
                 className="flex items-center space-x-2 bg-green-50 hover:bg-green-100 border-green-200 text-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title={onlineColaboradores === 0 ? 'No hay colaboradores en línea' : 'Enviar inventario a colaboradores'}
+                title={onlineColaboradores === 0 ? 'No hay colaboradores en línea' : 'Enviar inventario'}
               >
                 <Send className="w-4 h-4" />
-                <span>{isEnviandoInventario ? 'Enviando...' : 'Enviar a Colaboradores'}</span>
+                <span>{isEnviandoInventario ? 'Enviando...' : 'Enviar a Colabs'}</span>
               </Button>
               <Button
                 onClick={() => setShowImportModal(true)}
@@ -457,7 +478,7 @@ const ProductosGenerales = () => {
                 className="flex items-center space-x-2 bg-yellow-50 hover:bg-yellow-100 border-yellow-200 text-yellow-700"
               >
                 <Upload className="w-4 h-4" />
-                <span>Importar Lista</span>
+                <span>Importar</span>
               </Button>
             </>
           )}
@@ -466,7 +487,7 @@ const ProductosGenerales = () => {
             className="flex items-center space-x-2"
           >
             <Plus className="w-4 h-4" />
-            <span>Agregar Producto</span>
+            <span>Agregar</span>
           </Button>
         </div>
       </div>
@@ -628,4 +649,3 @@ const ProductosGenerales = () => {
 }
 
 export default ProductosGenerales
-
