@@ -12,7 +12,7 @@ const InventarioDetalle = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const searchInputRef = useRef(null)
-  
+
   // Estados
   const [searchTerm, setSearchTerm] = useState('')
   const [searchResults, setSearchResults] = useState([])
@@ -31,7 +31,7 @@ const InventarioDetalle = () => {
   const [invSearchTerm, setInvSearchTerm] = useState('')
   const [editValues, setEditValues] = useState({})
   const [pageSpec, setPageSpec] = useState('')
-  
+
   // Datos financieros
   const [datosFinancieros, setDatosFinancieros] = useState({
     ventasDelMes: 0,
@@ -46,8 +46,8 @@ const InventarioDetalle = () => {
   const { data: sesion, isLoading, isError, refetch } = useQuery(
     ['sesion-inventario', id],
     () => sesionesApi.getById(id).then((res) => res.data.datos?.sesion || res.data.sesion || res.data),
-    { 
-      enabled: Boolean(id), 
+    {
+      enabled: Boolean(id),
       onError: handleApiError,
       refetchInterval: 5000, // Actualizar cada 5 segundos
       onSuccess: (data) => {
@@ -76,24 +76,24 @@ const InventarioDetalle = () => {
       onError: handleApiError
     }
   )
-  
+
   // Temporizador
   useEffect(() => {
     if (!sesion?.fecha) return
-    
+
     const calcularTiempo = () => {
       const inicio = new Date(sesion.fecha)
       const ahora = new Date()
       const diferencia = Math.floor((ahora - inicio) / 1000) // segundos
       setTiempoTranscurrido(diferencia)
     }
-    
+
     calcularTiempo()
     const interval = setInterval(calcularTiempo, 1000)
-    
+
     return () => clearInterval(interval)
   }, [sesion?.fecha])
-  
+
   // Formatear tiempo
   const formatearTiempo = (segundos) => {
     const horas = Math.floor(segundos / 3600)
@@ -197,7 +197,7 @@ const InventarioDetalle = () => {
   // Agregar producto a la sesión
   const handleAddProduct = (e) => {
     e.preventDefault()
-    
+
     if (!selectedProducto) {
       toast.error('Selecciona un producto')
       return
@@ -222,7 +222,7 @@ const InventarioDetalle = () => {
   // Abrir modal financiero
   const openFinancialModal = (type) => {
     setActiveModal(type)
-    
+
     // Configurar datos iniciales según el tipo
     switch (type) {
       case 'ventas':
@@ -409,7 +409,7 @@ const InventarioDetalle = () => {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `Inventario_${sesion?.numeroSesion || 'inventario'}_pags_${pageSpec.replace(/\s+/g,'')}.pdf`
+      a.download = `Inventario_${sesion?.numeroSesion || 'inventario'}_pags_${pageSpec.replace(/\s+/g, '')}.pdf`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -432,11 +432,11 @@ const InventarioDetalle = () => {
     e.preventDefault()
     const formData = new FormData(e.target)
     const data = Object.fromEntries(formData.entries())
-    
+
     console.log(`Datos de ${activeModal}:`, data)
     toast.success(`${modalData.title} guardado exitosamente`)
     closeFinancialModal()
-    
+
     // Aquí puedes agregar la lógica para guardar los datos en el backend
   }
 
@@ -626,7 +626,7 @@ const InventarioDetalle = () => {
               <Search className="w-5 h-5 mr-2 text-blue-600" />
               Agregar Producto
             </h3>
-            
+
             <form onSubmit={handleAddProduct} className="space-y-4">
               <div className="relative">
                 <input
@@ -639,7 +639,7 @@ const InventarioDetalle = () => {
                   autoComplete="off"
                 />
                 <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                
+
                 {/* Resultados de búsqueda */}
                 {searchResults.length > 0 && (
                   <div className="absolute z-10 w-full mt-2 bg-white border-2 border-gray-200 rounded-lg shadow-xl max-h-64 overflow-y-auto">
@@ -658,7 +658,7 @@ const InventarioDetalle = () => {
                     ))}
                   </div>
                 )}
-                
+
                 {isSearching && (
                   <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
                     <div className="loading-spinner w-5 h-5"></div>
@@ -714,7 +714,7 @@ const InventarioDetalle = () => {
               <DollarSign className="w-5 h-5 mr-2 text-green-600" />
               Gestión Financiera e Inventario
             </h3>
-            
+
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-4 mb-6">
               {/* Fila 1 - Botones Financieros */}
               <button
@@ -724,7 +724,7 @@ const InventarioDetalle = () => {
                 <ShoppingCart className="w-6 h-6 text-blue-600 mb-2 group-hover:scale-110 transition-transform" />
                 <span className="text-sm font-medium text-blue-800">Ventas</span>
               </button>
-              
+
               <button
                 onClick={() => openFinancialModal('gastos')}
                 className="flex flex-col items-center p-4 bg-gradient-to-br from-red-50 to-red-100 hover:from-red-100 hover:to-red-200 rounded-lg border border-red-200 transition-all duration-200 hover:shadow-md group"
@@ -732,7 +732,7 @@ const InventarioDetalle = () => {
                 <TrendingDown className="w-6 h-6 text-red-600 mb-2 group-hover:scale-110 transition-transform" />
                 <span className="text-sm font-medium text-red-800">Gastos</span>
               </button>
-              
+
               <button
                 onClick={() => openFinancialModal('cuentasPorCobrar')}
                 className="flex flex-col items-center p-4 bg-gradient-to-br from-green-50 to-green-100 hover:from-green-100 hover:to-green-200 rounded-lg border border-green-200 transition-all duration-200 hover:shadow-md group"
@@ -740,7 +740,7 @@ const InventarioDetalle = () => {
                 <Users className="w-6 h-6 text-green-600 mb-2 group-hover:scale-110 transition-transform" />
                 <span className="text-sm font-medium text-green-800 text-center">Cuentas por Cobrar</span>
               </button>
-              
+
               <button
                 onClick={() => openFinancialModal('cuentasPorPagar')}
                 className="flex flex-col items-center p-4 bg-gradient-to-br from-orange-50 to-orange-100 hover:from-orange-100 hover:to-orange-200 rounded-lg border border-orange-200 transition-all duration-200 hover:shadow-md group"
@@ -748,7 +748,7 @@ const InventarioDetalle = () => {
                 <CreditCard className="w-6 h-6 text-orange-600 mb-2 group-hover:scale-110 transition-transform" />
                 <span className="text-sm font-medium text-orange-800 text-center">Cuentas por Pagar</span>
               </button>
-              
+
               <button
                 onClick={() => openFinancialModal('efectivo')}
                 className="flex flex-col items-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 hover:from-purple-100 hover:to-purple-200 rounded-lg border border-purple-200 transition-all duration-200 hover:shadow-md group"
@@ -756,7 +756,7 @@ const InventarioDetalle = () => {
                 <Wallet className="w-6 h-6 text-purple-600 mb-2 group-hover:scale-110 transition-transform" />
                 <span className="text-sm font-medium text-purple-800 text-center">Efectivo</span>
               </button>
-              
+
               <button
                 onClick={() => openFinancialModal('activosFijos')}
                 className="flex flex-col items-center p-4 bg-gradient-to-br from-indigo-50 to-indigo-100 hover:from-indigo-100 hover:to-indigo-200 rounded-lg border border-indigo-200 transition-all duration-200 hover:shadow-md group"
@@ -764,7 +764,7 @@ const InventarioDetalle = () => {
                 <Briefcase className="w-6 h-6 text-indigo-600 mb-2 group-hover:scale-110 transition-transform" />
                 <span className="text-sm font-medium text-indigo-800 text-center">Activos Fijos</span>
               </button>
-              
+
               <button
                 onClick={() => openFinancialModal('capital')}
                 className="flex flex-col items-center p-4 bg-gradient-to-br from-yellow-50 to-yellow-100 hover:from-yellow-100 hover:to-yellow-200 rounded-lg border border-yellow-200 transition-all duration-200 hover:shadow-md group"
@@ -772,16 +772,9 @@ const InventarioDetalle = () => {
                 <PiggyBank className="w-6 h-6 text-yellow-600 mb-2 group-hover:scale-110 transition-transform" />
                 <span className="text-sm font-medium text-yellow-800">Capital</span>
               </button>
-              
+
               {/* Fila 2 - Botones de Gestión */}
-              <button
-                onClick={() => openFinancialModal('imprimir')}
-                className="flex flex-col items-center p-4 bg-gradient-to-br from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200 rounded-lg border border-gray-200 transition-all duration-200 hover:shadow-md group"
-              >
-                <Printer className="w-6 h-6 text-gray-600 mb-2 group-hover:scale-110 transition-transform" />
-                <span className="text-sm font-medium text-gray-800">Imprimir</span>
-              </button>
-              
+
               <button
                 onClick={() => openFinancialModal('reporte')}
                 className="flex flex-col items-center p-4 bg-gradient-to-br from-teal-50 to-teal-100 hover:from-teal-100 hover:to-teal-200 rounded-lg border border-teal-200 transition-all duration-200 hover:shadow-md group"
@@ -789,7 +782,7 @@ const InventarioDetalle = () => {
                 <FileText className="w-6 h-6 text-teal-600 mb-2 group-hover:scale-110 transition-transform" />
                 <span className="text-sm font-medium text-teal-800">Ver Reporte</span>
               </button>
-              
+
               <button
                 onClick={() => openFinancialModal('configuracion')}
                 className="flex flex-col items-center p-4 bg-gradient-to-br from-slate-50 to-slate-100 hover:from-slate-100 hover:to-slate-200 rounded-lg border border-slate-200 transition-all duration-200 hover:shadow-md group"
@@ -805,7 +798,7 @@ const InventarioDetalle = () => {
             <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b border-gray-200">
               <h3 className="font-semibold text-gray-900 text-lg">Productos contados</h3>
             </div>
-            
+
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -989,9 +982,9 @@ const InventarioDetalle = () => {
                     <div className="text-xs text-gray-500">{p.skuProducto || 'Sin código'}</div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <input type="number" className="w-24 px-2 py-1 border rounded" value={cantidadVal} onChange={(e)=>setEditValues(v=>({...v,[key]:{...(v[key]||{}),cantidad:e.target.value}}))} />
-                    <input type="number" className="w-24 px-2 py-1 border rounded" value={costoVal} onChange={(e)=>setEditValues(v=>({...v,[key]:{...(v[key]||{}),costo:e.target.value}}))} />
-                    <Button size="sm" onClick={() => updateProductMutation.mutate({ productoId: key, data: { cantidadContada: parseFloat(cantidadVal)||0, costoProducto: parseFloat(costoVal)||0 } })}>Guardar</Button>
+                    <input type="number" className="w-24 px-2 py-1 border rounded" value={cantidadVal} onChange={(e) => setEditValues(v => ({ ...v, [key]: { ...(v[key] || {}), cantidad: e.target.value } }))} />
+                    <input type="number" className="w-24 px-2 py-1 border rounded" value={costoVal} onChange={(e) => setEditValues(v => ({ ...v, [key]: { ...(v[key] || {}), costo: e.target.value } }))} />
+                    <Button size="sm" onClick={() => updateProductMutation.mutate({ productoId: key, data: { cantidadContada: parseFloat(cantidadVal) || 0, costoProducto: parseFloat(costoVal) || 0 } })}>Guardar</Button>
                   </div>
                 </div>
               )
@@ -1014,7 +1007,7 @@ const InventarioDetalle = () => {
           <p className="text-gray-600">
             ¿Qué deseas hacer con esta sesión de inventario?
           </p>
-          
+
           <div className="space-y-3">
             <button
               onClick={handleSaveAndExit}
@@ -1087,14 +1080,14 @@ const InventarioDetalle = () => {
                 <p className={`text-sm text-${modalData.color}-700`}>Complete la información requerida</p>
               </div>
             </div>
-            
+
             {modalData.fields?.map((field, index) => (
               <div key={index}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {field.label}
                   {field.type !== 'checkbox' && ' *'}
                 </label>
-                
+
                 {field.type === 'select' ? (
                   <select
                     name={field.key}

@@ -1,0 +1,503 @@
+
+> src\pages\InventarioDetalleNuevo.jsx:5529:        activeModal === 'reporteCompleto' && (
+  src\pages\InventarioDetalleNuevo.jsx:5530:          <div
+  src\pages\InventarioDetalleNuevo.jsx:5531:            className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 p-4"
+  src\pages\InventarioDetalleNuevo.jsx:5532:            onClick={(e) => {
+  src\pages\InventarioDetalleNuevo.jsx:5533:              if (e.target === e.currentTarget) {
+  src\pages\InventarioDetalleNuevo.jsx:5534:                setShowReportMenu(false)
+  src\pages\InventarioDetalleNuevo.jsx:5535:              }
+  src\pages\InventarioDetalleNuevo.jsx:5536:            }}
+  src\pages\InventarioDetalleNuevo.jsx:5537:          >
+  src\pages\InventarioDetalleNuevo.jsx:5538:            <div className="bg-white rounded-lg max-w-[95vw] w-full max-h-[95vh] overflow-hidden shadow-2xl">
+  src\pages\InventarioDetalleNuevo.jsx:5539:              <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-teal-600 to-teal-700">
+  src\pages\InventarioDetalleNuevo.jsx:5540:                <div className="flex items-center space-x-3">
+  src\pages\InventarioDetalleNuevo.jsx:5541:                  <FileText className="w-6 h-6 text-white" />
+  src\pages\InventarioDetalleNuevo.jsx:5542:                  <div>
+  src\pages\InventarioDetalleNuevo.jsx:5543:                    <h3 className="text-xl font-bold text-white">Reporte de Inventario</h3>
+  src\pages\InventarioDetalleNuevo.jsx:5544:                    {(() => {
+  src\pages\InventarioDetalleNuevo.jsx:5545:                      const pageInfo = getReportPageInfo()
+  src\pages\InventarioDetalleNuevo.jsx:5546:                      return (
+  src\pages\InventarioDetalleNuevo.jsx:5547:                        <p className="text-sm text-white/90">
+  src\pages\InventarioDetalleNuevo.jsx:5548:                          {pageInfo.label} {pageInfo.total > 1 ? `- Página ${pageInfo.current} de ${pageInfo.total}` : ''}
+  src\pages\InventarioDetalleNuevo.jsx:5549:                        </p>
+  src\pages\InventarioDetalleNuevo.jsx:5550:                      )
+  src\pages\InventarioDetalleNuevo.jsx:5551:                    })()}
+  src\pages\InventarioDetalleNuevo.jsx:5552:                  </div>
+  src\pages\InventarioDetalleNuevo.jsx:5553:                </div>
+  src\pages\InventarioDetalleNuevo.jsx:5554:                <div className="flex items-center space-x-3">
+  src\pages\InventarioDetalleNuevo.jsx:5555:                  {/* Menú de navegación */}
+  src\pages\InventarioDetalleNuevo.jsx:5556:                  <div className="relative">
+  src\pages\InventarioDetalleNuevo.jsx:5557:                    <button
+  src\pages\InventarioDetalleNuevo.jsx:5558:                      onClick={() => setShowReportMenu(!showReportMenu)}
+  src\pages\InventarioDetalleNuevo.jsx:5559:                      className="p-2 text-white hover:bg-white/20 rounded-lg transition-colors"
+  src\pages\InventarioDetalleNuevo.jsx:5560:                    >
+  src\pages\InventarioDetalleNuevo.jsx:5561:                      <Menu className="w-6 h-6" />
+  src\pages\InventarioDetalleNuevo.jsx:5562:                    </button>
+  src\pages\InventarioDetalleNuevo.jsx:5563:                    {showReportMenu && (
+  src\pages\InventarioDetalleNuevo.jsx:5564:                      <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
+  src\pages\InventarioDetalleNuevo.jsx:5565:                        <button
+  src\pages\InventarioDetalleNuevo.jsx:5566:                          onClick={() => handleReportSectionChange('productos')}
+  src\pages\InventarioDetalleNuevo.jsx:5567:                          className={`w-full flex items-center space-x-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors ${currentReportSection === 'productos' ? 'bg-teal-50 border-l-4 border-teal-600' : ''
+  src\pages\InventarioDetalleNuevo.jsx:5568:                            }`}
+  src\pages\InventarioDetalleNuevo.jsx:5569:                        >
+  src\pages\InventarioDetalleNuevo.jsx:5570:                          <ShoppingCart className={`w-5 h-5 ${currentReportSection === 'productos' ? 'text-teal-600' : 'text-gray-600'}`} />
+  src\pages\InventarioDetalleNuevo.jsx:5571:                          <span className={`font-medium ${currentReportSection === 'productos' ? 'text-teal-600' : 'text-gray-700'}`}>
+  src\pages\InventarioDetalleNuevo.jsx:5572:                            Ver Listado de Productos
+  src\pages\InventarioDetalleNuevo.jsx:5573:                          </span>
+  src\pages\InventarioDetalleNuevo.jsx:5574:                        </button>
+  src\pages\InventarioDetalleNuevo.jsx:5575:                        <button
+  src\pages\InventarioDetalleNuevo.jsx:5576:                          onClick={() => handleReportSectionChange('distribucion')}
+  src\pages\InventarioDetalleNuevo.jsx:5577:                          className={`w-full flex items-center space-x-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors ${currentReportSection === 'distribucion' ? 'bg-teal-50 border-l-4 border-teal-600' : ''
+  src\pages\InventarioDetalleNuevo.jsx:5578:                            }`}
+  src\pages\InventarioDetalleNuevo.jsx:5579:                        >
+  src\pages\InventarioDetalleNuevo.jsx:5580:                          <PieChart className={`w-5 h-5 ${currentReportSection === 'distribucion' ? 'text-teal-600' : 'text-gray-600'}`} />
+  src\pages\InventarioDetalleNuevo.jsx:5581:                          <span className={`font-medium ${currentReportSection === 'distribucion' ? 'text-teal-600' : 'text-gray-700'}`}>
+  src\pages\InventarioDetalleNuevo.jsx:5582:                            Ver Distribución de Saldo
+  src\pages\InventarioDetalleNuevo.jsx:5583:                          </span>
+  src\pages\InventarioDetalleNuevo.jsx:5584:                        </button>
+  src\pages\InventarioDetalleNuevo.jsx:5585:                        <button
+  src\pages\InventarioDetalleNuevo.jsx:5586:                          onClick={() => handleReportSectionChange('balance')}
+  src\pages\InventarioDetalleNuevo.jsx:5587:                          className={`w-full flex items-center space-x-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors ${currentReportSection === 'balance' ? 'bg-teal-50 border-l-4 border-teal-600' : ''
+  src\pages\InventarioDetalleNuevo.jsx:5588:                            }`}
+  src\pages\InventarioDetalleNuevo.jsx:5589:                        >
+  src\pages\InventarioDetalleNuevo.jsx:5590:                          <Calculator className={`w-5 h-5 ${currentReportSection === 'balance' ? 'text-teal-600' : 'text-gray-600'}`} />
+  src\pages\InventarioDetalleNuevo.jsx:5591:                          <span className={`font-medium ${currentReportSection === 'balance' ? 'text-teal-600' : 'text-gray-700'}`}>
+  src\pages\InventarioDetalleNuevo.jsx:5592:                            Balance General
+  src\pages\InventarioDetalleNuevo.jsx:5593:                          </span>
+  src\pages\InventarioDetalleNuevo.jsx:5594:                        </button>
+  src\pages\InventarioDetalleNuevo.jsx:5595:                      </div>
+  src\pages\InventarioDetalleNuevo.jsx:5596:                    )}
+  src\pages\InventarioDetalleNuevo.jsx:5597:                  </div>
+  src\pages\InventarioDetalleNuevo.jsx:5598:                  <button
+  src\pages\InventarioDetalleNuevo.jsx:5599:                    onClick={closeFinancialModal}
+  src\pages\InventarioDetalleNuevo.jsx:5600:                    className="p-2 text-white hover:bg-white/20 rounded-lg transition-colors"
+  src\pages\InventarioDetalleNuevo.jsx:5601:                  >
+  src\pages\InventarioDetalleNuevo.jsx:5602:                    <X className="w-6 h-6" />
+  src\pages\InventarioDetalleNuevo.jsx:5603:                  </button>
+  src\pages\InventarioDetalleNuevo.jsx:5604:                </div>
+  src\pages\InventarioDetalleNuevo.jsx:5605:              </div>
+  src\pages\InventarioDetalleNuevo.jsx:5606:
+  src\pages\InventarioDetalleNuevo.jsx:5607:              <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
+  src\pages\InventarioDetalleNuevo.jsx:5608:                {currentReportSection === 'portada' ? (
+  src\pages\InventarioDetalleNuevo.jsx:5609:                  // Página de Portada
+  src\pages\InventarioDetalleNuevo.jsx:5610:                  <div className="p-10 bg-white flex flex-col items-center justify-between min-h-[600px]" style={{ fontFamily: 'Arial, sans-serif' }}>
+  src\pages\InventarioDetalleNuevo.jsx:5611:                    <div className="w-full">
+  src\pages\InventarioDetalleNuevo.jsx:5612:                      <div className="text-sm text-gray-500 mb-2">Inventario de Mercancía y Presentación de Resultados elaborado por:</div>
+  src\pages\InventarioDetalleNuevo.jsx:5613:                      <div className="text-2xl font-bold text-gray-800">{(user?.nombre || 'Usuario').toUpperCase()}</div>
+  src\pages\InventarioDetalleNuevo.jsx:5614:                      <div className="mt-2 space-y-1 text-sm text-gray-600">
+  src\pages\InventarioDetalleNuevo.jsx:5615:                        <div>Cédula: {user?.cedula || user?.documentoIdentidad || 'No disponible'}</div>
+  src\pages\InventarioDetalleNuevo.jsx:5616:                        <div>Teléfono: {user?.telefono || 'No disponible'}</div>
+  src\pages\InventarioDetalleNuevo.jsx:5617:                        <div>Dirección: {user?.direccion || 'No disponible'}</div>
+  src\pages\InventarioDetalleNuevo.jsx:5618:                        <div>Correo electrónico: {user?.email || user?.correoElectronico || 'No disponible'}</div>
+  src\pages\InventarioDetalleNuevo.jsx:5619:                      </div>
+  src\pages\InventarioDetalleNuevo.jsx:5620:                    </div>
+  src\pages\InventarioDetalleNuevo.jsx:5621:
+  src\pages\InventarioDetalleNuevo.jsx:5622:                    <div className="flex-1 flex flex-col items-center justify-center text-center mt-16 mb-12">
+  src\pages\InventarioDetalleNuevo.jsx:5623:                      <div className="text-4xl font-black tracking-wide text-gray-900">{(sesion?.clienteNegocio?.nombre || sesion?.clienteNegocio?.razonSocial || 'CLIENTE').toUpperCase()}</div>
+  src\pages\InventarioDetalleNuevo.jsx:5624:                      {(sesion?.clienteNegocio?.telefono || sesion?.clienteNegocio?.codigo) && (
+  src\pages\InventarioDetalleNuevo.jsx:5625:                        <div className="text-xl text-gray-700 mt-2">{sesion?.clienteNegocio?.telefono || sesion?.clienteNegocio?.codigo}</div>
+  src\pages\InventarioDetalleNuevo.jsx:5626:                      )}
+  src\pages\InventarioDetalleNuevo.jsx:5627:                      {sesion?.clienteNegocio?.direccion && (
+  src\pages\InventarioDetalleNuevo.jsx:5628:                        <div className="text-sm text-gray-500 mt-1">{sesion?.clienteNegocio?.direccion}</div>
+  src\pages\InventarioDetalleNuevo.jsx:5629:                      )}
+  src\pages\InventarioDetalleNuevo.jsx:5630:
+  src\pages\InventarioDetalleNuevo.jsx:5631:                      <div className="mt-10">
+  src\pages\InventarioDetalleNuevo.jsx:5632:                        <div className="flex flex-col items-center">
+  src\pages\InventarioDetalleNuevo.jsx:5633:                          <img
+  src\pages\InventarioDetalleNuevo.jsx:5634:                            src={logoInfocolmados}
+  src\pages\InventarioDetalleNuevo.jsx:5635:                            alt="Infocolmados"
+  src\pages\InventarioDetalleNuevo.jsx:5636:                            className="w-78 h-78 object-contain"
+  src\pages\InventarioDetalleNuevo.jsx:5637:                            style={{ opacity: 0.6, filter: 'grayscale(20%)' }}
+  src\pages\InventarioDetalleNuevo.jsx:5638:                          />
+  src\pages\InventarioDetalleNuevo.jsx:5639:                        </div>
+  src\pages\InventarioDetalleNuevo.jsx:5640:                      </div>
+  src\pages\InventarioDetalleNuevo.jsx:5641:                    </div>
+  src\pages\InventarioDetalleNuevo.jsx:5642:
+  src\pages\InventarioDetalleNuevo.jsx:5643:                    <div className="w-full flex justify-between items-start text-sm text-gray-600">
+  src\pages\InventarioDetalleNuevo.jsx:5644:                      <div>
+  src\pages\InventarioDetalleNuevo.jsx:5645:                        <div className="font-semibold text-gray-700">Inventario</div>
+  src\pages\InventarioDetalleNuevo.jsx:5646:                        <div>{new Intl.DateTimeFormat('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(sesion?.fecha ? new Date(sesion.fecha) : new Date())}</div>
+  src\pages\InventarioDetalleNuevo.jsx:5647:                        <div className="mt-3 font-semibold text-gray-700">Próx. Inventario</div>
+  src\pages\InventarioDetalleNuevo.jsx:5648:                        <div>{new Intl.DateTimeFormat('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }).format((() => { const d = sesion?.fecha ? new Date(sesion.fecha) : new Date(); d.setMonth(d.getMonth() + 1); return d })())}</div>
+  src\pages\InventarioDetalleNuevo.jsx:5649:                      </div>
+  src\pages\InventarioDetalleNuevo.jsx:5650:
+  src\pages\InventarioDetalleNuevo.jsx:5651:                      <div className="text-right">
+  src\pages\InventarioDetalleNuevo.jsx:5652:                        <div className="font-semibold text-gray-700">Costo Servicio</div>
+  src\pages\InventarioDetalleNuevo.jsx:5653:                        <div className="text-xl font-bold text-gray-900">{formatearMoneda(contadorData.costoServicio || 0)}</div>
+  src\pages\InventarioDetalleNuevo.jsx:5654:                      </div>
+  src\pages\InventarioDetalleNuevo.jsx:5655:                    </div>
+  src\pages\InventarioDetalleNuevo.jsx:5656:                  </div>
+  src\pages\InventarioDetalleNuevo.jsx:5657:                ) : currentReportSection === 'balance' ? (
+  src\pages\InventarioDetalleNuevo.jsx:5658:                  // Página del Balance General
+  src\pages\InventarioDetalleNuevo.jsx:5659:                  <div className="p-8 bg-white" style={{ fontFamily: 'Arial, sans-serif' }}>
+  src\pages\InventarioDetalleNuevo.jsx:5660:                    {/* Toggle de modo edición */}
+  src\pages\InventarioDetalleNuevo.jsx:5661:                    <div className="mb-4 flex items-center justify-end no-print">
+  src\pages\InventarioDetalleNuevo.jsx:5662:                      <label className="flex items-center cursor-pointer bg-amber-50 px-4 py-2 rounded-lg border border-amber-200 hover:bg-amber-100 transition-colors">
+  src\pages\InventarioDetalleNuevo.jsx:5663:                        <input
+  src\pages\InventarioDetalleNuevo.jsx:5664:                          type="checkbox"
+  src\pages\InventarioDetalleNuevo.jsx:5665:                          checked={balanceEditMode}
+  src\pages\InventarioDetalleNuevo.jsx:5666:                          onChange={(e) => {
+  src\pages\InventarioDetalleNuevo.jsx:5667:                            setBalanceEditMode(e.target.checked)
+  src\pages\InventarioDetalleNuevo.jsx:5668:                            if (e.target.checked && !balanceEditData) {
+  src\pages\InventarioDetalleNuevo.jsx:5669:                              // Inicializar datos de edición con los valores actuales
+  src\pages\InventarioDetalleNuevo.jsx:5670:                              setBalanceEditData({
+  src\pages\InventarioDetalleNuevo.jsx:5671:                                efectivoEnCajaYBanco: [...(datosFinancieros.efectivoEnCajaYBanco || [])],
+  src\pages\InventarioDetalleNuevo.jsx:5672:                                cuentasPorCobrar: [...(datosFinancieros.cuentasPorCobrar || [])],
+  src\pages\InventarioDetalleNuevo.jsx:5673:                                cuentasPorPagar: [...(datosFinancieros.cuentasPorPagar || [])],
+  src\pages\InventarioDetalleNuevo.jsx:5674:                                deudaANegocio: [...(datosFinancieros.deudaANegocio || [])],
+  src\pages\InventarioDetalleNuevo.jsx:5675:                                gastosGenerales: [...(datosFinancieros.gastosGenerales || [])],
+  src\pages\InventarioDetalleNuevo.jsx:5676:                                ventasDelMes: datosFinancieros.ventasDelMes || 0,
+  src\pages\InventarioDetalleNuevo.jsx:5677:                                activosFijos: datosFinancieros.activosFijos || 0
+  src\pages\InventarioDetalleNuevo.jsx:5678:                              })
+  src\pages\InventarioDetalleNuevo.jsx:5679:                            }
+  src\pages\InventarioDetalleNuevo.jsx:5680:                          }}
+  src\pages\InventarioDetalleNuevo.jsx:5681:                          className="h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300 rounded mr-2"
+  src\pages\InventarioDetalleNuevo.jsx:5682:                        />
+  src\pages\InventarioDetalleNuevo.jsx:5683:                        <Edit3 className="w-4 h-4 mr-2 text-amber-600" />
+  src\pages\InventarioDetalleNuevo.jsx:5684:                        <span className="text-sm font-medium text-amber-700">Modo Edición</span>
+  src\pages\InventarioDetalleNuevo.jsx:5685:                      </label>
+  src\pages\InventarioDetalleNuevo.jsx:5686:                      {balanceEditMode && (
+  src\pages\InventarioDetalleNuevo.jsx:5687:                        <div className="flex items-center gap-2 ml-2">
+  src\pages\InventarioDetalleNuevo.jsx:5688:                          <button
+  src\pages\InventarioDetalleNuevo.jsx:5689:                            onClick={() => {
+  src\pages\InventarioDetalleNuevo.jsx:5690:                              saveBalanceChanges()
+  src\pages\InventarioDetalleNuevo.jsx:5691:                              setBalanceEditMode(false)
+  src\pages\InventarioDetalleNuevo.jsx:5692:                              setBalanceEditData(null)
+  src\pages\InventarioDetalleNuevo.jsx:5693:                            }}
+  src\pages\InventarioDetalleNuevo.jsx:5694:                            className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-medium flex items-center gap-1"
+  src\pages\InventarioDetalleNuevo.jsx:5695:                          >
+  src\pages\InventarioDetalleNuevo.jsx:5696:                            <CheckCircle className="w-4 h-4" />
+  src\pages\InventarioDetalleNuevo.jsx:5697:                            Guardar Cambios
+  src\pages\InventarioDetalleNuevo.jsx:5698:                          </button>
+  src\pages\InventarioDetalleNuevo.jsx:5699:                          <button
+  src\pages\InventarioDetalleNuevo.jsx:5700:                            onClick={() => {
+  src\pages\InventarioDetalleNuevo.jsx:5701:                              setBalanceEditMode(false)
+  src\pages\InventarioDetalleNuevo.jsx:5702:                              setBalanceEditData(null)
+  src\pages\InventarioDetalleNuevo.jsx:5703:                            }}
+  src\pages\InventarioDetalleNuevo.jsx:5704:                            className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 text-sm"
+  src\pages\InventarioDetalleNuevo.jsx:5705:                          >
+  src\pages\InventarioDetalleNuevo.jsx:5706:                            Cancelar
+  src\pages\InventarioDetalleNuevo.jsx:5707:                          </button>
+  src\pages\InventarioDetalleNuevo.jsx:5708:                        </div>
+  src\pages\InventarioDetalleNuevo.jsx:5709:                      )}
+  src\pages\InventarioDetalleNuevo.jsx:5710:                    </div>
+  src\pages\InventarioDetalleNuevo.jsx:5711:
+  src\pages\InventarioDetalleNuevo.jsx:5712:                    {balanceEditMode && (
+  src\pages\InventarioDetalleNuevo.jsx:5713:                      <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg no-print">
+  src\pages\InventarioDetalleNuevo.jsx:5714:                        <p className="text-sm text-amber-700">
+  src\pages\InventarioDetalleNuevo.jsx:5715:                          <strong>Modo edición activo:</strong> Haz clic en cualquier valor para editarlo. Los cambios se guardarán automáticamente.
+  src\pages\InventarioDetalleNuevo.jsx:5716:                        </p>
+  src\pages\InventarioDetalleNuevo.jsx:5717:                      </div>
+  src\pages\InventarioDetalleNuevo.jsx:5718:                    )}
+  src\pages\InventarioDetalleNuevo.jsx:5719:
+  src\pages\InventarioDetalleNuevo.jsx:5720:                    <div className="text-center mb-8">
+  src\pages\InventarioDetalleNuevo.jsx:5721:                      <h2 className="text-2xl font-bold text-gray-800 mb-2">{sesion?.clienteNegocio?.nombre?.toUpperCase()}</h2>
+  src\pages\InventarioDetalleNuevo.jsx:5722:                      <h3 className="text-lg font-semibold text-gray-700 mb-1">Balance General</h3>
+  src\pages\InventarioDetalleNuevo.jsx:5723:                      <p className="text-sm text-gray-600">Al {formatearFecha(new Date())}</p>
+  src\pages\InventarioDetalleNuevo.jsx:5724:                      <p className="text-sm text-gray-600">(En RD $)</p>
+  src\pages\InventarioDetalleNuevo.jsx:5725:                    </div>
+  src\pages\InventarioDetalleNuevo.jsx:5726:
+  src\pages\InventarioDetalleNuevo.jsx:5727:                    <div className="grid grid-cols-2 gap-8">
+  src\pages\InventarioDetalleNuevo.jsx:5728:                      {/* ACTIVOS */}
+  src\pages\InventarioDetalleNuevo.jsx:5729:                      <div>
+  src\pages\InventarioDetalleNuevo.jsx:5730:                        <h4 className="text-lg font-bold text-blue-600 mb-4 border-b-2 border-blue-600 pb-1">ACTIVOS</h4>
+  src\pages\InventarioDetalleNuevo.jsx:5731:
+  src\pages\InventarioDetalleNuevo.jsx:5732:                        <div className="space-y-3">
+  src\pages\InventarioDetalleNuevo.jsx:5733:                          <div className="font-semibold text-gray-700">CORRIENTES</div>
+  src\pages\InventarioDetalleNuevo.jsx:5734:                          <div className="ml-4 space-y-1">
+  src\pages\InventarioDetalleNuevo.jsx:5735:                            {/* EFECTIVO Y CAJA */}
+  src\pages\InventarioDetalleNuevo.jsx:5736:                            <div className="flex justify-between items-center">
+  src\pages\InventarioDetalleNuevo.jsx:5737:                              <span className="text-gray-800">EFECTIVO Y CAJA</span>
+  src\pages\InventarioDetalleNuevo.jsx:5738:                              <span className="text-gray-800 font-medium">{formatearMoneda(getEditableTotal('efectivoEnCajaYBanco'))}</span>
+  src\pages\InventarioDetalleNuevo.jsx:5739:                            </div>
+  src\pages\InventarioDetalleNuevo.jsx:5740:                            {getBalanceArray('efectivoEnCajaYBanco').length > 0 && (
+  src\pages\InventarioDetalleNuevo.jsx:5741:                              <div className="ml-4 mt-1 space-y-1">
+  src\pages\InventarioDetalleNuevo.jsx:5742:                                {getBalanceArray('efectivoEnCajaYBanco').map((efectivo, index) => (
+  src\pages\InventarioDetalleNuevo.jsx:5743:                                  <div key={index} className={`text-xs text-gray-700 italic flex items-center justify-between ${balanceEditMode ? 'bg-amber-50 p-1 rounded' : ''}`}>
+  src\pages\InventarioDetalleNuevo.jsx:5744:                                    <span>• {efectivo.tipoCuenta || 'Caja'}: </span>
+  src\pages\InventarioDetalleNuevo.jsx:5745:                                    {balanceEditMode ? (
+  src\pages\InventarioDetalleNuevo.jsx:5746:                                      <div className="flex items-center gap-1">
+  src\pages\InventarioDetalleNuevo.jsx:5747:                                        <input
+  src\pages\InventarioDetalleNuevo.jsx:5748:                                          type="number"
+  src\pages\InventarioDetalleNuevo.jsx:5749:                                          value={efectivo.monto || 0}
+  src\pages\InventarioDetalleNuevo.jsx:5750:                                          onChange={(e) => updateBalanceArrayItem('efectivoEnCajaYBanco', index, 'monto', parseFloat(e.target.value) || 0)}
+  src\pages\InventarioDetalleNuevo.jsx:5751:                                          className="w-24 px-1 py-0.5 text-xs border border-amber-300 rounded focus:ring-1 focus:ring-amber-500"
+  src\pages\InventarioDetalleNuevo.jsx:5752:                                        />
+  src\pages\InventarioDetalleNuevo.jsx:5753:                                        <button onClick={() => deleteBalanceArrayItem('efectivoEnCajaYBanco', index)} className="text-red-500 hover:text-red-700">
+  src\pages\InventarioDetalleNuevo.jsx:5754:                                          <Trash2 className="w-3 h-3" />
+  src\pages\InventarioDetalleNuevo.jsx:5755:                                        </button>
+  src\pages\InventarioDetalleNuevo.jsx:5756:                                      </div>
+  src\pages\InventarioDetalleNuevo.jsx:5757:                                    ) : (
+  src\pages\InventarioDetalleNuevo.jsx:5758:                                      <span>{formatearMoneda(parseFloat(efectivo.monto || 0))} ({efectivo.descripcion || 'Sin descripción'})</span>
+  src\pages\InventarioDetalleNuevo.jsx:5759:                                    )}
+  src\pages\InventarioDetalleNuevo.jsx:5760:                                  </div>
+  src\pages\InventarioDetalleNuevo.jsx:5761:                                ))}
+  src\pages\InventarioDetalleNuevo.jsx:5762:                              </div>
+  src\pages\InventarioDetalleNuevo.jsx:5763:                            )}
+  src\pages\InventarioDetalleNuevo.jsx:5764:
+  src\pages\InventarioDetalleNuevo.jsx:5765:                            {/* CUENTAS POR COBRAR */}
+  src\pages\InventarioDetalleNuevo.jsx:5766:                            <div className="flex justify-between items-center">
+  src\pages\InventarioDetalleNuevo.jsx:5767:                              <span className="text-gray-800">CUENTAS POR COBRAR</span>
+  src\pages\InventarioDetalleNuevo.jsx:5768:                              <span className="text-gray-800 font-medium">{formatearMoneda(getEditableTotal('cuentasPorCobrar'))}</span>
+  src\pages\InventarioDetalleNuevo.jsx:5769:                            </div>
+  src\pages\InventarioDetalleNuevo.jsx:5770:                            {getBalanceArray('cuentasPorCobrar').length > 0 && (
+  src\pages\InventarioDetalleNuevo.jsx:5771:                              <div className="ml-4 mt-1 space-y-1">
+  src\pages\InventarioDetalleNuevo.jsx:5772:                                {getBalanceArray('cuentasPorCobrar').map((cuenta, index) => (
+  src\pages\InventarioDetalleNuevo.jsx:5773:                                  <div key={index} className={`text-xs text-gray-700 italic flex items-center justify-between ${balanceEditMode ? 'bg-amber-50 p-1 rounded' : ''}`}>
+  src\pages\InventarioDetalleNuevo.jsx:5774:                                    <span>• {cuenta.cliente || 'Cliente'}: </span>
+  src\pages\InventarioDetalleNuevo.jsx:5775:                                    {balanceEditMode ? (
+  src\pages\InventarioDetalleNuevo.jsx:5776:                                      <div className="flex items-center gap-1">
+  src\pages\InventarioDetalleNuevo.jsx:5777:                                        <input
+  src\pages\InventarioDetalleNuevo.jsx:5778:                                          type="number"
+  src\pages\InventarioDetalleNuevo.jsx:5779:                                          value={cuenta.monto || 0}
+  src\pages\InventarioDetalleNuevo.jsx:5780:                                          onChange={(e) => updateBalanceArrayItem('cuentasPorCobrar', index, 'monto', parseFloat(e.target.value) || 0)}
+  src\pages\InventarioDetalleNuevo.jsx:5781:                                          className="w-24 px-1 py-0.5 text-xs border border-amber-300 rounded focus:ring-1 focus:ring-amber-500"
+  src\pages\InventarioDetalleNuevo.jsx:5782:                                        />
+  src\pages\InventarioDetalleNuevo.jsx:5783:                                        <button onClick={() => deleteBalanceArrayItem('cuentasPorCobrar', index)} className="text-red-500 hover:text-red-700">
+  src\pages\InventarioDetalleNuevo.jsx:5784:                                          <Trash2 className="w-3 h-3" />
+  src\pages\InventarioDetalleNuevo.jsx:5785:                                        </button>
+  src\pages\InventarioDetalleNuevo.jsx:5786:                                      </div>
+  src\pages\InventarioDetalleNuevo.jsx:5787:                                    ) : (
+  src\pages\InventarioDetalleNuevo.jsx:5788:                                      <span>{formatearMoneda(parseFloat(cuenta.monto || 0))} ({cuenta.descripcion || 'Sin descripción'})</span>
+  src\pages\InventarioDetalleNuevo.jsx:5789:                                    )}
+  src\pages\InventarioDetalleNuevo.jsx:5790:                                  </div>
+  src\pages\InventarioDetalleNuevo.jsx:5791:                                ))}
+  src\pages\InventarioDetalleNuevo.jsx:5792:                              </div>
+  src\pages\InventarioDetalleNuevo.jsx:5793:                            )}
+  src\pages\InventarioDetalleNuevo.jsx:5794:
+  src\pages\InventarioDetalleNuevo.jsx:5795:                            {/* INVENTARIO DE MERCANCIA */}
+  src\pages\InventarioDetalleNuevo.jsx:5796:                            <div className="flex justify-between">
+  src\pages\InventarioDetalleNuevo.jsx:5797:                              <span className="text-gray-800">INVENTARIO DE MERCANCIA</span>
+  src\pages\InventarioDetalleNuevo.jsx:5798:                              <span className="text-gray-800 font-medium">{formatearMoneda(valorTotal)}</span>
+  src\pages\InventarioDetalleNuevo.jsx:5799:                            </div>
+  src\pages\InventarioDetalleNuevo.jsx:5800:
+  src\pages\InventarioDetalleNuevo.jsx:5801:                            {/* DEUDA A NEGOCIO */}
+  src\pages\InventarioDetalleNuevo.jsx:5802:                            <div className="flex justify-between items-center">
+  src\pages\InventarioDetalleNuevo.jsx:5803:                              <span className="text-gray-800">DEUDA A NEGOCIO</span>
+  src\pages\InventarioDetalleNuevo.jsx:5804:                              <span className="text-gray-800 font-medium">{formatearMoneda(getEditableTotal('deudaANegocio'))}</span>
+  src\pages\InventarioDetalleNuevo.jsx:5805:                            </div>
+  src\pages\InventarioDetalleNuevo.jsx:5806:                            {getBalanceArray('deudaANegocio').length > 0 && (
+  src\pages\InventarioDetalleNuevo.jsx:5807:                              <div className="ml-4 mt-1 space-y-1">
+  src\pages\InventarioDetalleNuevo.jsx:5808:                                {getBalanceArray('deudaANegocio').map((deuda, index) => (
+  src\pages\InventarioDetalleNuevo.jsx:5809:                                  <div key={index} className={`text-xs text-gray-700 italic flex items-center justify-between ${balanceEditMode ? 'bg-amber-50 p-1 rounded' : ''}`}>
+  src\pages\InventarioDetalleNuevo.jsx:5810:                                    <span>• {deuda.deudor || 'Deudor'}{deuda.esSocio ? ' (Socio)' : ''}: </span>
+  src\pages\InventarioDetalleNuevo.jsx:5811:                                    {balanceEditMode ? (
+  src\pages\InventarioDetalleNuevo.jsx:5812:                                      <div className="flex items-center gap-1">
+  src\pages\InventarioDetalleNuevo.jsx:5813:                                        <input
+  src\pages\InventarioDetalleNuevo.jsx:5814:                                          type="number"
+  src\pages\InventarioDetalleNuevo.jsx:5815:                                          value={deuda.monto || 0}
+  src\pages\InventarioDetalleNuevo.jsx:5816:                                          onChange={(e) => updateBalanceArrayItem('deudaANegocio', index, 'monto', parseFloat(e.target.value) || 0)}
+  src\pages\InventarioDetalleNuevo.jsx:5817:                                          className="w-24 px-1 py-0.5 text-xs border border-amber-300 rounded focus:ring-1 focus:ring-amber-500"
+  src\pages\InventarioDetalleNuevo.jsx:5818:                                        />
+  src\pages\InventarioDetalleNuevo.jsx:5819:                                        <button onClick={() => deleteBalanceArrayItem('deudaANegocio', index)} className="text-red-500 hover:text-red-700">
+  src\pages\InventarioDetalleNuevo.jsx:5820:                                          <Trash2 className="w-3 h-3" />
+  src\pages\InventarioDetalleNuevo.jsx:5821:                                        </button>
+  src\pages\InventarioDetalleNuevo.jsx:5822:                                      </div>
+  src\pages\InventarioDetalleNuevo.jsx:5823:                                    ) : (
+  src\pages\InventarioDetalleNuevo.jsx:5824:                                      <span>{formatearMoneda(parseFloat(deuda.monto || 0))} ({deuda.tipoDeuda || deuda.descripcion || 'Sin descripción'})</span>
+  src\pages\InventarioDetalleNuevo.jsx:5825:                                    )}
+  src\pages\InventarioDetalleNuevo.jsx:5826:                                  </div>
+  src\pages\InventarioDetalleNuevo.jsx:5827:                                ))}
+  src\pages\InventarioDetalleNuevo.jsx:5828:                              </div>
+  src\pages\InventarioDetalleNuevo.jsx:5829:                            )}
+  src\pages\InventarioDetalleNuevo.jsx:5830:
+  src\pages\InventarioDetalleNuevo.jsx:5831:                            <div className="flex justify-between font-semibold border-t pt-1">
+  src\pages\InventarioDetalleNuevo.jsx:5832:                              <span className="text-gray-900">TOTAL CORRIENTES</span>
+  src\pages\InventarioDetalleNuevo.jsx:5833:                              <span className="text-gray-900">{formatearMoneda(getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('cuentasPorCobrar') + valorTotal + getEditableTotal('deudaANegocio'))}</span>
+  src\pages\InventarioDetalleNuevo.jsx:5834:                            </div>
+  src\pages\InventarioDetalleNuevo.jsx:5835:                          </div>
+  src\pages\InventarioDetalleNuevo.jsx:5836:
+  src\pages\InventarioDetalleNuevo.jsx:5837:                          <div className="font-semibold text-gray-900 mt-4">FIJOS</div>
+  src\pages\InventarioDetalleNuevo.jsx:5838:                          <div className="ml-4 space-y-1">
+  src\pages\InventarioDetalleNuevo.jsx:5839:                            <div className="flex justify-between items-center">
+  src\pages\InventarioDetalleNuevo.jsx:5840:                              <span className="text-gray-900">ACTIVOS FIJOS</span>
+  src\pages\InventarioDetalleNuevo.jsx:5841:                              {balanceEditMode ? (
+  src\pages\InventarioDetalleNuevo.jsx:5842:                                <input
+  src\pages\InventarioDetalleNuevo.jsx:5843:                                  type="number"
+  src\pages\InventarioDetalleNuevo.jsx:5844:                                  value={balanceEditData?.activosFijos || 0}
+  src\pages\InventarioDetalleNuevo.jsx:5845:                                  onChange={(e) => updateBalanceValue('activosFijos', e.target.value)}
+  src\pages\InventarioDetalleNuevo.jsx:5846:                                  className="w-28 px-2 py-1 text-sm border border-amber-300 rounded focus:ring-1 focus:ring-amber-500 text-right"
+  src\pages\InventarioDetalleNuevo.jsx:5847:                                />
+  src\pages\InventarioDetalleNuevo.jsx:5848:                              ) : (
+  src\pages\InventarioDetalleNuevo.jsx:5849:                                <span className="text-gray-900 font-medium">{formatearMoneda(datosFinancieros.activosFijos)}</span>
+  src\pages\InventarioDetalleNuevo.jsx:5850:                              )}
+  src\pages\InventarioDetalleNuevo.jsx:5851:                            </div>
+  src\pages\InventarioDetalleNuevo.jsx:5852:                            <div className="flex justify-between font-semibold border-t pt-1">
+  src\pages\InventarioDetalleNuevo.jsx:5853:                              <span className="text-gray-900">TOTAL FIJOS</span>
+  src\pages\InventarioDetalleNuevo.jsx:5854:                              <span className="text-gray-900">{formatearMoneda(balanceEditMode ? (balanceEditData?.activosFijos || 0) : datosFinancieros.activosFijos)}</span>
+  src\pages\InventarioDetalleNuevo.jsx:5855:                            </div>
+  src\pages\InventarioDetalleNuevo.jsx:5856:                          </div>
+  src\pages\InventarioDetalleNuevo.jsx:5857:
+  src\pages\InventarioDetalleNuevo.jsx:5858:                          <div className="flex justify-between font-bold text-lg border-t-2 border-gray-400 pt-2 mt-4">
+  src\pages\InventarioDetalleNuevo.jsx:5859:                            <span className="text-gray-900">TOTAL ACTIVOS</span>
+  src\pages\InventarioDetalleNuevo.jsx:5860:                            <span className="text-gray-900">{formatearMoneda(getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('cuentasPorCobrar') + valorTotal + getEditableTotal('deudaANegocio') + (balanceEditMode ? (balanceEditData?.activosFijos || 0) : datosFinancieros.activosFijos))}</span>
+  src\pages\InventarioDetalleNuevo.jsx:5861:                          </div>
+  src\pages\InventarioDetalleNuevo.jsx:5862:                        </div>
+  src\pages\InventarioDetalleNuevo.jsx:5863:                      </div>
+  src\pages\InventarioDetalleNuevo.jsx:5864:
+  src\pages\InventarioDetalleNuevo.jsx:5865:                      {/* PASIVOS Y CAPITAL */}
+  src\pages\InventarioDetalleNuevo.jsx:5866:                      <div>
+  src\pages\InventarioDetalleNuevo.jsx:5867:                        <h4 className="text-lg font-bold text-red-600 mb-4 border-b-2 border-red-600 pb-1">PASIVOS Y CAPITAL</h4>
+  src\pages\InventarioDetalleNuevo.jsx:5868:
+  src\pages\InventarioDetalleNuevo.jsx:5869:                        <div className="space-y-3">
+  src\pages\InventarioDetalleNuevo.jsx:5870:                          <div className="font-semibold text-gray-700">PASIVOS</div>
+  src\pages\InventarioDetalleNuevo.jsx:5871:                          <div className="ml-4 space-y-1">
+  src\pages\InventarioDetalleNuevo.jsx:5872:                            <div className="flex justify-between items-center">
+  src\pages\InventarioDetalleNuevo.jsx:5873:                              <span className="text-gray-800">CUENTAS POR PAGAR</span>
+  src\pages\InventarioDetalleNuevo.jsx:5874:                              <span className="text-gray-800 font-medium">{formatearMoneda(getEditableTotal('cuentasPorPagar'))}</span>
+  src\pages\InventarioDetalleNuevo.jsx:5875:                            </div>
+  src\pages\InventarioDetalleNuevo.jsx:5876:                            {getBalanceArray('cuentasPorPagar').length > 0 && (
+  src\pages\InventarioDetalleNuevo.jsx:5877:                              <div className="ml-4 mt-1 space-y-1">
+  src\pages\InventarioDetalleNuevo.jsx:5878:                                {getBalanceArray('cuentasPorPagar').map((cuenta, index) => (
+  src\pages\InventarioDetalleNuevo.jsx:5879:                                  <div key={index} className={`text-xs text-gray-700 italic flex items-center justify-between ${balanceEditMode ? 'bg-amber-50 p-1 rounded' : ''}`}>
+  src\pages\InventarioDetalleNuevo.jsx:5880:                                    <span>• {cuenta.proveedor || 'Proveedor'}: </span>
+  src\pages\InventarioDetalleNuevo.jsx:5881:                                    {balanceEditMode ? (
+  src\pages\InventarioDetalleNuevo.jsx:5882:                                      <div className="flex items-center gap-1">
+  src\pages\InventarioDetalleNuevo.jsx:5883:                                        <input
+  src\pages\InventarioDetalleNuevo.jsx:5884:                                          type="number"
+  src\pages\InventarioDetalleNuevo.jsx:5885:                                          value={cuenta.monto || 0}
+  src\pages\InventarioDetalleNuevo.jsx:5886:                                          onChange={(e) => updateBalanceArrayItem('cuentasPorPagar', index, 'monto', parseFloat(e.target.value) || 0)}
+  src\pages\InventarioDetalleNuevo.jsx:5887:                                          className="w-24 px-1 py-0.5 text-xs border border-amber-300 rounded focus:ring-1 focus:ring-amber-500"
+  src\pages\InventarioDetalleNuevo.jsx:5888:                                        />
+  src\pages\InventarioDetalleNuevo.jsx:5889:                                        <button onClick={() => deleteBalanceArrayItem('cuentasPorPagar', index)} className="text-red-500 hover:text-red-700">
+  src\pages\InventarioDetalleNuevo.jsx:5890:                                          <Trash2 className="w-3 h-3" />
+  src\pages\InventarioDetalleNuevo.jsx:5891:                                        </button>
+  src\pages\InventarioDetalleNuevo.jsx:5892:                                      </div>
+  src\pages\InventarioDetalleNuevo.jsx:5893:                                    ) : (
+  src\pages\InventarioDetalleNuevo.jsx:5894:                                      <span>{formatearMoneda(parseFloat(cuenta.monto || 0))} ({cuenta.descripcion || 'Sin descripción'})</span>
+  src\pages\InventarioDetalleNuevo.jsx:5895:                                    )}
+  src\pages\InventarioDetalleNuevo.jsx:5896:                                  </div>
+  src\pages\InventarioDetalleNuevo.jsx:5897:                                ))}
+  src\pages\InventarioDetalleNuevo.jsx:5898:                              </div>
+  src\pages\InventarioDetalleNuevo.jsx:5899:                            )}
+  src\pages\InventarioDetalleNuevo.jsx:5900:                            <div className="flex justify-between font-semibold border-t pt-1">
+  src\pages\InventarioDetalleNuevo.jsx:5901:                              <span className="text-gray-900">TOTAL PASIVOS</span>
+  src\pages\InventarioDetalleNuevo.jsx:5902:                              <span className="text-gray-900">{formatearMoneda(getEditableTotal('cuentasPorPagar'))}</span>
+  src\pages\InventarioDetalleNuevo.jsx:5903:                            </div>
+  src\pages\InventarioDetalleNuevo.jsx:5904:                          </div>
+  src\pages\InventarioDetalleNuevo.jsx:5905:
+  src\pages\InventarioDetalleNuevo.jsx:5906:                          <div className="font-semibold text-gray-900 mt-4">CAPITAL</div>
+  src\pages\InventarioDetalleNuevo.jsx:5907:                          <div className="ml-4 space-y-1">
+  src\pages\InventarioDetalleNuevo.jsx:5908:                            <div className="flex justify-between font-semibold border-t pt-1">
+  src\pages\InventarioDetalleNuevo.jsx:5909:                              <span className="text-gray-900">CAPITAL CONTABLE</span>
+  src\pages\InventarioDetalleNuevo.jsx:5910:                              <span className="text-gray-900">{formatearMoneda(
+  src\pages\InventarioDetalleNuevo.jsx:5911:                                getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('cuentasPorCobrar') + valorTotal + getEditableTotal('deudaANegocio') + (balanceEditMode ? (balanceEditData?.activosFijos || 0) : datosFinancieros.activosFijos) - getEditableTotal('cuentasPorPagar')
+  src\pages\InventarioDetalleNuevo.jsx:5912:                              )}</span>
+  src\pages\InventarioDetalleNuevo.jsx:5913:                            </div>
+  src\pages\InventarioDetalleNuevo.jsx:5914:                          </div>
+  src\pages\InventarioDetalleNuevo.jsx:5915:
+  src\pages\InventarioDetalleNuevo.jsx:5916:                          <div className="flex justify-between font-bold text-lg border-t-2 border-gray-400 pt-2 mt-4">
+  src\pages\InventarioDetalleNuevo.jsx:5917:                            <span className="text-gray-900">TOTAL PASIVOS + CAPITAL</span>
+  src\pages\InventarioDetalleNuevo.jsx:5918:                            <span className="text-gray-900">{formatearMoneda(getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('cuentasPorCobrar') + valorTotal + getEditableTotal('deudaANegocio') + (balanceEditMode ? (balanceEditData?.activosFijos || 0) : datosFinancieros.activosFijos))}</span>
+  src\pages\InventarioDetalleNuevo.jsx:5919:                          </div>
+  src\pages\InventarioDetalleNuevo.jsx:5920:                        </div>
+  src\pages\InventarioDetalleNuevo.jsx:5921:                        {/* Ventas y Gastos */}
+  src\pages\InventarioDetalleNuevo.jsx:5922:                        <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+  src\pages\InventarioDetalleNuevo.jsx:5923:                          <div className="font-semibold text-blue-700 mb-3">VENTAS Y GASTOS</div>
+  src\pages\InventarioDetalleNuevo.jsx:5924:                          <div className="space-y-2">
+  src\pages\InventarioDetalleNuevo.jsx:5925:                            <div className="flex justify-between items-center">
+  src\pages\InventarioDetalleNuevo.jsx:5926:                              <span className="text-gray-900">VENTAS DEL MES</span>
+  src\pages\InventarioDetalleNuevo.jsx:5927:                              {balanceEditMode ? (
+  src\pages\InventarioDetalleNuevo.jsx:5928:                                <input
+  src\pages\InventarioDetalleNuevo.jsx:5929:                                  type="number"
+  src\pages\InventarioDetalleNuevo.jsx:5930:                                  value={balanceEditData?.ventasDelMes || 0}
+  src\pages\InventarioDetalleNuevo.jsx:5931:                                  onChange={(e) => updateBalanceValue('ventasDelMes', e.target.value)}
+  src\pages\InventarioDetalleNuevo.jsx:5932:                                  className="w-28 px-2 py-1 text-sm border border-green-300 rounded focus:ring-1 focus:ring-green-500 text-right text-green-600 font-semibold"
+  src\pages\InventarioDetalleNuevo.jsx:5933:                                />
+  src\pages\InventarioDetalleNuevo.jsx:5934:                              ) : (
+  src\pages\InventarioDetalleNuevo.jsx:5935:                                <span className="font-semibold text-green-600">{formatearMoneda(datosFinancieros.ventasDelMes)}</span>
+  src\pages\InventarioDetalleNuevo.jsx:5936:                              )}
+  src\pages\InventarioDetalleNuevo.jsx:5937:                            </div>
+  src\pages\InventarioDetalleNuevo.jsx:5938:                            <div className="flex justify-between items-center">
+  src\pages\InventarioDetalleNuevo.jsx:5939:                              <span className="text-gray-900">GASTOS GENERALES</span>
+  src\pages\InventarioDetalleNuevo.jsx:5940:                              <span className="font-semibold text-red-600">({formatearMoneda(getEditableTotal('gastosGenerales'))})</span>
+  src\pages\InventarioDetalleNuevo.jsx:5941:                            </div>
+  src\pages\InventarioDetalleNuevo.jsx:5942:                            {getBalanceArray('gastosGenerales').length > 0 && (
+  src\pages\InventarioDetalleNuevo.jsx:5943:                              <div className="ml-4 mt-1 space-y-1">
+  src\pages\InventarioDetalleNuevo.jsx:5944:                                {getBalanceArray('gastosGenerales').map((gasto, index) => (
+  src\pages\InventarioDetalleNuevo.jsx:5945:                                  <div key={index} className={`text-xs text-red-600 italic flex items-center justify-between ${balanceEditMode ? 'bg-red-50 p-1 rounded' : ''}`}>
+  src\pages\InventarioDetalleNuevo.jsx:5946:                                    <span>• {gasto.categoria || 'Sin categoría'}: </span>
+  src\pages\InventarioDetalleNuevo.jsx:5947:                                    {balanceEditMode ? (
+  src\pages\InventarioDetalleNuevo.jsx:5948:                                      <div className="flex items-center gap-1">
+  src\pages\InventarioDetalleNuevo.jsx:5949:                                        <input
+  src\pages\InventarioDetalleNuevo.jsx:5950:                                          type="number"
+  src\pages\InventarioDetalleNuevo.jsx:5951:                                          value={gasto.monto || 0}
+  src\pages\InventarioDetalleNuevo.jsx:5952:                                          onChange={(e) => updateBalanceArrayItem('gastosGenerales', index, 'monto', parseFloat(e.target.value) || 0)}
+  src\pages\InventarioDetalleNuevo.jsx:5953:                                          className="w-24 px-1 py-0.5 text-xs border border-red-300 rounded focus:ring-1 focus:ring-red-500"
+  src\pages\InventarioDetalleNuevo.jsx:5954:                                        />
+  src\pages\InventarioDetalleNuevo.jsx:5955:                                        <button onClick={() => deleteBalanceArrayItem('gastosGenerales', index)} className="text-red-500 hover:text-red-700">
+  src\pages\InventarioDetalleNuevo.jsx:5956:                                          <Trash2 className="w-3 h-3" />
+  src\pages\InventarioDetalleNuevo.jsx:5957:                                        </button>
+  src\pages\InventarioDetalleNuevo.jsx:5958:                                      </div>
+  src\pages\InventarioDetalleNuevo.jsx:5959:                                    ) : (
+  src\pages\InventarioDetalleNuevo.jsx:5960:                                      <span>({formatearMoneda(parseFloat(gasto.monto || 0))}) ({gasto.descripcion || 'Sin descripción'})</span>
+  src\pages\InventarioDetalleNuevo.jsx:5961:                                    )}
+  src\pages\InventarioDetalleNuevo.jsx:5962:                                  </div>
+  src\pages\InventarioDetalleNuevo.jsx:5963:                                ))}
+  src\pages\InventarioDetalleNuevo.jsx:5964:                              </div>
+  src\pages\InventarioDetalleNuevo.jsx:5965:                            )}
+  src\pages\InventarioDetalleNuevo.jsx:5966:                            {empleadosData.empleados.filter(e => e.activo).length > 0 && empleadosData.incluirEnReporte && (
+  src\pages\InventarioDetalleNuevo.jsx:5967:                              <div className="mt-2 pt-2 border-t border-red-200">
+  src\pages\InventarioDetalleNuevo.jsx:5968:                                <div className="flex justify-between text-sm text-red-500">
+  src\pages\InventarioDetalleNuevo.jsx:5969:                                  <span className="font-medium">NÓMINA DE EMPLEADOS</span>
+  src\pages\InventarioDetalleNuevo.jsx:5970:                                  <span className="font-semibold">({formatearMoneda(calculateTotalNominaEmpleados())})</span>
+  src\pages\InventarioDetalleNuevo.jsx:5971:                                </div>
+  src\pages\InventarioDetalleNuevo.jsx:5972:                                <div className="ml-4 mt-1 space-y-1">
+  src\pages\InventarioDetalleNuevo.jsx:5973:                                  {empleadosData.empleados.filter(e => e.activo).map((empleado, index) => (
+  src\pages\InventarioDetalleNuevo.jsx:5974:                                    <div key={empleado.id} className="text-xs text-red-400 italic">
+  src\pages\InventarioDetalleNuevo.jsx:5975:                                      • {empleado.nombre || `Empleado ${index + 1}`}: {formatearMoneda(parseFloat(empleado.salario || 0))}
+  src\pages\InventarioDetalleNuevo.jsx:5976:                                      {empleado.deuda > 0 && ` (Deuda: ${formatearMoneda(parseFloat(empleado.deuda))} - Neto: ${formatearMoneda(parseFloat(empleado.salario || 0) - parseFloat(empleado.deuda || 0))})`}
+  src\pages\InventarioDetalleNuevo.jsx:5977:                                    </div>
+  src\pages\InventarioDetalleNuevo.jsx:5978:                                  ))}
+  src\pages\InventarioDetalleNuevo.jsx:5979:                                </div>
+  src\pages\InventarioDetalleNuevo.jsx:5980:                              </div>
+  src\pages\InventarioDetalleNuevo.jsx:5981:                            )}
+  src\pages\InventarioDetalleNuevo.jsx:5982:                            <div className="flex justify-between text-lg font-bold text-blue-800 border-t pt-2">
+  src\pages\InventarioDetalleNuevo.jsx:5983:                              <span className="text-gray-900">UTILIDAD NETA</span>
+  src\pages\InventarioDetalleNuevo.jsx:5984:                              <span className="text-gray-900">{formatearMoneda(
+  src\pages\InventarioDetalleNuevo.jsx:5985:                                (balanceEditMode && balanceEditData ? balanceEditData.ventasDelMes : datosFinancieros.ventasDelMes) - getEditableTotal('gastosGenerales')
+  src\pages\InventarioDetalleNuevo.jsx:5986:                              )}</span>
+  src\pages\InventarioDetalleNuevo.jsx:5987:                            </div>
+  src\pages\InventarioDetalleNuevo.jsx:5988:                          </div>
+  src\pages\InventarioDetalleNuevo.jsx:5989:                          <div className="text-sm text-gray-900 mt-2 pt-2 border-t">
+  src\pages\InventarioDetalleNuevo.jsx:5990:                            {(() => {
+  src\pages\InventarioDetalleNuevo.jsx:5991:                              const ventas = balanceEditMode && balanceEditData ? balanceEditData.ventasDelMes : datosFinancieros.ventasDelMes
+  src\pages\InventarioDetalleNuevo.jsx:5992:                              const gastos = getEditableTotal('gastosGenerales')
+  src\pages\InventarioDetalleNuevo.jsx:5993:                              const utilidadNeta = ventas - gastos
+  src\pages\InventarioDetalleNuevo.jsx:5994:                              const porcentajeNeto = ventas > 0 ? ((utilidadNeta / ventas) * 100).toFixed(2) : '0.00'
+  src\pages\InventarioDetalleNuevo.jsx:5995:                              const porcentajeBruto = ventas > 0 ? (((ventas - valorTotal - gastos) / ventas) * 100).toFixed(2) : '0.00'
+  src\pages\InventarioDetalleNuevo.jsx:5996:                              return (
+  src\pages\InventarioDetalleNuevo.jsx:5997:                                <>
+  src\pages\InventarioDetalleNuevo.jsx:5998:                                  <div className="text-gray-900">PORCENTAJE NETO: {porcentajeNeto}%</div>
+  src\pages\InventarioDetalleNuevo.jsx:5999:                                  <div className="text-gray-900">PORCENTAJE BRUTO: {porcentajeBruto}%</div>
+  src\pages\InventarioDetalleNuevo.jsx:6000:                                </>
+  src\pages\InventarioDetalleNuevo.jsx:6001:                              )
+  src\pages\InventarioDetalleNuevo.jsx:6002:                            })()}
+  src\pages\InventarioDetalleNuevo.jsx:6003:                          </div>
+  src\pages\InventarioDetalleNuevo.jsx:6004:                        </div>
+  src\pages\InventarioDetalleNuevo.jsx:6005:                      </div>
+  src\pages\InventarioDetalleNuevo.jsx:6006:                    </div>
+  src\pages\InventarioDetalleNuevo.jsx:6007:
+  src\pages\InventarioDetalleNuevo.jsx:6008:                    <div className="mt-8 pt-4 border-t text-center text-sm text-gray-600">
+  src\pages\InventarioDetalleNuevo.jsx:6009:                      <p className="font-semibold text-gray-800">
+  src\pages\InventarioDetalleNuevo.jsx:6010:                        Contador: {user?.nombre?.toUpperCase() || 'USUARIO SISTEMA'}
+  src\pages\InventarioDetalleNuevo.jsx:6011:                      </p>
+  src\pages\InventarioDetalleNuevo.jsx:6012:                      <p className="text-gray-700">Teléfono: {user?.telefono || user?.phone || 'No disponible'}</p>
+  src\pages\InventarioDetalleNuevo.jsx:6013:                      <p className="mt-2 text-xs">
+  src\pages\InventarioDetalleNuevo.jsx:6014:                        Solo somos responsables de los datos introducidos en el inventario de mercancía. Los resultados del balance del
+  src\pages\InventarioDetalleNuevo.jsx:6015:                        negocio son responsabilidad del propietario del negocio resultados del inventario y reconocimiento del
+  src\pages\InventarioDetalleNuevo.jsx:6016:                        propietario estos datos numéricos reales según su desempeño del negocio en el período evaluado.
+  src\pages\InventarioDetalleNuevo.jsx:6017:                      </p>
+  src\pages\InventarioDetalleNuevo.jsx:6018:                    </div>
+  src\pages\InventarioDetalleNuevo.jsx:6019:                  </div>
+  src\pages\InventarioDetalleNuevo.jsx:6020:                ) : currentReportSection === 'distribucion' ? (
+  src\pages\InventarioDetalleNuevo.jsx:6021:                  // Página de Distribución de Saldo
+  src\pages\InventarioDetalleNuevo.jsx:6022:                  <div className="p-8 bg-white" style={{ fontFamily: 'Arial, sans-serif' }}>
+  src\pages\InventarioDetalleNuevo.jsx:6023:                    <div className="text-center mb-8">
+  src\pages\InventarioDetalleNuevo.jsx:6024:                      <h2 className="text-2xl font-bold text-gray-800 mb-2">{sesion?.clienteNegocio?.nombre?.toUpperCase()}</h2>
+  src\pages\InventarioDetalleNuevo.jsx:6025:                      <h3 className="text-lg font-semibold text-gray-700 mb-1">Distribución de Saldo</h3>
+  src\pages\InventarioDetalleNuevo.jsx:6026:                      <p className="text-sm text-gray-600">Al {formatearFecha(new Date())}</p>
+  src\pages\InventarioDetalleNuevo.jsx:6027:                      <p className="text-sm text-gray-600">(En RD $)</p>
+  src\pages\InventarioDetalleNuevo.jsx:6028:                    </div>
+  src\pages\InventarioDetalleNuevo.jsx:6029:
+

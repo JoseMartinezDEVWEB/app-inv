@@ -232,7 +232,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
     try {
       const pendientes = await localDb.obtenerConteosPendientes(sesionId)
       setPendingSyncs(pendientes.length)
-      
+
       // Recargar lista local para mantener UI actualizada
       loadLocalProducts()
     } catch (e) { }
@@ -249,14 +249,14 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
     try {
       // 1. Procesar cola general
       await syncService.procesarColaPendiente()
-      
+
       // 2. Procesar tabla específica de conteos (backup)
       const count = await syncService.sincronizarDesdeTabla(sesionId)
-      
+
       if (count > 0) {
         showMessage({ message: `Sincronizados ${count} conteos`, type: 'success' })
       }
-      
+
       // Recargar datos
       queryClient.invalidateQueries(['sesion', sesionId])
       loadLocalProducts()
@@ -274,7 +274,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
     const unsubscribe = NetInfo.addEventListener(state => {
       setIsConnected(!!state.isConnected)
-      
+
       // Si recuperamos conexión y AutoSend está ON, sincronizar
       if (state.isConnected && autoSend) {
         handleSyncNow()
@@ -298,16 +298,16 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
   // Cargar datos de colaboradores e invitaciones
   useEffect(() => {
     if (!sesionId) return
-    
+
     // Solo cargar si el token NO es local (las APIs remotas requieren token real)
     const token = authState?.token || ''
     const isLocalToken = token.startsWith('local-token-')
-    
+
     if (isLocalToken) {
       console.log('⚠️ Token local detectado - omitiendo carga de colaboradores/invitaciones')
       return
     }
-    
+
     // Carga inicial
     cargarColaboradoresConectados()
     cargarInvitaciones()
@@ -409,7 +409,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
             // Buscar o crear el producto en ProductoCliente
             let productoClienteId
             const clienteId = sesionData?.clienteNegocio?._id
-            
+
             if (!clienteId) {
               console.error('No se pudo obtener el ID del cliente')
               continue
@@ -417,9 +417,9 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
             try {
               // Buscar primero en productos del cliente
-              const busqueda = await productosApi.getByCliente(clienteId, { 
-                buscar: pData.nombre, 
-                limite: 1 
+              const busqueda = await productosApi.getByCliente(clienteId, {
+                buscar: pData.nombre,
+                limite: 1
               })
               const encontrado = busqueda.data?.datos?.productos?.[0]
               if (encontrado && encontrado._id) {
@@ -735,22 +735,22 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
       const sesionesResponse = await sesionesApi.getByClient(clienteId, { estado: 'completada', limite: 10 });
       const sesionesData = sesionesResponse?.data?.datos;
       const sesiones = sesionesData?.sesiones || sesionesData || [];
-      
+
       // Buscar el producto en las sesiones anteriores (excluyendo la sesión actual)
       for (const sesion of Array.isArray(sesiones) ? sesiones : []) {
         if (sesion._id === sesionId || sesion.id === sesionId) continue; // Saltar sesión actual
-        
+
         const productosContados = sesion.productosContados || [];
-        const productoEncontrado = productosContados.find(p => 
+        const productoEncontrado = productosContados.find(p =>
           (p.productoId === productoId || p.productoClienteId === productoId) ||
           (nombreProducto && p.nombreProducto?.toLowerCase() === nombreProducto.toLowerCase())
         );
-        
+
         if (productoEncontrado && productoEncontrado.cantidadContada) {
           return productoEncontrado.cantidadContada;
         }
       }
-      
+
       return null;
     } catch (error) {
       console.log('Error buscando cantidad anterior:', error);
@@ -993,7 +993,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
           localId
         })
       }
-      
+
       checkPendingSyncs()
 
     } catch (error) {
@@ -1140,7 +1140,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
   // Procesar productos - Mezclar datos del backend con locales
   // Priorizar la visualización local si es más reciente
-  
+
   // Convertir locales a formato compatible
   const localFormatted = localProducts.map(p => ({
     _id: p._id || p.id.toString(),
@@ -1169,12 +1169,12 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
   // y backend para histórico.
   // MEJOR: Si hay localProducts, usarlos. Si no, backend.
   // Pero necesitamos ver lo histórico del backend también.
-  
+
   // Vamos a mostrar TODOS los locales + TODOS los del backend que NO coincidan con un local (por productoId)
   // Esto asume que si edito un producto, creo una entrada local nueva o update.
-  
+
   const mergedProducts = [...localFormatted]
-  
+
   // Añadir del backend si no está ya en local (por productoId)
   backendProducts.forEach(bp => {
     // Verificar si ya tenemos este producto en local (siendo editado/agregado recientemente)
@@ -1182,29 +1182,29 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
     // Si la lógica de negocio permite múltiples filas del mismo producto, simplemente concatenamos.
     // Si agrupa por producto, filtramos.
     // Asumiremos concatenación por seguridad de datos, ordenado por fecha.
-    
+
     // Para evitar duplicados EXACTOS (mismo ID de conteo si viniera del backend con ID),
     // pero aquí los locales tienen ID numérico temporal.
-    
+
     // Simplemente concatenamos todo y ordenamos por fecha/creación.
     // Pero si ya sincronicé un local, aparecerá en backend?
     // Si sincronicé, `localDb` marca `sincronizado=1`.
     // Podríamos filtrar los locales que ya están sincronizados SI ya vinieron en el `sesionData`.
     // Pero `sesionData` puede tener delay.
-    
+
     // Simplificación visual: Mostrar todo lo local (pendiente o sync) y todo lo backend.
     // Riesgo: Duplicados visuales momentáneos tras sync hasta que refetch backend y limpie local?
     // No limpiamos local automáticamente en `loadLocalProducts`...
-    
+
     // Mejor estrategia para UI limpia:
     // 1. Mostrar todos los Pendientes Locales (sincronizado=0).
     // 2. Mostrar todos los de Backend (sesionData).
     mergedProducts.length = 0 // Limpiar array
-    
+
     // Agregar pendientes locales
     const pendientes = localFormatted.filter(p => !p.sincronizado)
     mergedProducts.push(...pendientes)
-    
+
     // Agregar backend
     mergedProducts.push(...backendProducts)
   })
@@ -1265,15 +1265,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
       color: '#10b981',
       onPress: () => setShowFindEditModal(true),
     },
-    {
-      title: 'Imprimir',
-      icon: 'print-outline',
-      color: '#6b7280',
-      onPress: () => {
-        setReportType('imprimir')
-        setShowReportPreviewModal(true)
-      }
-    },
+
     {
       title: 'Ver Reporte',
       icon: 'document-text-outline',
@@ -1523,10 +1515,10 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
           </View>
           <View style={styles.headerActions}>
             <View style={[styles.statusBadge, { backgroundColor: isConnected ? '#10b981' : '#f59e0b' }]}>
-               <Ionicons name={isConnected ? "wifi" : "wifi-outline"} size={14} color="#fff" />
-               <Text style={styles.statusText}>{isConnected ? 'ON' : 'OFF'}</Text>
+              <Ionicons name={isConnected ? "wifi" : "wifi-outline"} size={14} color="#fff" />
+              <Text style={styles.statusText}>{isConnected ? 'ON' : 'OFF'}</Text>
             </View>
-            
+
             <View style={styles.timerContainer}>
               <Ionicons name="time" size={16} color="#ffffff" />
               <Text style={styles.timerText}>{formatTime(tiempoTranscurrido)}</Text>
@@ -1552,10 +1544,10 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
               style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
             />
           </View>
-          
+
           {(!autoSend || pendingSyncs > 0) && (
-            <TouchableOpacity 
-              style={[styles.syncButton, pendingSyncs > 0 ? styles.syncButtonActive : styles.syncButtonInactive]} 
+            <TouchableOpacity
+              style={[styles.syncButton, pendingSyncs > 0 ? styles.syncButtonActive : styles.syncButtonInactive]}
               onPress={handleSyncNow}
               disabled={isSyncing || pendingSyncs === 0}
             >
@@ -1563,7 +1555,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <>
-                  <Ionicons name="cloud-upload-outline" size={16} color="#fff" style={{marginRight: 4}} />
+                  <Ionicons name="cloud-upload-outline" size={16} color="#fff" style={{ marginRight: 4 }} />
                   <Text style={styles.syncButtonText}>
                     {pendingSyncs > 0 ? `Sincronizar (${pendingSyncs})` : 'Sincronizado'}
                   </Text>
@@ -1775,7 +1767,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
             product._id || product.id,
             product.nombre
           );
-          
+
           // Abrir modal de confirmación antes de agregar
           setSearchedProduct(product);
           setCantidadAnteriorProducto(cantidadAnterior);

@@ -11,18 +11,21 @@ import {
     ArrowLeft
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import html2canvas from 'html2canvas'
-import jsPDF from 'jspdf'
 import toast from 'react-hot-toast'
 import logoInfocolmados from '../img/logo_transparent.png'
+import { reportesApi, sesionesApi } from '../services/api'
+import { useAuth } from '../context/AuthContext'
 
 // Constantes
 const PRODUCTOS_POR_PAGINA = 45
 
-const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente }) => {
+const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente, contadorData: initialContadorData }) => {
+    const { user } = useAuth()
     const [currentReportSection, setCurrentReportSection] = useState('portada')
     const [currentReportPage, setCurrentReportPage] = useState(0)
     const [showReportMenu, setShowReportMenu] = useState(false)
+    const [showSelectionModal, setShowSelectionModal] = useState(false)
+    const [selectionAction, setSelectionAction] = useState('descargar') // 'descargar' o 'imprimir'
     const reportContentRef = useRef(null)
 
     // Estados para datos
@@ -36,14 +39,27 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente }) => {
         activosFijos: 0
     })
 
+    const [contadorData, setContadorData] = useState({
+        costoServicio: 0,
+        nombre: '',
+        cedula: '',
+        telefono: '',
+        email: ''
+    })
+
     // Cargar datos de la sesión
     useEffect(() => {
         if (isOpen && sesion) {
             if (sesion.datosFinancieros) setDatosFinancieros(sesion.datosFinancieros)
+            if (initialContadorData) {
+                setContadorData(initialContadorData)
+            } else if (sesion.contadorData) {
+                setContadorData(sesion.contadorData)
+            }
             setCurrentReportSection('portada')
             setCurrentReportPage(0)
         }
-    }, [isOpen, sesion])
+    }, [isOpen, sesion, initialContadorData])
 
     if (!isOpen) return null
 
@@ -98,103 +114,69 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente }) => {
 
     // --- ACCIONES ---
 
-    const handleDownloadPDF = async () => {
-        const element = document.getElementById('reporte-content-body')
-        if (!element) return
+    const ejecutarAccionReporte = async (tipoDocumento) => {
+        const toastId = toast.loading('Preparando reporte...')
+        setShowSelectionModal(false)
 
-        const toastId = toast.loading('Generando PDF...')
         try {
-            // Forzar fondo blanco y asegurar que se renderice todo
-            const canvas = await html2canvas(element, {
-                scale: 2,
-                useCORS: true,
-                backgroundColor: '#ffffff',
-                windowWidth: element.scrollWidth,
-                windowHeight: element.scrollHeight
-            })
+            const payload = {
+                contadorData: {
+                    ...contadorData,
+                    nombre: user?.nombre || contadorData.nombre || 'ADMINISTRADOR',
+                    cedula: user?.cedula || contadorData.cedula || '',
+                    telefono: user?.telefono || contadorData.telefono || '',
+                    email: user?.email || contadorData.email || ''
+                },
+                distribucionData: {
+                    utilidadesNetas: calculateUtilidadesNetas(),
+                    socios: [
+                        { nombre: "Socio 1", porcentaje: 50 },
+                        { nombre: "Socio 2", porcentaje: 50 }
+                    ]
+                },
+                tipoDocumento: tipoDocumento, // 'completo', 'productos', 'total'
+                incluirDistribucion: true
+            }
 
-            const imgData = canvas.toDataURL('image/png')
+            if (selectionAction === 'imprimir') {
+                // Pausar reloj (opcional en historial, pero por consistencia)
+                sesionesApi.pauseTimer(sesion._id).catch(() => { })
+            }
 
-            const pdf = new jsPDF('p', 'mm', 'a4')
-            const pdfWidth = pdf.internal.pageSize.getWidth()
-            const pdfHeight = pdf.internal.pageSize.getHeight()
+            const resp = await reportesApi.downloadInventoryPDF(sesion._id, payload)
+            const blob = new Blob([resp.data], { type: 'application/pdf' })
+            const url = URL.createObjectURL(blob)
 
-            const imgWidth = canvas.width
-            const imgHeight = canvas.height
+            if (selectionAction === 'descargar') {
+                const link = document.createElement('a')
+                link.href = url
+                link.download = `Reporte_${cliente?.nombre || 'Cliente'}_${sesion.numeroSesion}.pdf`
+                document.body.appendChild(link)
+                link.click()
+                link.remove()
+                URL.revokeObjectURL(url)
+                toast.success('Reporte descargado', { id: toastId })
+            } else {
+                // Estrategia Iframe para impresión
+                const iframe = document.createElement('iframe')
+                iframe.style.display = 'none'
+                iframe.src = url
+                document.body.appendChild(iframe)
 
-            const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight)
-            const imgX = (pdfWidth - imgWidth * ratio) / 2
-            const imgY = 10
-
-            pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio)
-            pdf.save(`Reporte_Inventario_${cliente?.nombre || 'Cliente'}.pdf`)
-            toast.success('PDF descargado', { id: toastId })
-        } catch (error) {
-            console.error('Error generando PDF:', error)
-            toast.error('Error al generar PDF', { id: toastId })
-        }
-    }
-
-    const handlePrint = () => {
-        const element = document.getElementById('reporte-content-body')
-        if (!element) return
-
-        const printWindow = window.open('', '_blank')
-
-        // Copiar todos los estilos de la ventana principal para mantener el diseño
-        const styles = Array.from(document.styleSheets)
-            .map(sheet => {
-                try {
-                    return Array.from(sheet.cssRules).map(rule => rule.cssText).join('')
-                } catch (e) {
-                    return ''
+                iframe.onload = () => {
+                    iframe.contentWindow.focus()
+                    iframe.contentWindow.print()
+                    toast.success('Impresión enviada', { id: toastId })
+                    setTimeout(() => {
+                        document.body.removeChild(iframe)
+                        URL.revokeObjectURL(url)
+                    }, 3000)
                 }
-            }).join('')
-
-        printWindow.document.write(`
-      <html>
-        <head>
-          <title>Reporte de Inventario - ${cliente?.nombre || 'J4 Pro'}</title>
-          <style>
-              ${styles}
-              @media print {
-                  body { 
-                      -webkit-print-color-adjust: exact; 
-                      print-color-adjust: exact;
-                      background: white !important;
-                      margin: 0 !important;
-                      padding: 0 !important;
-                  }
-                  .no-print { display: none !important; }
-                  #reporte-content-body {
-                      box-shadow: none !important;
-                      border: none !important;
-                      margin: 0 !important;
-                      padding: 10mm !important;
-                      width: 100% !important;
-                      max-width: none !important;
-                  }
-                  table { page-break-inside: auto; }
-                  tr { page-break-inside: avoid; page-break-after: auto; }
-                  thead { display: table-header-group; }
-                  tfoot { display: table-footer-group; }
-              }
-          </style>
-        </head>
-        <body>
-          <div id="reporte-content-body">
-            ${element.innerHTML}
-          </div>
-          <script>
-            window.onload = () => {
-                window.print();
-                setTimeout(() => window.close(), 500);
-            };
-          </script>
-        </body>
-      </html>
-    `)
-        printWindow.document.close()
+            }
+        } catch (error) {
+            console.error('Error en reporte:', error)
+            toast.error('Error al generar el reporte', { id: toastId })
+        }
     }
 
     // --- RENDER ---
@@ -221,35 +203,92 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente }) => {
                         </div>
 
                         <div className="flex items-center space-x-2">
-                            <button onClick={handlePrint} className="p-2 hover:bg-white/20 rounded-lg transition-colors" title="Imprimir">
-                                <Printer className="w-5 h-5" />
-                            </button>
-                            <button onClick={handleDownloadPDF} className="p-2 hover:bg-white/20 rounded-lg transition-colors" title="Descargar PDF">
-                                <Download className="w-5 h-5" />
-                            </button>
-
                             <div className="relative">
-                                <button onClick={() => setShowReportMenu(!showReportMenu)} className="p-2 hover:bg-white/20 rounded-lg transition-colors">
+                                <button onClick={() => setShowReportMenu(!showReportMenu)} className="p-2 hover:bg-white/20 rounded-lg transition-colors flex items-center gap-2">
                                     <Menu className="w-6 h-6" />
+                                    <span className="text-sm font-medium hidden sm:inline">Opciones</span>
                                 </button>
                                 {showReportMenu && (
-                                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 z-50 text-gray-800 py-1">
-                                        <button onClick={() => { setCurrentReportSection('portada'); setShowReportMenu(false) }} className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-2 border-b">
-                                            <FileText className="w-4 h-4" /> Portada
+                                    <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-xl border border-gray-200 z-50 text-gray-800 py-2">
+                                        <div className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider border-b">Visualización</div>
+                                        <button onClick={() => { setCurrentReportSection('portada'); setShowReportMenu(false) }} className="w-full text-left px-4 py-3 hover:bg-teal-50 flex items-center gap-3 transition-colors">
+                                            <FileText className="w-4 h-4 text-teal-600" /> Ver Portada
                                         </button>
-                                        <button onClick={() => { setCurrentReportSection('productos'); setShowReportMenu(false) }} className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-2 border-b">
-                                            <ShoppingCart className="w-4 h-4" /> Productos
+                                        <button onClick={() => { setCurrentReportSection('productos'); setShowReportMenu(false) }} className="w-full text-left px-4 py-3 hover:bg-teal-50 flex items-center gap-3 transition-colors">
+                                            <ShoppingCart className="w-4 h-4 text-teal-600" /> Ver Listado de Productos
                                         </button>
-                                        <button onClick={() => { setCurrentReportSection('balance'); setShowReportMenu(false) }} className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-2 border-b">
-                                            <Calculator className="w-4 h-4" /> Balance
+                                        <button onClick={() => { setCurrentReportSection('balance'); setShowReportMenu(false) }} className="w-full text-left px-4 py-3 hover:bg-teal-50 flex items-center gap-3 transition-colors">
+                                            <Calculator className="w-4 h-4 text-teal-600" /> Balance General
                                         </button>
-                                        <button onClick={() => { setCurrentReportSection('distribucion'); setShowReportMenu(false) }} className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center gap-2">
-                                            <PieChart className="w-4 h-4" /> Distribución
+                                        <button onClick={() => { setCurrentReportSection('distribucion'); setShowReportMenu(false) }} className="w-full text-left px-4 py-3 hover:bg-teal-50 flex items-center gap-3 border-b transition-colors">
+                                            <PieChart className="w-4 h-4 text-teal-600" /> Ver Distribución de Saldo
+                                        </button>
+
+                                        <div className="px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider mt-1 border-b">Acciones Profesionales</div>
+                                        <button onClick={() => { setSelectionAction('imprimir'); setShowSelectionModal(true); setShowReportMenu(false) }} className="w-full text-left px-4 py-3 hover:bg-orange-50 flex items-center gap-3 text-orange-700 font-medium transition-colors">
+                                            <Printer className="w-4 h-4" /> Imprimir Reporte...
+                                        </button>
+                                        <button onClick={() => { setSelectionAction('descargar'); setShowSelectionModal(true); setShowReportMenu(false) }} className="w-full text-left px-4 py-3 hover:bg-blue-50 flex items-center gap-3 text-blue-700 font-medium transition-colors">
+                                            <Download className="w-4 h-4" /> Descargar Reporte (PDF)...
                                         </button>
                                     </div>
                                 )}
                             </div>
                         </div>
+
+                        {/* MODAL DE SELECCION DE TIPO DE REPORTE */}
+                        <AnimatePresence>
+                            {showSelectionModal && (
+                                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                                    <motion.div
+                                        initial={{ opacity: 0, scale: 0.9 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0.9 }}
+                                        className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+                                    >
+                                        <div className={`px-6 py-4 flex items-center justify-between text-white ${selectionAction === 'imprimir' ? 'bg-orange-600' : 'bg-blue-600'}`}>
+                                            <h3 className="font-bold flex items-center gap-2">
+                                                {selectionAction === 'imprimir' ? <Printer className="w-5 h-5" /> : <Download className="w-5 h-5" />}
+                                                {selectionAction === 'imprimir' ? 'Opciones de Impresión' : 'Opciones de Descarga'}
+                                            </h3>
+                                            <button onClick={() => setShowSelectionModal(false)} className="hover:bg-white/20 p-1 rounded-full"><X className="w-5 h-5" /></button>
+                                        </div>
+
+                                        <div className="p-6 space-y-4">
+                                            <p className="text-gray-600 text-sm mb-4">Seleccione el formato y contenido para su reporte profesional:</p>
+
+                                            <button
+                                                onClick={() => ejecutarAccionReporte('completo')}
+                                                className="w-full p-4 border-2 border-gray-100 rounded-xl hover:border-teal-500 hover:bg-teal-50 text-left transition-all group"
+                                            >
+                                                <div className="font-bold text-gray-800 group-hover:text-teal-700">Inventario Completo</div>
+                                                <div className="text-xs text-gray-500 italic">Portada + Balance + Distribución + Listado de Productos</div>
+                                            </button>
+
+                                            <button
+                                                onClick={() => ejecutarAccionReporte('total')}
+                                                className="w-full p-4 border-2 border-gray-100 rounded-xl hover:border-teal-500 hover:bg-teal-50 text-left transition-all group"
+                                            >
+                                                <div className="font-bold text-gray-800 group-hover:text-teal-700">Reporte Total (Resumen)</div>
+                                                <div className="text-xs text-gray-500 italic">Portada + Balance General + Distribución de Saldo</div>
+                                            </button>
+
+                                            <button
+                                                onClick={() => ejecutarAccionReporte('productos')}
+                                                className="w-full p-4 border-2 border-gray-100 rounded-xl hover:border-teal-500 hover:bg-teal-50 text-left transition-all group"
+                                            >
+                                                <div className="font-bold text-gray-800 group-hover:text-teal-700">Solo Listado de Productos</div>
+                                                <div className="text-xs text-gray-500 italic">Tabla detallada de mercancía contada</div>
+                                            </button>
+                                        </div>
+
+                                        <div className="bg-gray-50 px-6 py-4 flex justify-end">
+                                            <button onClick={() => setShowSelectionModal(false)} className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-200 rounded-lg transition-colors">Cancelar</button>
+                                        </div>
+                                    </motion.div>
+                                </div>
+                            )}
+                        </AnimatePresence>
 
                         <button onClick={onClose} className="ml-4 p-2 hover:bg-white/20 rounded-full transition-colors">
                             <X className="w-6 h-6" />
@@ -283,8 +322,8 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente }) => {
                                             <div className="text-lg">{formatearFecha(sesion?.fecha)}</div>
                                         </div>
                                         <div className="text-right">
-                                            <div className="font-semibold text-gray-700">Total Inventario</div>
-                                            <div className="text-xl font-bold text-teal-700">{formatearMoneda(valorTotal)}</div>
+                                            <div className="font-semibold text-gray-700">Costo del Servicio</div>
+                                            <div className="text-xl font-bold text-teal-700">{formatearMoneda(contadorData.costoServicio)}</div>
                                         </div>
                                     </div>
                                 </div>

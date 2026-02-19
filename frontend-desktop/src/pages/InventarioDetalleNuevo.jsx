@@ -12,6 +12,7 @@ import { ArrowLeft, Search, Trash2, Clock, TrendingUp, Users, CreditCard, Briefc
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import ProductoForm from '../components/ProductoForm'
+import ReporteInventarioModal from '../components/ReporteInventarioModal'
 
 const PRODUCTOS_POR_PAGINA = 45
 
@@ -100,13 +101,7 @@ const InventarioDetalleNuevo = () => {
   const [showSearchEditModal, setShowSearchEditModal] = useState(false)
   const [invSearchTerm, setInvSearchTerm] = useState('')
   const [editValues, setEditValues] = useState({})
-  const [currentReportSection, setCurrentReportSection] = useState('portada') // 'portada', 'productos', 'distribucion', 'balance'
-  const [currentReportPage, setCurrentReportPage] = useState(0) // Para paginación dentro de productos
-  const [showReportMenu, setShowReportMenu] = useState(false)
   const [productNotFoundCode, setProductNotFoundCode] = useState('')
-  // Estados para edición del balance antes de imprimir
-  const [balanceEditMode, setBalanceEditMode] = useState(false)
-  const [balanceEditData, setBalanceEditData] = useState(null)
   const [isSearching, setIsSearching] = useState(false)
   // Estados para temporizador y modos de escaneo
   const [tiempoTranscurrido, setTiempoTranscurrido] = useState(0)
@@ -119,6 +114,7 @@ const InventarioDetalleNuevo = () => {
   // Estados para atajos de teclado
   const [shortcutsActive, setShortcutsActive] = useState(false)
   const [activeSection, setActiveSection] = useState(null) // 'financiera' | 'inventario' | null
+  const [showReportModal, setShowReportModal] = useState(false)
 
   // Mapeo de atajos de teclado
   const shortcutsMap = {
@@ -133,8 +129,11 @@ const InventarioDetalleNuevo = () => {
       'F8': () => openFinancialModal('capital'),
     },
     inventario: {
-      'F1': () => openFinancialModal('imprimir'),
-      'F2': () => openFinancialModal('reporte'),
+      'F1': () => {
+        // Atajo F1 removido para impresión directa según requerimiento
+        toast.info('Usa el botón Configuración para imprimir');
+      },
+      'F2': () => setShowReportModal(true),
       'F3': () => openFinancialModal('configuracion'),
     },
     global: {
@@ -1628,15 +1627,6 @@ const InventarioDetalleNuevo = () => {
           ]
         })
         break
-      case 'reporte':
-        // Para el reporte, abrir directamente el modal de reporte completo
-        setActiveModal('reporteCompleto')
-        setModalData({
-          title: 'Reporte de Inventario Completo',
-          icon: <FileText className="w-6 h-6" />,
-          color: 'teal'
-        })
-        return
       case 'configuracion':
         setModalData({
           title: 'Configuración de Inventario',
@@ -1773,45 +1763,6 @@ const InventarioDetalleNuevo = () => {
     return Math.ceil(productosContados.length / PRODUCTOS_POR_PAGINA)
   }
 
-  const getProductosPaginados = () => {
-    if (currentReportSection !== 'productos') return []
-    const inicio = currentReportPage * PRODUCTOS_POR_PAGINA
-    const fin = inicio + PRODUCTOS_POR_PAGINA
-    return productosContados.slice(inicio, fin)
-  }
-
-  const tieneMasDeUnaPaginaProductos = () => {
-    return getTotalPaginasProductos() > 1
-  }
-
-  const handleReportSectionChange = (section) => {
-    setCurrentReportSection(section)
-    setCurrentReportPage(0) // Resetear página cuando cambias de sección
-    setShowReportMenu(false) // Cerrar menú
-  }
-
-  const getReportPageInfo = () => {
-    if (currentReportSection === 'portada') {
-      return { current: 1, total: 1, label: 'Portada' }
-    } else if (currentReportSection === 'productos') {
-      const total = getTotalPaginasProductos()
-      return { current: currentReportPage + 1, total, label: 'Listado de Productos' }
-    } else if (currentReportSection === 'balance') {
-      return { current: 1, total: 1, label: 'Balance General' }
-    } else if (currentReportSection === 'distribucion') {
-      return { current: 1, total: 1, label: 'Distribución de Saldo' }
-    }
-    return { current: 1, total: 1, label: '' }
-  }
-
-  // Resetear a portada cuando se abre el modal
-  useEffect(() => {
-    if (activeModal === 'reporteCompleto') {
-      setCurrentReportSection('portada')
-      setCurrentReportPage(0)
-      setShowReportMenu(false)
-    }
-  }, [activeModal])
 
   const formatearFecha = (fecha) => {
     if (!fecha) return new Date().toLocaleDateString('es-ES', {
@@ -2361,7 +2312,7 @@ const InventarioDetalleNuevo = () => {
 
     try {
       // Preparar opciones para el PDF
-      const options = {
+      const payload = {
         contadorData: {
           costoServicio: contadorData.costoServicio || 0,
           nombre: user?.nombre || '',
@@ -2377,17 +2328,21 @@ const InventarioDetalleNuevo = () => {
           fechaHasta: distribucionData.fechaHasta,
           comentarios: distribucionData.comentarios
         },
-        incluirBalance: downloadData.incluirBalance || false,
-        incluirDistribucion: true // Siempre incluir distribución de saldo
+        tipoDocumento: downloadData.tipoDocumento,
+        incluirPrecios: downloadData.incluirPrecios,
+        incluirTotales: downloadData.incluirTotales,
+        incluirBalance: downloadData.incluirBalance,
+        incluirDistribucion: true,
+        formato: downloadData.formato
       }
 
-      const respuesta = await reportesApi.downloadInventoryPDF(sesion._id, options)
+      const respuesta = await reportesApi.downloadInventoryPDF(sesion._id, payload)
       const blob = new Blob([respuesta.data], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
 
       const enlace = document.createElement('a')
       enlace.href = url
-      enlace.download = generarNombreArchivoSeguro(`Inventario_${sesion?.numeroSesion || 'inventario'}.pdf`)
+      enlace.download = generarNombreArchivoSeguro(`Reporte_${sesion?.nombreCliente}_${sesion?.numeroSesion}.pdf`)
       document.body.appendChild(enlace)
       enlace.click()
       enlace.remove()
@@ -2405,33 +2360,7 @@ const InventarioDetalleNuevo = () => {
       toast.error('No hay productos en el inventario para descargar')
       return
     }
-
-    try {
-      switch (downloadData.formato) {
-        case 'PDF':
-          descargarPDF()
-          toast.success('Generando PDF...')
-          break
-        case 'Excel':
-          descargarExcel()
-          toast.success('Descargando archivo Excel')
-          break
-        case 'CSV':
-          descargarCSV()
-          toast.success('Descargando archivo CSV')
-          break
-        case 'Word':
-          // Word usa el mismo formato que Excel (HTML)
-          descargarExcel()
-          toast.success('Descargando archivo Word')
-          break
-        default:
-          toast.error('Formato no soportado')
-      }
-    } catch (error) {
-      console.error('Error al descargar:', error)
-      toast.error('Error al generar el archivo: ' + error.message)
-    }
+    setShowReportModal(true)
   }
 
   // Función para imprimir directamente
@@ -2440,60 +2369,7 @@ const InventarioDetalleNuevo = () => {
       toast.error('No hay productos en el inventario para imprimir')
       return
     }
-
-    // Preparar opciones para el PDF (mismas que para descarga)
-    const options = {
-      contadorData: {
-        costoServicio: contadorData.costoServicio || 0,
-        nombre: user?.nombre || '',
-        cedula: user?.cedula || '',
-        telefono: user?.telefono || '',
-        email: user?.email || ''
-      },
-      distribucionData: {
-        utilidadesNetas: calculateUtilidadesNetas(),
-        numeroSocios: distribucionData.numeroSocios,
-        socios: distribucionData.socios,
-        fechaDesde: distribucionData.fechaDesde,
-        fechaHasta: distribucionData.fechaHasta,
-        comentarios: distribucionData.comentarios
-      },
-      incluirBalance: downloadData.incluirBalance || false,
-      incluirDistribucion: true // Siempre incluir distribución de saldo
-    }
-
-    // Pausar reloj antes de imprimir
-    sesionesApi.pauseTimer(id).catch(() => { })
-
-    reportesApi.downloadInventoryPDF(id, options)
-      .then((resp) => {
-        const blob = new Blob([resp.data], { type: 'application/pdf' })
-        const url = URL.createObjectURL(blob)
-
-        const ventana = window.open(url)
-        if (!ventana) {
-          toast.error('Bloqueador de ventanas emergentes activo. Permite ventanas para imprimir.')
-          URL.revokeObjectURL(url)
-          return
-        }
-
-        ventana.onload = () => {
-          ventana.focus()
-          ventana.print()
-        }
-
-        ventana.onafterprint = () => {
-          ventana.close()
-          URL.revokeObjectURL(url)
-          toast.success('Reloj pausado - Inventario finalizado')
-        }
-
-        toast.success('Enviando a impresión...')
-      })
-      .catch((error) => {
-        console.error('Error al imprimir:', error)
-        toast.error('Error al imprimir el documento: ' + (error.message || 'Desconocido'))
-      })
+    setShowReportModal(true)
   }
 
   const handleExit = () => {
@@ -3697,16 +3573,10 @@ const InventarioDetalleNuevo = () => {
           </h3>
 
           {/* Nuevos botones de gestión */}
-          <button
-            onClick={() => openFinancialModal('imprimir')}
-            className="w-full flex items-center space-x-3 px-5 py-4 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white rounded-lg transition-all duration-200 text-base font-semibold shadow-md hover:shadow-lg transform hover:scale-105"
-          >
-            <Printer className="w-6 h-6" />
-            <span>Imprimir</span>
-          </button>
+
 
           <button
-            onClick={() => openFinancialModal('reporte')}
+            onClick={() => setShowReportModal(true)}
             className="w-full flex items-center space-x-3 px-5 py-4 bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white rounded-lg transition-all duration-200 text-base font-semibold shadow-md hover:shadow-lg transform hover:scale-105"
           >
             <FileText className="w-6 h-6" />
@@ -5654,761 +5524,17 @@ const InventarioDetalleNuevo = () => {
       )
       }
 
-      {/* Modal de Reporte Completo */}
-      {
-        activeModal === 'reporteCompleto' && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) {
-                setShowReportMenu(false)
-              }
-            }}
-          >
-            <div className="bg-white rounded-lg max-w-[95vw] w-full max-h-[95vh] overflow-hidden shadow-2xl">
-              <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-teal-600 to-teal-700">
-                <div className="flex items-center space-x-3">
-                  <FileText className="w-6 h-6 text-white" />
-                  <div>
-                    <h3 className="text-xl font-bold text-white">Reporte de Inventario</h3>
-                    {(() => {
-                      const pageInfo = getReportPageInfo()
-                      return (
-                        <p className="text-sm text-white/90">
-                          {pageInfo.label} {pageInfo.total > 1 ? `- Página ${pageInfo.current} de ${pageInfo.total}` : ''}
-                        </p>
-                      )
-                    })()}
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3">
-                  {/* Menú de navegación */}
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowReportMenu(!showReportMenu)}
-                      className="p-2 text-white hover:bg-white/20 rounded-lg transition-colors"
-                    >
-                      <Menu className="w-6 h-6" />
-                    </button>
-                    {showReportMenu && (
-                      <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
-                        <button
-                          onClick={() => handleReportSectionChange('productos')}
-                          className={`w-full flex items-center space-x-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors ${currentReportSection === 'productos' ? 'bg-teal-50 border-l-4 border-teal-600' : ''
-                            }`}
-                        >
-                          <ShoppingCart className={`w-5 h-5 ${currentReportSection === 'productos' ? 'text-teal-600' : 'text-gray-600'}`} />
-                          <span className={`font-medium ${currentReportSection === 'productos' ? 'text-teal-600' : 'text-gray-700'}`}>
-                            Ver Listado de Productos
-                          </span>
-                        </button>
-                        <button
-                          onClick={() => handleReportSectionChange('distribucion')}
-                          className={`w-full flex items-center space-x-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors ${currentReportSection === 'distribucion' ? 'bg-teal-50 border-l-4 border-teal-600' : ''
-                            }`}
-                        >
-                          <PieChart className={`w-5 h-5 ${currentReportSection === 'distribucion' ? 'text-teal-600' : 'text-gray-600'}`} />
-                          <span className={`font-medium ${currentReportSection === 'distribucion' ? 'text-teal-600' : 'text-gray-700'}`}>
-                            Ver Distribución de Saldo
-                          </span>
-                        </button>
-                        <button
-                          onClick={() => handleReportSectionChange('balance')}
-                          className={`w-full flex items-center space-x-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors ${currentReportSection === 'balance' ? 'bg-teal-50 border-l-4 border-teal-600' : ''
-                            }`}
-                        >
-                          <Calculator className={`w-5 h-5 ${currentReportSection === 'balance' ? 'text-teal-600' : 'text-gray-600'}`} />
-                          <span className={`font-medium ${currentReportSection === 'balance' ? 'text-teal-600' : 'text-gray-700'}`}>
-                            Balance General
-                          </span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={closeFinancialModal}
-                    className="p-2 text-white hover:bg-white/20 rounded-lg transition-colors"
-                  >
-                    <X className="w-6 h-6" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="overflow-y-auto max-h-[calc(90vh-140px)]">
-                {currentReportSection === 'portada' ? (
-                  // Página de Portada
-                  <div className="p-10 bg-white flex flex-col items-center justify-between min-h-[600px]" style={{ fontFamily: 'Arial, sans-serif' }}>
-                    <div className="w-full">
-                      <div className="text-sm text-gray-500 mb-2">Inventario de Mercancía y Presentación de Resultados elaborado por:</div>
-                      <div className="text-2xl font-bold text-gray-800">{(user?.nombre || 'Usuario').toUpperCase()}</div>
-                      <div className="mt-2 space-y-1 text-sm text-gray-600">
-                        <div>Cédula: {user?.cedula || user?.documentoIdentidad || 'No disponible'}</div>
-                        <div>Teléfono: {user?.telefono || 'No disponible'}</div>
-                        <div>Dirección: {user?.direccion || 'No disponible'}</div>
-                        <div>Correo electrónico: {user?.email || user?.correoElectronico || 'No disponible'}</div>
-                      </div>
-                    </div>
-
-                    <div className="flex-1 flex flex-col items-center justify-center text-center mt-16 mb-12">
-                      <div className="text-4xl font-black tracking-wide text-gray-900">{(sesion?.clienteNegocio?.nombre || sesion?.clienteNegocio?.razonSocial || 'CLIENTE').toUpperCase()}</div>
-                      {(sesion?.clienteNegocio?.telefono || sesion?.clienteNegocio?.codigo) && (
-                        <div className="text-xl text-gray-700 mt-2">{sesion?.clienteNegocio?.telefono || sesion?.clienteNegocio?.codigo}</div>
-                      )}
-                      {sesion?.clienteNegocio?.direccion && (
-                        <div className="text-sm text-gray-500 mt-1">{sesion?.clienteNegocio?.direccion}</div>
-                      )}
-
-                      <div className="mt-10">
-                        <div className="flex flex-col items-center">
-                          <img
-                            src={logoInfocolmados}
-                            alt="Infocolmados"
-                            className="w-78 h-78 object-contain"
-                            style={{ opacity: 0.6, filter: 'grayscale(20%)' }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="w-full flex justify-between items-start text-sm text-gray-600">
-                      <div>
-                        <div className="font-semibold text-gray-700">Inventario</div>
-                        <div>{new Intl.DateTimeFormat('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(sesion?.fecha ? new Date(sesion.fecha) : new Date())}</div>
-                        <div className="mt-3 font-semibold text-gray-700">Próx. Inventario</div>
-                        <div>{new Intl.DateTimeFormat('es-DO', { day: '2-digit', month: '2-digit', year: 'numeric' }).format((() => { const d = sesion?.fecha ? new Date(sesion.fecha) : new Date(); d.setMonth(d.getMonth() + 1); return d })())}</div>
-                      </div>
-
-                      <div className="text-right">
-                        <div className="font-semibold text-gray-700">Costo Servicio</div>
-                        <div className="text-xl font-bold text-gray-900">{formatearMoneda(contadorData.costoServicio || 0)}</div>
-                      </div>
-                    </div>
-                  </div>
-                ) : currentReportSection === 'balance' ? (
-                  // Página del Balance General
-                  <div className="p-8 bg-white" style={{ fontFamily: 'Arial, sans-serif' }}>
-                    {/* Toggle de modo edición */}
-                    <div className="mb-4 flex items-center justify-end no-print">
-                      <label className="flex items-center cursor-pointer bg-amber-50 px-4 py-2 rounded-lg border border-amber-200 hover:bg-amber-100 transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={balanceEditMode}
-                          onChange={(e) => {
-                            setBalanceEditMode(e.target.checked)
-                            if (e.target.checked && !balanceEditData) {
-                              // Inicializar datos de edición con los valores actuales
-                              setBalanceEditData({
-                                efectivoEnCajaYBanco: [...(datosFinancieros.efectivoEnCajaYBanco || [])],
-                                cuentasPorCobrar: [...(datosFinancieros.cuentasPorCobrar || [])],
-                                cuentasPorPagar: [...(datosFinancieros.cuentasPorPagar || [])],
-                                deudaANegocio: [...(datosFinancieros.deudaANegocio || [])],
-                                gastosGenerales: [...(datosFinancieros.gastosGenerales || [])],
-                                ventasDelMes: datosFinancieros.ventasDelMes || 0,
-                                activosFijos: datosFinancieros.activosFijos || 0
-                              })
-                            }
-                          }}
-                          className="h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300 rounded mr-2"
-                        />
-                        <Edit3 className="w-4 h-4 mr-2 text-amber-600" />
-                        <span className="text-sm font-medium text-amber-700">Modo Edición</span>
-                      </label>
-                      {balanceEditMode && (
-                        <div className="flex items-center gap-2 ml-2">
-                          <button
-                            onClick={() => {
-                              saveBalanceChanges()
-                              setBalanceEditMode(false)
-                              setBalanceEditData(null)
-                            }}
-                            className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-medium flex items-center gap-1"
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                            Guardar Cambios
-                          </button>
-                          <button
-                            onClick={() => {
-                              setBalanceEditMode(false)
-                              setBalanceEditData(null)
-                            }}
-                            className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 text-sm"
-                          >
-                            Cancelar
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {balanceEditMode && (
-                      <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg no-print">
-                        <p className="text-sm text-amber-700">
-                          <strong>Modo edición activo:</strong> Haz clic en cualquier valor para editarlo. Los cambios se guardarán automáticamente.
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="text-center mb-8">
-                      <h2 className="text-2xl font-bold text-gray-800 mb-2">{sesion?.clienteNegocio?.nombre?.toUpperCase()}</h2>
-                      <h3 className="text-lg font-semibold text-gray-700 mb-1">Balance General</h3>
-                      <p className="text-sm text-gray-600">Al {formatearFecha(new Date())}</p>
-                      <p className="text-sm text-gray-600">(En RD $)</p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-8">
-                      {/* ACTIVOS */}
-                      <div>
-                        <h4 className="text-lg font-bold text-blue-600 mb-4 border-b-2 border-blue-600 pb-1">ACTIVOS</h4>
-
-                        <div className="space-y-3">
-                          <div className="font-semibold text-gray-700">CORRIENTES</div>
-                          <div className="ml-4 space-y-1">
-                            {/* EFECTIVO Y CAJA */}
-                            <div className="flex justify-between items-center">
-                              <span className="text-gray-800">EFECTIVO Y CAJA</span>
-                              <span className="text-gray-800 font-medium">{formatearMoneda(getEditableTotal('efectivoEnCajaYBanco'))}</span>
-                            </div>
-                            {getBalanceArray('efectivoEnCajaYBanco').length > 0 && (
-                              <div className="ml-4 mt-1 space-y-1">
-                                {getBalanceArray('efectivoEnCajaYBanco').map((efectivo, index) => (
-                                  <div key={index} className={`text-xs text-gray-700 italic flex items-center justify-between ${balanceEditMode ? 'bg-amber-50 p-1 rounded' : ''}`}>
-                                    <span>• {efectivo.tipoCuenta || 'Caja'}: </span>
-                                    {balanceEditMode ? (
-                                      <div className="flex items-center gap-1">
-                                        <input
-                                          type="number"
-                                          value={efectivo.monto || 0}
-                                          onChange={(e) => updateBalanceArrayItem('efectivoEnCajaYBanco', index, 'monto', parseFloat(e.target.value) || 0)}
-                                          className="w-24 px-1 py-0.5 text-xs border border-amber-300 rounded focus:ring-1 focus:ring-amber-500"
-                                        />
-                                        <button onClick={() => deleteBalanceArrayItem('efectivoEnCajaYBanco', index)} className="text-red-500 hover:text-red-700">
-                                          <Trash2 className="w-3 h-3" />
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <span>{formatearMoneda(parseFloat(efectivo.monto || 0))} ({efectivo.descripcion || 'Sin descripción'})</span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {/* CUENTAS POR COBRAR */}
-                            <div className="flex justify-between items-center">
-                              <span className="text-gray-800">CUENTAS POR COBRAR</span>
-                              <span className="text-gray-800 font-medium">{formatearMoneda(getEditableTotal('cuentasPorCobrar'))}</span>
-                            </div>
-                            {getBalanceArray('cuentasPorCobrar').length > 0 && (
-                              <div className="ml-4 mt-1 space-y-1">
-                                {getBalanceArray('cuentasPorCobrar').map((cuenta, index) => (
-                                  <div key={index} className={`text-xs text-gray-700 italic flex items-center justify-between ${balanceEditMode ? 'bg-amber-50 p-1 rounded' : ''}`}>
-                                    <span>• {cuenta.cliente || 'Cliente'}: </span>
-                                    {balanceEditMode ? (
-                                      <div className="flex items-center gap-1">
-                                        <input
-                                          type="number"
-                                          value={cuenta.monto || 0}
-                                          onChange={(e) => updateBalanceArrayItem('cuentasPorCobrar', index, 'monto', parseFloat(e.target.value) || 0)}
-                                          className="w-24 px-1 py-0.5 text-xs border border-amber-300 rounded focus:ring-1 focus:ring-amber-500"
-                                        />
-                                        <button onClick={() => deleteBalanceArrayItem('cuentasPorCobrar', index)} className="text-red-500 hover:text-red-700">
-                                          <Trash2 className="w-3 h-3" />
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <span>{formatearMoneda(parseFloat(cuenta.monto || 0))} ({cuenta.descripcion || 'Sin descripción'})</span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {/* INVENTARIO DE MERCANCIA */}
-                            <div className="flex justify-between">
-                              <span className="text-gray-800">INVENTARIO DE MERCANCIA</span>
-                              <span className="text-gray-800 font-medium">{formatearMoneda(valorTotal)}</span>
-                            </div>
-
-                            {/* DEUDA A NEGOCIO */}
-                            <div className="flex justify-between items-center">
-                              <span className="text-gray-800">DEUDA A NEGOCIO</span>
-                              <span className="text-gray-800 font-medium">{formatearMoneda(getEditableTotal('deudaANegocio'))}</span>
-                            </div>
-                            {getBalanceArray('deudaANegocio').length > 0 && (
-                              <div className="ml-4 mt-1 space-y-1">
-                                {getBalanceArray('deudaANegocio').map((deuda, index) => (
-                                  <div key={index} className={`text-xs text-gray-700 italic flex items-center justify-between ${balanceEditMode ? 'bg-amber-50 p-1 rounded' : ''}`}>
-                                    <span>• {deuda.deudor || 'Deudor'}{deuda.esSocio ? ' (Socio)' : ''}: </span>
-                                    {balanceEditMode ? (
-                                      <div className="flex items-center gap-1">
-                                        <input
-                                          type="number"
-                                          value={deuda.monto || 0}
-                                          onChange={(e) => updateBalanceArrayItem('deudaANegocio', index, 'monto', parseFloat(e.target.value) || 0)}
-                                          className="w-24 px-1 py-0.5 text-xs border border-amber-300 rounded focus:ring-1 focus:ring-amber-500"
-                                        />
-                                        <button onClick={() => deleteBalanceArrayItem('deudaANegocio', index)} className="text-red-500 hover:text-red-700">
-                                          <Trash2 className="w-3 h-3" />
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <span>{formatearMoneda(parseFloat(deuda.monto || 0))} ({deuda.tipoDeuda || deuda.descripcion || 'Sin descripción'})</span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            <div className="flex justify-between font-semibold border-t pt-1">
-                              <span className="text-gray-900">TOTAL CORRIENTES</span>
-                              <span className="text-gray-900">{formatearMoneda(getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('cuentasPorCobrar') + valorTotal + getEditableTotal('deudaANegocio'))}</span>
-                            </div>
-                          </div>
-
-                          <div className="font-semibold text-gray-900 mt-4">FIJOS</div>
-                          <div className="ml-4 space-y-1">
-                            <div className="flex justify-between items-center">
-                              <span className="text-gray-900">ACTIVOS FIJOS</span>
-                              {balanceEditMode ? (
-                                <input
-                                  type="number"
-                                  value={balanceEditData?.activosFijos || 0}
-                                  onChange={(e) => updateBalanceValue('activosFijos', e.target.value)}
-                                  className="w-28 px-2 py-1 text-sm border border-amber-300 rounded focus:ring-1 focus:ring-amber-500 text-right"
-                                />
-                              ) : (
-                                <span className="text-gray-900 font-medium">{formatearMoneda(datosFinancieros.activosFijos)}</span>
-                              )}
-                            </div>
-                            <div className="flex justify-between font-semibold border-t pt-1">
-                              <span className="text-gray-900">TOTAL FIJOS</span>
-                              <span className="text-gray-900">{formatearMoneda(balanceEditMode ? (balanceEditData?.activosFijos || 0) : datosFinancieros.activosFijos)}</span>
-                            </div>
-                          </div>
-
-                          <div className="flex justify-between font-bold text-lg border-t-2 border-gray-400 pt-2 mt-4">
-                            <span className="text-gray-900">TOTAL ACTIVOS</span>
-                            <span className="text-gray-900">{formatearMoneda(getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('cuentasPorCobrar') + valorTotal + getEditableTotal('deudaANegocio') + (balanceEditMode ? (balanceEditData?.activosFijos || 0) : datosFinancieros.activosFijos))}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* PASIVOS Y CAPITAL */}
-                      <div>
-                        <h4 className="text-lg font-bold text-red-600 mb-4 border-b-2 border-red-600 pb-1">PASIVOS Y CAPITAL</h4>
-
-                        <div className="space-y-3">
-                          <div className="font-semibold text-gray-700">PASIVOS</div>
-                          <div className="ml-4 space-y-1">
-                            <div className="flex justify-between items-center">
-                              <span className="text-gray-800">CUENTAS POR PAGAR</span>
-                              <span className="text-gray-800 font-medium">{formatearMoneda(getEditableTotal('cuentasPorPagar'))}</span>
-                            </div>
-                            {getBalanceArray('cuentasPorPagar').length > 0 && (
-                              <div className="ml-4 mt-1 space-y-1">
-                                {getBalanceArray('cuentasPorPagar').map((cuenta, index) => (
-                                  <div key={index} className={`text-xs text-gray-700 italic flex items-center justify-between ${balanceEditMode ? 'bg-amber-50 p-1 rounded' : ''}`}>
-                                    <span>• {cuenta.proveedor || 'Proveedor'}: </span>
-                                    {balanceEditMode ? (
-                                      <div className="flex items-center gap-1">
-                                        <input
-                                          type="number"
-                                          value={cuenta.monto || 0}
-                                          onChange={(e) => updateBalanceArrayItem('cuentasPorPagar', index, 'monto', parseFloat(e.target.value) || 0)}
-                                          className="w-24 px-1 py-0.5 text-xs border border-amber-300 rounded focus:ring-1 focus:ring-amber-500"
-                                        />
-                                        <button onClick={() => deleteBalanceArrayItem('cuentasPorPagar', index)} className="text-red-500 hover:text-red-700">
-                                          <Trash2 className="w-3 h-3" />
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <span>{formatearMoneda(parseFloat(cuenta.monto || 0))} ({cuenta.descripcion || 'Sin descripción'})</span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            <div className="flex justify-between font-semibold border-t pt-1">
-                              <span className="text-gray-900">TOTAL PASIVOS</span>
-                              <span className="text-gray-900">{formatearMoneda(getEditableTotal('cuentasPorPagar'))}</span>
-                            </div>
-                          </div>
-
-                          <div className="font-semibold text-gray-900 mt-4">CAPITAL</div>
-                          <div className="ml-4 space-y-1">
-                            <div className="flex justify-between font-semibold border-t pt-1">
-                              <span className="text-gray-900">CAPITAL CONTABLE</span>
-                              <span className="text-gray-900">{formatearMoneda(
-                                getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('cuentasPorCobrar') + valorTotal + getEditableTotal('deudaANegocio') + (balanceEditMode ? (balanceEditData?.activosFijos || 0) : datosFinancieros.activosFijos) - getEditableTotal('cuentasPorPagar')
-                              )}</span>
-                            </div>
-                          </div>
-
-                          <div className="flex justify-between font-bold text-lg border-t-2 border-gray-400 pt-2 mt-4">
-                            <span className="text-gray-900">TOTAL PASIVOS + CAPITAL</span>
-                            <span className="text-gray-900">{formatearMoneda(getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('cuentasPorCobrar') + valorTotal + getEditableTotal('deudaANegocio') + (balanceEditMode ? (balanceEditData?.activosFijos || 0) : datosFinancieros.activosFijos))}</span>
-                          </div>
-                        </div>
-                        {/* Ventas y Gastos */}
-                        <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                          <div className="font-semibold text-blue-700 mb-3">VENTAS Y GASTOS</div>
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-gray-900">VENTAS DEL MES</span>
-                              {balanceEditMode ? (
-                                <input
-                                  type="number"
-                                  value={balanceEditData?.ventasDelMes || 0}
-                                  onChange={(e) => updateBalanceValue('ventasDelMes', e.target.value)}
-                                  className="w-28 px-2 py-1 text-sm border border-green-300 rounded focus:ring-1 focus:ring-green-500 text-right text-green-600 font-semibold"
-                                />
-                              ) : (
-                                <span className="font-semibold text-green-600">{formatearMoneda(datosFinancieros.ventasDelMes)}</span>
-                              )}
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-gray-900">GASTOS GENERALES</span>
-                              <span className="font-semibold text-red-600">({formatearMoneda(getEditableTotal('gastosGenerales'))})</span>
-                            </div>
-                            {getBalanceArray('gastosGenerales').length > 0 && (
-                              <div className="ml-4 mt-1 space-y-1">
-                                {getBalanceArray('gastosGenerales').map((gasto, index) => (
-                                  <div key={index} className={`text-xs text-red-600 italic flex items-center justify-between ${balanceEditMode ? 'bg-red-50 p-1 rounded' : ''}`}>
-                                    <span>• {gasto.categoria || 'Sin categoría'}: </span>
-                                    {balanceEditMode ? (
-                                      <div className="flex items-center gap-1">
-                                        <input
-                                          type="number"
-                                          value={gasto.monto || 0}
-                                          onChange={(e) => updateBalanceArrayItem('gastosGenerales', index, 'monto', parseFloat(e.target.value) || 0)}
-                                          className="w-24 px-1 py-0.5 text-xs border border-red-300 rounded focus:ring-1 focus:ring-red-500"
-                                        />
-                                        <button onClick={() => deleteBalanceArrayItem('gastosGenerales', index)} className="text-red-500 hover:text-red-700">
-                                          <Trash2 className="w-3 h-3" />
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <span>({formatearMoneda(parseFloat(gasto.monto || 0))}) ({gasto.descripcion || 'Sin descripción'})</span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            {empleadosData.empleados.filter(e => e.activo).length > 0 && empleadosData.incluirEnReporte && (
-                              <div className="mt-2 pt-2 border-t border-red-200">
-                                <div className="flex justify-between text-sm text-red-500">
-                                  <span className="font-medium">NÓMINA DE EMPLEADOS</span>
-                                  <span className="font-semibold">({formatearMoneda(calculateTotalNominaEmpleados())})</span>
-                                </div>
-                                <div className="ml-4 mt-1 space-y-1">
-                                  {empleadosData.empleados.filter(e => e.activo).map((empleado, index) => (
-                                    <div key={empleado.id} className="text-xs text-red-400 italic">
-                                      • {empleado.nombre || `Empleado ${index + 1}`}: {formatearMoneda(parseFloat(empleado.salario || 0))}
-                                      {empleado.deuda > 0 && ` (Deuda: ${formatearMoneda(parseFloat(empleado.deuda))} - Neto: ${formatearMoneda(parseFloat(empleado.salario || 0) - parseFloat(empleado.deuda || 0))})`}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            <div className="flex justify-between text-lg font-bold text-blue-800 border-t pt-2">
-                              <span className="text-gray-900">UTILIDAD NETA</span>
-                              <span className="text-gray-900">{formatearMoneda(
-                                (balanceEditMode && balanceEditData ? balanceEditData.ventasDelMes : datosFinancieros.ventasDelMes) - getEditableTotal('gastosGenerales')
-                              )}</span>
-                            </div>
-                          </div>
-                          <div className="text-sm text-gray-900 mt-2 pt-2 border-t">
-                            {(() => {
-                              const ventas = balanceEditMode && balanceEditData ? balanceEditData.ventasDelMes : datosFinancieros.ventasDelMes
-                              const gastos = getEditableTotal('gastosGenerales')
-                              const utilidadNeta = ventas - gastos
-                              const porcentajeNeto = ventas > 0 ? ((utilidadNeta / ventas) * 100).toFixed(2) : '0.00'
-                              const porcentajeBruto = ventas > 0 ? (((ventas - valorTotal - gastos) / ventas) * 100).toFixed(2) : '0.00'
-                              return (
-                                <>
-                                  <div className="text-gray-900">PORCENTAJE NETO: {porcentajeNeto}%</div>
-                                  <div className="text-gray-900">PORCENTAJE BRUTO: {porcentajeBruto}%</div>
-                                </>
-                              )
-                            })()}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-8 pt-4 border-t text-center text-sm text-gray-600">
-                      <p className="font-semibold text-gray-800">
-                        Contador: {user?.nombre?.toUpperCase() || 'USUARIO SISTEMA'}
-                      </p>
-                      <p className="text-gray-700">Teléfono: {user?.telefono || user?.phone || 'No disponible'}</p>
-                      <p className="mt-2 text-xs">
-                        Solo somos responsables de los datos introducidos en el inventario de mercancía. Los resultados del balance del
-                        negocio son responsabilidad del propietario del negocio resultados del inventario y reconocimiento del
-                        propietario estos datos numéricos reales según su desempeño del negocio en el período evaluado.
-                      </p>
-                    </div>
-                  </div>
-                ) : currentReportSection === 'distribucion' ? (
-                  // Página de Distribución de Saldo
-                  <div className="p-8 bg-white" style={{ fontFamily: 'Arial, sans-serif' }}>
-                    <div className="text-center mb-8">
-                      <h2 className="text-2xl font-bold text-gray-800 mb-2">{sesion?.clienteNegocio?.nombre?.toUpperCase()}</h2>
-                      <h3 className="text-lg font-semibold text-gray-700 mb-1">Distribución de Saldo</h3>
-                      <p className="text-sm text-gray-600">Al {formatearFecha(new Date())}</p>
-                      <p className="text-sm text-gray-600">(En RD $)</p>
-                    </div>
-
-                    <div className="space-y-6">
-                      {/* Información General */}
-                      <div className="bg-gray-50 p-5 rounded-lg border border-gray-200">
-                        <h4 className="font-bold text-black mb-4 text-base">Información General</h4>
-                        <div className="grid grid-cols-2 gap-4 text-base">
-                          <div>
-                            <span className="font-semibold text-black">Total de Utilidades Netas:</span>
-                            <span className="ml-2 text-black font-bold">{formatearMoneda(calculateUtilidadesNetas())}</span>
-                          </div>
-                          <div>
-                            <span className="font-semibold text-black">Número de Socios:</span>
-                            <span className="ml-2 text-black font-bold">{distribucionData.numeroSocios}</span>
-                          </div>
-                          <div>
-                            <span className="font-semibold text-black">Período:</span>
-                            <span className="ml-2 text-black font-bold">{distribucionData.fechaDesde} - {distribucionData.fechaHasta}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Tabla de Distribución por Socios */}
-                      <div>
-                        <h4 className="font-bold text-black mb-5 text-lg">Distribución por Socios</h4>
-                        <table className="w-full border-collapse border border-gray-300">
-                          <thead>
-                            <tr className="bg-gray-100">
-                              <th className="border border-gray-300 px-4 py-3 text-left font-bold text-black text-sm">Socio</th>
-                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-black text-sm">Porcentaje</th>
-                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-black text-sm">Utilidad del Período</th>
-                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-black text-sm">Utilidad Acumulada</th>
-                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-black text-sm">Cuenta Adeudada</th>
-                              <th className="border border-gray-300 px-4 py-3 text-center font-bold text-black text-sm">Saldo Neto</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {distribucionData.socios.map((socio, index) => {
-                              const utilidadPeriodo = (calculateUtilidadesNetas() * socio.porcentaje) / 100;
-                              const utilidadAcumulada = (socio.utilidadAcumulada || 0) + utilidadPeriodo;
-                              // Sumar la cuenta adeudada del formulario + las deudas registradas en gestión financiera
-                              const deudaFinanciera = calculateDeudaSocio(index);
-                              const cuentaAdeudadaTotal = (socio.cuentaAdeudada || 0) + deudaFinanciera;
-                              const saldoNeto = utilidadAcumulada - cuentaAdeudadaTotal;
-                              const deudasSocio = getDeudasSocio(index);
-                              return (
-                                <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                  <td className="border border-gray-300 px-4 py-3 font-semibold text-black text-sm">{socio.nombre || `Socio ${index + 1}`}</td>
-                                  <td className="border border-gray-300 px-4 py-3 text-center text-black font-medium text-sm">{safeToFixed(socio.porcentaje, 2)}%</td>
-                                  <td className="border border-gray-300 px-4 py-3 text-right text-black font-medium text-sm">{formatearMoneda(utilidadPeriodo)}</td>
-                                  <td className="border border-gray-300 px-4 py-3 text-right text-black font-medium text-sm">{formatearMoneda(utilidadAcumulada)}</td>
-                                  <td className="border border-gray-300 px-4 py-3 text-right text-black font-medium text-sm">
-                                    {formatearMoneda(cuentaAdeudadaTotal)}
-                                    {deudasSocio.length > 0 && (
-                                      <div className="text-xs text-red-500 mt-1">
-                                        {deudasSocio.map((d, i) => (
-                                          <div key={i}>• {d.tipoDeuda}: {formatearMoneda(d.monto)}</div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </td>
-                                  <td className={`border border-gray-300 px-4 py-3 text-right font-bold text-sm ${saldoNeto < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                    {formatearMoneda(saldoNeto)}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                          <tfoot>
-                            <tr className="bg-gray-200 font-semibold">
-                              <td className="border border-gray-300 px-4 py-2">TOTAL</td>
-                              <td className="border border-gray-300 px-4 py-2 text-center">100.00%</td>
-                              <td className="border border-gray-300 px-4 py-2 text-right">{formatearMoneda(calculateUtilidadesNetas())}</td>
-                              <td className="border border-gray-300 px-4 py-2 text-right">{formatearMoneda(
-                                distribucionData.socios.reduce((sum, socio) => {
-                                  const utilidadPeriodo = (calculateUtilidadesNetas() * socio.porcentaje) / 100;
-                                  return sum + (socio.utilidadAcumulada || 0) + utilidadPeriodo;
-                                }, 0)
-                              )}</td>
-                              <td className="border border-gray-300 px-4 py-2 text-right">{formatearMoneda(
-                                distribucionData.socios.reduce((sum, socio, index) => {
-                                  const deudaFinanciera = calculateDeudaSocio(index);
-                                  return sum + (socio.cuentaAdeudada || 0) + deudaFinanciera;
-                                }, 0)
-                              )}</td>
-                              <td className="border border-gray-300 px-4 py-2 text-right font-bold">{formatearMoneda(
-                                distribucionData.socios.reduce((sum, socio, index) => {
-                                  const utilidadPeriodo = (calculateUtilidadesNetas() * socio.porcentaje) / 100;
-                                  const utilidadAcumulada = (socio.utilidadAcumulada || 0) + utilidadPeriodo;
-                                  const deudaFinanciera = calculateDeudaSocio(index);
-                                  const cuentaAdeudadaTotal = (socio.cuentaAdeudada || 0) + deudaFinanciera;
-                                  return sum + (utilidadAcumulada - cuentaAdeudadaTotal);
-                                }, 0)
-                              )}</td>
-                            </tr>
-                          </tfoot>
-                        </table>
-                      </div>
-
-                      {/* Firmas de Socios */}
-                      <div className="mt-12">
-                        <h4 className="font-semibold text-gray-800 mb-6">Firmas</h4>
-                        <div className="grid grid-cols-2 gap-8">
-                          {distribucionData.socios.map((socio, index) => (
-                            <div key={index} className="text-center">
-                              <div className="border-t-2 border-gray-400 pt-2 mt-16">
-                                <p className="font-medium text-gray-800">{socio.nombre || `Socio ${index + 1}`}</p>
-                                <p className="text-sm text-gray-600">Firma y Cédula</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Comentarios */}
-                      {distribucionData.comentarios && (
-                        <div className="bg-blue-50 p-4 rounded-lg mt-6">
-                          <h5 className="font-semibold text-blue-900 mb-2">Comentarios</h5>
-                          <p className="text-blue-800 text-sm">{distribucionData.comentarios}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : currentReportSection === 'productos' ? (
-                  // Páginas de productos paginados
-                  <div className="p-8 bg-white" style={{ fontFamily: 'Arial, sans-serif' }}>
-                    <div className="text-center mb-6">
-                      <h2 className="text-xl font-bold text-gray-800 mb-2">Reporte de inventario</h2>
-                      <h3 className="text-lg font-semibold text-gray-700">Ordenado por Nombre de artículo</h3>
-                      <div className="text-right text-sm text-gray-600 mt-4">Rev. 13</div>
-                    </div>
-
-                    <div className="mb-6">
-                      <div className="grid grid-cols-2 gap-8">
-                        <div>
-                          <p className="text-black"><strong>Cliente:</strong> {sesion?.clienteNegocio?.nombre}</p>
-                          <p className="text-black"><strong>Inventario No:</strong> {sesion?.numeroSesion}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-black"><strong>Fecha:</strong> {formatearFecha(sesion?.fecha)}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mb-4">
-                      <p className="text-black"><strong>Observación:</strong></p>
-                      <div className="border-b border-gray-300 h-4"></div>
-                    </div>
-
-                    <table className="w-full text-sm border-collapse border border-gray-400">
-                      <thead>
-                        <tr className="bg-gray-100">
-                          <th className="border border-gray-400 px-3 py-2 text-left font-bold text-black">ARTÍCULO</th>
-                          <th className="border border-gray-400 px-3 py-2 text-center font-bold text-black">UNIDAD</th>
-                          <th className="border border-gray-400 px-3 py-2 text-center font-bold text-black">CANTIDAD</th>
-                          <th className="border border-gray-400 px-3 py-2 text-center font-bold text-black">COSTO</th>
-                          <th className="border border-gray-400 px-3 py-2 text-center font-bold text-black">TOTAL</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {getProductosPaginados().map((producto, index) => (
-                          <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                            <td className="border border-gray-400 px-3 py-2 text-black font-medium">{producto.nombreProducto}</td>
-                            <td className="border border-gray-400 px-3 py-2 text-center text-black">{producto.unidadProducto || 'UDS'}</td>
-                            <td className="border border-gray-400 px-3 py-2 text-center text-black font-medium">{producto.cantidadContada.toFixed(2)}</td>
-                            <td className="border border-gray-400 px-3 py-2 text-center text-black font-medium">{producto.costoProducto.toFixed(2)}</td>
-                            <td className="border border-gray-400 px-3 py-2 text-center text-black font-semibold">{formatearMoneda(producto.valorTotal)}</td>
-                          </tr>
-                        ))}
-
-                        {/* Rellenar filas vacías hasta 45 */}
-                        {Array.from({ length: Math.max(0, 45 - getProductosPaginados().length) }).map((_, index) => (
-                          <tr key={`empty-${index}`} className="bg-white">
-                            <td className="border border-gray-400 px-2 py-1 h-4">&nbsp;</td>
-                            <td className="border border-gray-400 px-2 py-1">&nbsp;</td>
-                            <td className="border border-gray-400 px-2 py-1">&nbsp;</td>
-                            <td className="border border-gray-400 px-2 py-1">&nbsp;</td>
-                            <td className="border border-gray-400 px-2 py-1">&nbsp;</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-
-                    <div className="mt-4 text-right">
-                      <p className="text-sm text-black font-semibold">
-                        Líneas {(currentReportPage * PRODUCTOS_POR_PAGINA) + 1} a {Math.min((currentReportPage + 1) * PRODUCTOS_POR_PAGINA, productosContados.length)}
-                      </p>
-                      <div className="mt-2 space-y-1">
-                        <p className="text-sm text-black font-bold">Total Página: {formatearMoneda(getProductosPaginados().reduce((sum, p) => sum + (Number(p.valorTotal) || 0), 0))}</p>
-                        <p className="text-sm text-black font-bold">Total Reporte: {formatearMoneda(valorTotal)}</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-8 text-center text-sm">
-                      <p className="font-semibold text-black">
-                        {user?.rol === 'contador' || user?.rol === 'contable' ? 'Contador' : 'Usuario'} {user?.nombre?.toUpperCase() || 'USUARIO SISTEMA'}
-                      </p>
-                      <p className="text-black">Teléfono: {user?.telefono || user?.phone || 'No disponible'}</p>
-                      <p className="text-right text-xs mt-4 text-black font-semibold">Pág. {currentReportPage + 1} de {getTotalPaginasProductos()}</p>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-
-              {/* Navegación - Solo mostrar si estamos en productos y hay más de una página */}
-              {currentReportSection === 'productos' && tieneMasDeUnaPaginaProductos() && (
-                <div className="flex justify-between items-center p-6 border-t-2 border-gray-200 bg-gray-50">
-                  <button
-                    onClick={() => setCurrentReportPage(prev => Math.max(0, prev - 1))}
-                    disabled={currentReportPage === 0}
-                    className="flex items-center space-x-3 px-8 py-4 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white rounded-lg font-bold text-base transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-500 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none"
-                  >
-                    <ArrowLeft className="w-5 h-5" />
-                    <span>Anterior</span>
-                  </button>
-
-                  <div className="flex items-center space-x-4">
-                    <span className="text-base font-bold text-gray-900 bg-white px-5 py-3 rounded-lg border-2 border-gray-300 shadow-md">
-                      Página {currentReportPage + 1} de {getTotalPaginasProductos()}
-                    </span>
-
-                    {/* Indicador visual de progreso */}
-                    <div className="flex space-x-1">
-                      {Array.from({ length: getTotalPaginasProductos() }).map((_, index) => (
-                        <div
-                          key={index}
-                          className={`w-2 h-2 rounded-full transition-colors ${index === currentReportPage
-                            ? 'bg-teal-600'
-                            : index < currentReportPage
-                              ? 'bg-teal-300'
-                              : 'bg-gray-300'
-                            }`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => setCurrentReportPage(prev => Math.min(getTotalPaginasProductos() - 1, prev + 1))}
-                    disabled={currentReportPage === getTotalPaginasProductos() - 1}
-                    className="flex items-center space-x-3 px-8 py-4 bg-gradient-to-r from-teal-600 to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white rounded-lg font-bold text-base transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-500 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none"
-                  >
-                    <span>Siguiente</span>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )
-      }
-    </div >
+      {/* Modal de Reporte Inventario Unificado */}
+      {showReportModal && sesion && (
+        <ReporteInventarioModal
+          isOpen={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          sesion={sesion}
+          cliente={sesion.clienteNegocio}
+          contadorData={contadorData}
+        />
+      )}
+    </div>
   )
 }
 

@@ -30,13 +30,14 @@ class BackendServer {
 
   async checkPort(port) {
     return new Promise((resolve) => {
+      // Intentamos escuchar en 0.0.0.0 para que coincida con el backend
       const server = http.createServer()
       server.once('error', () => resolve(false))
       server.once('listening', () => {
         server.close()
         resolve(true)
       })
-      server.listen(port)
+      server.listen(port, '0.0.0.0')
     })
   }
 
@@ -74,13 +75,25 @@ class BackendServer {
 
     try {
       const backendPath = this.getBackendPath()
+      const healthUrl = this._getHealthUrl()
 
-      // Validar disponibilidad del puerto fijo 4500 (no cambiarlo automáticamente)
+      // 1. Primero verificar si ya hay uno corriendo (es lo más rápido y seguro)
+      try {
+        await this.checkHealth(healthUrl, { logErrors: false })
+        console.log('✅ Backend externo detectado. Usando instancia existente.')
+        this.isRunning = true
+        if (this._resolveBackendReady) this._resolveBackendReady(true)
+        return
+      } catch (err) {
+        // No hay backend corriendo, procedemos a intentar iniciarlo
+      }
+
+      // 2. Validar disponibilidad del puerto fijo 4500
       const isAvailable = await this.checkPort(this.port)
       if (!isAvailable) {
         throw new Error(
-          `El puerto ${this.port} está ocupado. ` +
-          `J4 Pro requiere el backend en ${this.port} para conexión móvil automática. ` +
+          `El puerto ${this.port} está ocupado por otro proceso. ` +
+          `J4 Pro requiere el backend en ${this.port}. ` +
           `Cierra la app/proceso que usa ese puerto y reintenta.`
         )
       }
