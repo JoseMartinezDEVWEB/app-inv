@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   View,
   Text,
@@ -18,8 +18,17 @@ const { width, height } = Dimensions.get('window')
 
 const FinancialModal = ({ visible, onClose, onSave, initialData, sesionData, modalType }) => {
   const [formData, setFormData] = useState({})
-
   const [editingField, setEditingField] = useState(null)
+  const [modoMultipleGastos, setModoMultipleGastos] = useState(false)
+  const [gastosDetalle, setGastosDetalle] = useState([])
+
+  useEffect(() => {
+    if (!visible) {
+      setModoMultipleGastos(false)
+      setGastosDetalle([])
+      setFormData({})
+    }
+  }, [visible])
 
   const modalConfig = {
     ventas: {
@@ -35,6 +44,7 @@ const FinancialModal = ({ visible, onClose, onSave, initialData, sesionData, mod
       title: 'Gastos Generales',
       icon: 'trending-down-outline',
       fields: [
+        { key: 'agregarMultiple', label: 'Agregar varios gastos', type: 'checkbox' },
         { key: 'monto', label: 'Monto Total', type: 'number', placeholder: '0.00' },
         { key: 'fecha', label: 'Fecha', type: 'date' },
         { key: 'categoria', label: 'Categoría', type: 'select', options: ['Operativos', 'Administrativos', 'Ventas', 'Otros'] },
@@ -137,13 +147,18 @@ const FinancialModal = ({ visible, onClose, onSave, initialData, sesionData, mod
         updatedFinancialData.ventasDelMes = amount;
         break;
       case 'gastos':
-        // Agregar categoría específica para gastos
-        newEntry.categoria = formData.categoria || 'Otros';
-        // Asegurar que gastosGenerales sea un array
-        if (!Array.isArray(updatedFinancialData.gastosGenerales)) {
-          updatedFinancialData.gastosGenerales = [];
+        if (modoMultipleGastos && gastosDetalle.length > 0) {
+          if (!Array.isArray(updatedFinancialData.gastosGenerales)) {
+            updatedFinancialData.gastosGenerales = [];
+          }
+          updatedFinancialData.gastosGenerales = [...updatedFinancialData.gastosGenerales, ...gastosDetalle];
+        } else {
+          newEntry.categoria = formData.categoria || 'Otros';
+          if (!Array.isArray(updatedFinancialData.gastosGenerales)) {
+            updatedFinancialData.gastosGenerales = [];
+          }
+          updatedFinancialData.gastosGenerales.push(newEntry);
         }
-        updatedFinancialData.gastosGenerales.push(newEntry);
         break;
       case 'cuentasPorCobrar':
         // Agregar cliente específico para cuentas por cobrar
@@ -226,10 +241,34 @@ const FinancialModal = ({ visible, onClose, onSave, initialData, sesionData, mod
 
           <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
             <View style={styles.section}>
-              {modalConfig[modalType].fields.map(field => (
+              {modalConfig[modalType].fields.map(field => {
+                const isHiddenInMultipleMode = modoMultipleGastos && ['monto', 'fecha', 'categoria', 'descripcion'].includes(field.key)
+                if (isHiddenInMultipleMode) return null
+                
+                return (
                 <View key={field.key} style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>{field.label}</Text>
-                  {field.type === 'select' ? (
+                  {field.type === 'checkbox' ? (
+                    <TouchableOpacity 
+                      style={[styles.checkboxContainer, modoMultipleGastos && styles.checkboxContainerSelected]}
+                      onPress={() => {
+                        const newMode = !modoMultipleGastos
+                        setModoMultipleGastos(newMode)
+                        if (newMode && gastosDetalle.length === 0) {
+                          setGastosDetalle([{ id: Date.now(), descripcion: '', monto: 0, categoria: 'Otros', fecha: new Date().toISOString().split('T')[0] }])
+                        }
+                      }}
+                    >
+                      <Ionicons 
+                        name={modoMultipleGastos ? 'checkbox' : 'square-outline'} 
+                        size={24} 
+                        color={modoMultipleGastos ? '#2563eb' : '#6b7280'} 
+                      />
+                      <Text style={[styles.checkboxLabel, modoMultipleGastos && styles.checkboxLabelSelected]}>
+                        Agregar varios gastos con descripción y monto
+                      </Text>
+                    </TouchableOpacity>
+                  ) : field.type === 'select' ? (
                     <View style={styles.pickerContainer}>
                       <Picker
                         selectedValue={formData[field.key] || ''}
@@ -288,9 +327,72 @@ const FinancialModal = ({ visible, onClose, onSave, initialData, sesionData, mod
                     />
                   )}
                 </View>
-              ))}
+              )})}
             </View>
           </ScrollView>
+
+          {modoMultipleGastos && (
+            <View style={styles.multipleGastosContainer}>
+              <View style={styles.multipleGastosHeader}>
+                <Text style={styles.multipleGastosTitle}>Detalles de Gastos</Text>
+                <TouchableOpacity 
+                  style={styles.addGastoButton}
+                  onPress={() => setGastosDetalle([...gastosDetalle, { id: Date.now(), descripcion: '', monto: 0, categoria: 'Otros', fecha: new Date().toISOString().split('T')[0] }])}
+                >
+                  <Text style={styles.addGastoButtonText}>+ Agregar</Text>
+                </TouchableOpacity>
+              </View>
+              
+              {gastosDetalle.length === 0 ? (
+                <Text style={styles.noGastosText}>No hay gastos agregados</Text>
+              ) : (
+                <ScrollView style={styles.gastosList} showsVerticalScrollIndicator={false}>
+                  {gastosDetalle.map((gasto, index) => (
+                    <View key={gasto.id} style={styles.gastoItem}>
+                      <TextInput
+                        style={[styles.input, styles.gastoDescripcion]}
+                        placeholder="Descripción del gasto"
+                        value={gasto.descripcion}
+                        onChangeText={(text) => {
+                          const newGastos = [...gastosDetalle]
+                          newGastos[index].descripcion = text
+                          setGastosDetalle(newGastos)
+                        }}
+                      />
+                      <TextInput
+                        style={[styles.input, styles.gastoMonto]}
+                        placeholder="Monto"
+                        keyboardType="numeric"
+                        value={gasto.monto ? gasto.monto.toString() : ''}
+                        onChangeText={(text) => {
+                          const newGastos = [...gastosDetalle]
+                          newGastos[index].monto = parseFloat(text) || 0
+                          setGastosDetalle(newGastos)
+                        }}
+                      />
+                      <TouchableOpacity
+                        style={styles.removeGastoButton}
+                        onPress={() => {
+                          const newGastos = gastosDetalle.filter((_, i) => i !== index)
+                          setGastosDetalle(newGastos)
+                        }}
+                      >
+                        <Ionicons name="close-circle" size={24} color="#dc2626" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+              
+              {gastosDetalle.length > 0 && (
+                <View style={styles.totalGastosContainer}>
+                  <Text style={styles.totalGastosText}>
+                    Total: RD$ {gastosDetalle.reduce((sum, g) => sum + (parseFloat(g.monto) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
 
           <View style={styles.modalFooter}>
             <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
@@ -597,6 +699,101 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#f9fafb',
+  },
+  checkboxContainerSelected: {
+    borderColor: '#2563eb',
+    backgroundColor: '#eff6ff',
+  },
+  checkboxLabel: {
+    marginLeft: 10,
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  checkboxLabelSelected: {
+    color: '#2563eb',
+    fontWeight: '600',
+  },
+  multipleGastosContainer: {
+    padding: 12,
+    backgroundColor: '#eff6ff',
+    borderRadius: 8,
+    marginHorizontal: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  multipleGastosHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  multipleGastosTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e40af',
+  },
+  addGastoButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#2563eb',
+    borderRadius: 6,
+  },
+  addGastoButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  noGastosText: {
+    textAlign: 'center',
+    color: '#6b7280',
+    fontSize: 14,
+    paddingVertical: 12,
+  },
+  gastosList: {
+    maxHeight: 200,
+  },
+  gastoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  gastoDescripcion: {
+    flex: 1,
+    marginRight: 8,
+  },
+  gastoMonto: {
+    width: 80,
+    marginRight: 8,
+  },
+  removeGastoButton: {
+    padding: 4,
+  },
+  totalGastosContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#bfdbfe',
+    alignItems: 'flex-end',
+  },
+  totalGastosText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e40af',
   },
 })
 

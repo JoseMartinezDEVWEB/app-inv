@@ -236,14 +236,17 @@ const InventarioDetalleNuevo = () => {
   // Estados para datos financieros
   const [datosFinancieros, setDatosFinancieros] = useState({
     ventasDelMes: 0,
-    gastosGenerales: 0,
-    cuentasPorCobrar: 0,
-    cuentasPorPagar: 0,
-    efectivoEnCajaYBanco: 0,
+    gastosGenerales: [],
+    cuentasPorCobrar: [],
+    cuentasPorPagar: [],
+    efectivoEnCajaYBanco: [],
+    deudaANegocio: [],
     activosFijos: 0
   })
   const [showFinancialModal, setShowFinancialModal] = useState(false)
   const [editingField, setEditingField] = useState(null)
+  const [modoMultipleGastos, setModoMultipleGastos] = useState(false)
+  const [gastosDetalle, setGastosDetalle] = useState([])
 
   // Estados para distribución de saldo
   const [distribucionData, setDistribucionData] = useState({
@@ -409,35 +412,37 @@ const InventarioDetalleNuevo = () => {
         console.log('📥 [CARGA] Datos financieros del backend:', JSON.stringify(data?.datosFinancieros, null, 2))
 
         if (data?.datosFinancieros) {
+          const df = data.datosFinancieros
           const nuevosDatosFinancieros = {
-            ventasDelMes: data.datosFinancieros.ventasDelMes || 0,
+            ventasDelMes: df.ventasDelMes || 0,
             // Priorizar campos de detalle si existen, sino usar arrays o valores únicos
-            gastosGenerales: Array.isArray(data.datosFinancieros.gastosGeneralesDetalle)
-              ? data.datosFinancieros.gastosGeneralesDetalle
-              : Array.isArray(data.datosFinancieros.gastosGenerales)
-                ? data.datosFinancieros.gastosGenerales
-                : (data.datosFinancieros.gastosGenerales ? [{ monto: data.datosFinancieros.gastosGenerales, descripcion: 'Gastos generales', categoria: 'Otros' }] : []),
-            cuentasPorCobrar: Array.isArray(data.datosFinancieros.cuentasPorCobrarDetalle)
-              ? data.datosFinancieros.cuentasPorCobrarDetalle
-              : Array.isArray(data.datosFinancieros.cuentasPorCobrar)
-                ? data.datosFinancieros.cuentasPorCobrar
-                : (data.datosFinancieros.cuentasPorCobrar ? [{ monto: data.datosFinancieros.cuentasPorCobrar, descripcion: 'Cuenta por cobrar', cliente: 'Cliente' }] : []),
-            cuentasPorPagar: Array.isArray(data.datosFinancieros.cuentasPorPagarDetalle)
-              ? data.datosFinancieros.cuentasPorPagarDetalle
-              : Array.isArray(data.datosFinancieros.cuentasPorPagar)
-                ? data.datosFinancieros.cuentasPorPagar
-                : (data.datosFinancieros.cuentasPorPagar ? [{ monto: data.datosFinancieros.cuentasPorPagar, descripcion: 'Cuenta por pagar', proveedor: 'Proveedor' }] : []),
-            efectivoEnCajaYBanco: Array.isArray(data.datosFinancieros.efectivoEnCajaYBancoDetalle)
-              ? data.datosFinancieros.efectivoEnCajaYBancoDetalle
-              : Array.isArray(data.datosFinancieros.efectivoEnCajaYBanco)
-                ? data.datosFinancieros.efectivoEnCajaYBanco
-                : (data.datosFinancieros.efectivoEnCajaYBanco ? [{ monto: data.datosFinancieros.efectivoEnCajaYBanco, descripcion: 'Efectivo en caja', tipoCuenta: 'Caja' }] : []),
-            deudaANegocio: Array.isArray(data.datosFinancieros.deudaANegocioDetalle)
-              ? data.datosFinancieros.deudaANegocioDetalle
-              : Array.isArray(data.datosFinancieros.deudaANegocio)
-                ? data.datosFinancieros.deudaANegocio
-                : (data.datosFinancieros.deudaANegocio ? [{ monto: data.datosFinancieros.deudaANegocio, descripcion: 'Deuda de socio', deudor: 'Socio' }] : []),
-            activosFijos: data.datosFinancieros.activosFijos || 0
+            gastosGenerales: Array.isArray(df.gastosGeneralesDetalle)
+              ? df.gastosGeneralesDetalle
+              : Array.isArray(df.gastosGenerales)
+                ? df.gastosGenerales
+                : (df.gastosGenerales ? [{ monto: df.gastosGenerales, descripcion: 'Gastos generales', categoria: 'Otros', nombre: `Gasto: ${formatearMoneda(df.gastosGenerales)}` }] : []),
+            cuentasPorCobrar: Array.isArray(df.cuentasPorCobrarDetalle)
+              ? df.cuentasPorCobrarDetalle
+              : Array.isArray(df.cuentasPorCobrar)
+                ? df.cuentasPorCobrar
+                : (df.cuentasPorCobrar ? [{ monto: df.cuentasPorCobrar, descripcion: 'Cuenta por cobrar', cliente: 'Cliente', nombre: `Cobro: ${formatearMoneda(df.cuentasPorCobrar)}` }] : []),
+            cuentasPorPagar: Array.isArray(df.cuentasPorPagarDetalle)
+              ? df.cuentasPorPagarDetalle
+              : Array.isArray(df.cuentasPorPagar)
+                ? df.cuentasPorPagar
+                : (df.cuentasPorPagar ? [{ monto: df.cuentasPorPagar, descripcion: 'Cuenta por pagar', proveedor: 'Proveedor', nombre: `Pago: ${formatearMoneda(df.cuentasPorPagar)}` }] : []),
+            efectivoEnCajaYBanco: Array.isArray(df.efectivoEnCajaYBancoDetalle)
+              ? df.efectivoEnCajaYBancoDetalle
+              : Array.isArray(df.efectivoEnCajaYBanco)
+                ? df.efectivoEnCajaYBanco
+                : (df.efectivoEnCajaYBanco ? [{ monto: df.efectivoEnCajaYBanco, descripcion: 'Efectivo en caja', tipoCuenta: 'Caja', nombre: `Caja: ${formatearMoneda(df.efectivoEnCajaYBanco)}` }] : []),
+            deudaANegocio: Array.isArray(df.deudaANegocioDetalle)
+              ? df.deudaANegocioDetalle
+              : Array.isArray(df.deudaANegocio)
+                ? df.deudaANegocio
+                : (df.deudaANegocio ? [{ monto: df.deudaANegocio, descripcion: 'Deuda de socio', deudor: 'Socio', nombre: `Deuda: ${formatearMoneda(df.deudaANegocio)}` }] : []),
+            activosFijos: df.activosFijos || 0,
+            capitalAnterior: df.capitalAnterior || 0
           }
 
           console.log('📥 [CARGA] Datos financieros procesados:', JSON.stringify(nuevosDatosFinancieros, null, 2))
@@ -1522,11 +1527,14 @@ const InventarioDetalleNuevo = () => {
         })
         break
       case 'gastos':
+        setGastosDetalle(Array.isArray(datosFinancieros.gastosGenerales) ? [...datosFinancieros.gastosGenerales] : [])
+        setModoMultipleGastos(Array.isArray(datosFinancieros.gastosGenerales) && datosFinancieros.gastosGenerales.length > 0)
         setModalData({
           title: 'Gastos Generales',
           icon: <TrendingDown className="w-6 h-6" />,
           color: 'red',
           fields: [
+            { key: 'agregarMultiple', label: 'Agregar varios gastos', type: 'checkbox' },
             { key: 'monto', label: 'Monto Total', type: 'number', placeholder: '0.00' },
             { key: 'fecha', label: 'Fecha', type: 'date' },
             { key: 'categoria', label: 'Categoría', type: 'select', options: ['Operativos', 'Administrativos', 'Ventas', 'Otros'] },
@@ -1603,14 +1611,12 @@ const InventarioDetalleNuevo = () => {
         break
       case 'capital':
         setModalData({
-          title: 'Capital',
+          title: 'Capital Anterior',
           icon: <PiggyBank className="w-6 h-6" />,
           color: 'yellow',
           fields: [
-            { key: 'tipoCapital', label: 'Tipo de Capital', type: 'select', options: ['Capital Social', 'Utilidades Retenidas', 'Reservas', 'Otros'] },
-            { key: 'monto', label: 'Monto', type: 'number', placeholder: '0.00' },
-            { key: 'fecha', label: 'Fecha', type: 'date' },
-            { key: 'descripcion', label: 'Descripción', type: 'text', placeholder: 'Detalles del capital' }
+            { key: 'monto', label: 'Monto de Capital Anterior', type: 'number', placeholder: '0.00' },
+            { key: 'descripcion', label: 'Descripción/Notas', type: 'text', placeholder: 'Opcional' }
           ]
         })
         break
@@ -1639,12 +1645,14 @@ const InventarioDetalleNuevo = () => {
         setModalData({})
     }
   }
-
+  
   // Cerrar modal financiero
   const closeFinancialModal = () => {
     setActiveModal(null)
     setModalData({})
     setCurrentReportPage(1)
+    setModoMultipleGastos(false)
+    setGastosDetalle([])
   }
 
   // Manejar envío del formulario financiero
@@ -1686,21 +1694,33 @@ const InventarioDetalleNuevo = () => {
         newFinancialData.ventasDelMes = parseFloat(data.monto) || 0
         break
       case 'gastos':
-        newEntry.categoria = data.categoria || 'Otros'
-        newFinancialData.gastosGenerales.push(newEntry)
+        if (modoMultipleGastos && gastosDetalle.length > 0) {
+          const gastosConNombre = gastosDetalle.map(g => ({
+            ...g,
+            nombre: `${g.categoria || 'Otros'}${g.descripcion ? ': ' + g.descripcion : ''}`
+          }))
+          newFinancialData.gastosGenerales = [...newFinancialData.gastosGenerales, ...gastosConNombre]
+        } else {
+          newEntry.categoria = data.categoria || 'Otros'
+          newEntry.nombre = `${newEntry.categoria}${newEntry.descripcion ? ': ' + newEntry.descripcion : ''}`
+          newFinancialData.gastosGenerales.push(newEntry)
+        }
         break
       case 'cuentasPorCobrar':
         newEntry.cliente = data.cliente || 'Cliente'
         newEntry.fechaVencimiento = data.fechaVencimiento || ''
+        newEntry.nombre = `${newEntry.cliente}${newEntry.descripcion ? ' (' + newEntry.descripcion + ')' : ''}`
         newFinancialData.cuentasPorCobrar.push(newEntry)
         break
       case 'cuentasPorPagar':
         newEntry.proveedor = data.proveedor || 'Proveedor'
         newEntry.fechaVencimiento = data.fechaVencimiento || ''
+        newEntry.nombre = `${newEntry.proveedor}${newEntry.descripcion ? ' (' + newEntry.descripcion + ')' : ''}`
         newFinancialData.cuentasPorPagar.push(newEntry)
         break
       case 'efectivo':
         newEntry.tipoCuenta = data.tipoCuenta || 'Caja'
+        newEntry.nombre = `${newEntry.tipoCuenta}${newEntry.descripcion ? ': ' + newEntry.descripcion : ''}`
         newFinancialData.efectivoEnCajaYBanco.push(newEntry)
         break
       case 'deudaANegocio':
@@ -1730,13 +1750,15 @@ const InventarioDetalleNuevo = () => {
         newEntry.esSocio = esSocio
         newEntry.socioIndex = socioIndex // Guardar el índice del socio para la distribución
         newEntry.fechaDeuda = data.fechaDeuda || ''
+        newEntry.nombre = `${newEntry.deudor}${newEntry.tipoDeuda ? ' (' + newEntry.tipoDeuda + ')' : ''}`
         newFinancialData.deudaANegocio.push(newEntry)
         break
       case 'activosFijos':
         newFinancialData.activosFijos = parseFloat(data.valorActual) || 0
         break
       case 'capital':
-        // El capital se calcula automáticamente, pero podemos guardarlo como referencia
+        newFinancialData.capitalAnterior = parseFloat(data.monto) || 0
+        newFinancialData.capitalAnteriorDescripcion = data.descripcion || ''
         break
     }
 
@@ -1854,66 +1876,67 @@ const InventarioDetalleNuevo = () => {
     return datosFinancieros.deudaANegocio.filter(deuda => deuda.esSocio && deuda.socioIndex === socioIndex)
   }
 
+  // Sincronizar deudas de socios con distribucionData
+  const syncSociosDebts = () => {
+    setDistribucionData(prev => {
+      const newSocios = prev.socios.map((socio, idx) => ({
+        ...socio,
+        cuentaAdeudada: calculateDeudaSocio(idx)
+      }))
+      return { ...prev, socios: newSocios }
+    })
+  }
+
+  // Sincronizar deudas cuando cambian los datos financieros
+  useEffect(() => {
+    if (datosFinancieros.deudaANegocio) {
+      syncSociosDebts()
+    }
+  }, [datosFinancieros.deudaANegocio])
+
   // Funciones para modo edición del balance
   const getBalanceValue = (field, index = null) => {
-    if (!balanceEditMode || !balanceEditData) {
-      // Modo normal: usar datos financieros originales
-      if (index !== null && Array.isArray(datosFinancieros[field])) {
-        return datosFinancieros[field][index]?.monto || 0
-      }
-      return datosFinancieros[field] || 0
+    if (index !== null && Array.isArray(datosFinancieros[field])) {
+      return datosFinancieros[field][index]?.monto || 0
     }
-    // Modo edición: usar datos editados
-    if (index !== null && Array.isArray(balanceEditData[field])) {
-      return balanceEditData[field][index]?.monto || 0
-    }
-    return balanceEditData[field] || 0
+    return datosFinancieros[field] || 0
   }
 
   const getBalanceArray = (field) => {
-    if (!balanceEditMode || !balanceEditData) {
-      return datosFinancieros[field] || []
-    }
-    return balanceEditData[field] || []
+    return datosFinancieros[field] || []
   }
 
   const updateBalanceValue = (field, value, index = null) => {
-    if (!balanceEditData) return
-
-    const newData = { ...balanceEditData }
+    const newData = { ...datosFinancieros }
     if (index !== null && Array.isArray(newData[field])) {
       newData[field] = [...newData[field]]
       newData[field][index] = { ...newData[field][index], monto: parseFloat(value) || 0 }
     } else {
       newData[field] = parseFloat(value) || 0
     }
-    setBalanceEditData(newData)
+    setDatosFinancieros(newData)
   }
 
   const updateBalanceArrayItem = (field, index, key, value) => {
-    if (!balanceEditData) return
-
-    const newData = { ...balanceEditData }
+    const newData = { ...datosFinancieros }
     if (Array.isArray(newData[field])) {
       newData[field] = [...newData[field]]
       newData[field][index] = { ...newData[field][index], [key]: value }
     }
-    setBalanceEditData(newData)
+    setDatosFinancieros(newData)
   }
 
   const deleteBalanceArrayItem = (field, index) => {
-    if (!balanceEditData) return
-
-    const newData = { ...balanceEditData }
+    const newData = { ...datosFinancieros }
     if (Array.isArray(newData[field])) {
       newData[field] = newData[field].filter((_, i) => i !== index)
     }
-    setBalanceEditData(newData)
+    setDatosFinancieros(newData)
   }
 
   // Calcular totales para el modo edición
   const getEditableTotal = (field) => {
-    const data = balanceEditMode && balanceEditData ? balanceEditData : datosFinancieros
+    const data = datosFinancieros
     if (Array.isArray(data[field])) {
       return data[field].reduce((sum, item) => sum + (parseFloat(item.monto) || 0), 0)
     }
@@ -1940,6 +1963,11 @@ const InventarioDetalleNuevo = () => {
     // Incluir datos de empleados
     transformed.empleados = empleadosData.empleados
     transformed.nominaEmpleados = nominaEmpleados
+
+    // Incluir datos de configuración para persistencia
+    transformed.distribucionData = distribucionData
+    transformed.contadorData = contadorData
+    transformed.descargaData = downloadData
 
     if (Array.isArray(data.cuentasPorCobrar)) {
       transformed.cuentasPorCobrar = data.cuentasPorCobrar.reduce((sum, item) => sum + (parseFloat(item.monto) || 0), 0)
@@ -1978,14 +2006,21 @@ const InventarioDetalleNuevo = () => {
     toast.success('Cambios guardados correctamente')
   }
 
-  // Función para calcular utilidades netas
+  // Función para calcular utilidades netas usando el método del Balance:
+  // Utilidad Neta = (Activos - Pasivos) - Capital Anterior
   const calculateUtilidadesNetas = () => {
-    if (!datosFinancieros.ventasDelMes || datosFinancieros.ventasDelMes <= 0) return 0
+    const valorInventario = valorTotal || 0
+    const totalActivos = valorInventario + getEditableTotal('cuentasPorCobrar') + getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('deudaANegocio') + (parseFloat(datosFinancieros.activosFijos) || 0)
+    const totalPasivos = getEditableTotal('cuentasPorPagar')
+    const capitalActual = totalActivos - totalPasivos
+    const capitalAnterior = parseFloat(datosFinancieros.capitalAnterior) || 0
 
-    // Utilidades Netas = Ventas del Mes - Gastos Generales
-    const utilidadesNetas = datosFinancieros.ventasDelMes - calculateTotalGastos()
+    return capitalActual - capitalAnterior
+  }
 
-    return utilidadesNetas
+  // Función para calcular utilidad bruta (Neta + Gastos)
+  const calculateUtilidadesBrutas = () => {
+    return calculateUtilidadesNetas() + calculateTotalGastos()
   }
 
   // Función para generar páginas con paginación de 45 productos cada una
@@ -3554,7 +3589,7 @@ const InventarioDetalleNuevo = () => {
             className="w-full flex items-center space-x-3 px-5 py-4 bg-gradient-to-r from-yellow-600 to-yellow-700 hover:from-yellow-700 hover:to-yellow-800 text-white rounded-lg transition-all duration-200 text-base font-semibold shadow-md hover:shadow-lg transform hover:scale-105"
           >
             <PiggyBank className="w-6 h-6" />
-            <span>Capital</span>
+            <span>Capital Anterior</span>
           </button>
 
           {/* Separador */}
@@ -5351,19 +5386,9 @@ const InventarioDetalleNuevo = () => {
                       <button
                         type="button"
                         onClick={() => {
-                          console.log('Guardando configuración:', {
-                            distribucion: distribucionData,
-                            contador: contadorData,
-                            descarga: downloadData,
-                            empleados: empleadosData
-                          })
-
-                          // Si hay empleados, actualizar los datos financieros para incluir la nómina en gastos
-                          if (empleadosData.empleados.length > 0) {
-                            const nominaTotal = calculateTotalNominaEmpleados()
-                            console.log('Total nómina de empleados:', nominaTotal)
-                            console.log('Empleados activos:', empleadosData.empleados.filter(e => e.activo))
-                          }
+                          // Transformar y enviar al backend para persistencia real
+                          const transformedData = transformFinancialDataForBackend(datosFinancieros)
+                          updateFinancialMutation.mutate(transformedData)
 
                           toast.success('Configuración guardada exitosamente')
                           closeFinancialModal()
@@ -5388,8 +5413,10 @@ const InventarioDetalleNuevo = () => {
                   </div>
                 </div>
 
-                {modalData.fields?.map((field, index) => (
-                  <div key={index}>
+                {modalData.fields?.map((field, index) => {
+                  const isHiddenInMultipleMode = modoMultipleGastos && ['monto', 'fecha', 'categoria', 'descripcion'].includes(field.key)
+                  return (
+                  <div key={index} className={isHiddenInMultipleMode ? 'hidden' : ''}>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       {field.label}
                       {field.required !== false && ' *'}
@@ -5463,14 +5490,100 @@ const InventarioDetalleNuevo = () => {
                         />
                       </div>
                     ) : field.type === 'checkbox' ? (
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          name={field.key}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <span className="ml-2 text-sm text-gray-600">Activar esta opción</span>
-                      </div>
+                      field.key === 'agregarMultiple' ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center">
+                            <input
+                              type="checkbox"
+                              name={field.key}
+                              id="agregarMultiple"
+                              checked={modoMultipleGastos}
+                              onChange={(e) => setModoMultipleGastos(e.target.checked)}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                            <span className="ml-2 text-sm text-gray-700 font-medium">Agregar varios gastos con descripción y monto</span>
+                          </div>
+                          
+                          {modoMultipleGastos && (
+                            <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                              <div className="flex justify-between items-center mb-3">
+                                <h4 className="font-medium text-blue-800">Detalles de Gastos</h4>
+                                <button
+                                  type="button"
+                                  onClick={() => setGastosDetalle([...gastosDetalle, { id: Date.now(), descripcion: '', monto: 0, categoria: 'Otros', fecha: new Date().toISOString().split('T')[0] }])}
+                                  className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                                >
+                                  + Agregar Gasto
+                                </button>
+                              </div>
+                              
+                              {gastosDetalle.length === 0 ? (
+                                <p className="text-sm text-gray-500 text-center py-2">No hay gastos agregados. Haz clic en "Agregar Gasto" para comenzar.</p>
+                              ) : (
+                                <div className="space-y-3 max-h-60 overflow-y-auto">
+                                  {gastosDetalle.map((gasto, index) => (
+                                    <div key={gasto.id} className="flex gap-2 items-start bg-white p-2 rounded border">
+                                      <div className="flex-1">
+                                        <input
+                                          type="text"
+                                          placeholder="Descripción del gasto"
+                                          value={gasto.descripcion}
+                                          onChange={(e) => {
+                                            const newGastos = [...gastosDetalle]
+                                            newGastos[index].descripcion = e.target.value
+                                            setGastosDetalle(newGastos)
+                                          }}
+                                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                                        />
+                                      </div>
+                                      <div className="w-24">
+                                        <input
+                                          type="number"
+                                          placeholder="Monto"
+                                          value={gasto.monto}
+                                          onChange={(e) => {
+                                            const newGastos = [...gastosDetalle]
+                                            newGastos[index].monto = parseFloat(e.target.value) || 0
+                                            setGastosDetalle(newGastos)
+                                          }}
+                                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                                          step="0.01"
+                                          min="0"
+                                        />
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const newGastos = gastosDetalle.filter((_, i) => i !== index)
+                                          setGastosDetalle(newGastos)
+                                        }}
+                                        className="text-red-500 hover:text-red-700 p-1"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              
+                              {gastosDetalle.length > 0 && (
+                                <div className="mt-3 pt-2 border-t border-blue-200 text-right">
+                                  <span className="font-medium text-blue-800">Total: RD$ {gastosDetalle.reduce((sum, g) => sum + (parseFloat(g.monto) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            name={field.key}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                          <span className="ml-2 text-sm text-gray-600">Activar esta opción</span>
+                        </div>
+                      )
                     ) : field.type === 'date' ? (
                       <input
                         type="date"
@@ -5500,7 +5613,7 @@ const InventarioDetalleNuevo = () => {
                       />
                     )}
                   </div>
-                ))}
+                )})}
 
                 <div className="flex justify-end space-x-3 pt-4 border-t">
                   <button
@@ -5525,16 +5638,18 @@ const InventarioDetalleNuevo = () => {
       }
 
       {/* Modal de Reporte Inventario Unificado */}
-      {showReportModal && sesion && (
-        <ReporteInventarioModal
-          isOpen={showReportModal}
-          onClose={() => setShowReportModal(false)}
-          sesion={sesion}
-          cliente={sesion.clienteNegocio}
-          contadorData={contadorData}
-        />
-      )}
-    </div>
+      {
+        showReportModal && sesion && (
+          <ReporteInventarioModal
+            isOpen={showReportModal}
+            onClose={() => setShowReportModal(false)}
+            sesion={sesion}
+            cliente={sesion.clienteNegocio}
+            contadorData={contadorData}
+          />
+        )
+      }
+    </div >
   )
 }
 

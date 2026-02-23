@@ -145,6 +145,8 @@ const InventarioDetalleNuevo = () => {
   })
   const [showFinancialModal, setShowFinancialModal] = useState(false)
   const [editingField, setEditingField] = useState(null)
+  const [modoMultipleGastos, setModoMultipleGastos] = useState(false)
+  const [gastosDetalle, setGastosDetalle] = useState([])
 
   // Estados para distribución de saldo
   const [distribucionData, setDistribucionData] = useState({
@@ -1211,11 +1213,14 @@ const InventarioDetalleNuevo = () => {
         })
         break
       case 'gastos':
+        setGastosDetalle(Array.isArray(datosFinancieros.gastosGenerales) ? [...datosFinancieros.gastosGenerales] : [])
+        setModoMultipleGastos(Array.isArray(datosFinancieros.gastosGenerales) && datosFinancieros.gastosGenerales.length > 0)
         setModalData({
           title: 'Gastos Generales',
           icon: <TrendingDown className="w-6 h-6" />,
           color: 'red',
           fields: [
+            { key: 'agregarMultiple', label: 'Agregar varios gastos', type: 'checkbox' },
             { key: 'monto', label: 'Monto Total', type: 'number', placeholder: '0.00' },
             { key: 'fecha', label: 'Fecha', type: 'date' },
             { key: 'categoria', label: 'Categoría', type: 'select', options: ['Operativos', 'Administrativos', 'Ventas', 'Otros'] },
@@ -1337,12 +1342,14 @@ const InventarioDetalleNuevo = () => {
         setModalData({})
     }
   }
-
+  
   // Cerrar modal financiero
   const closeFinancialModal = () => {
     setActiveModal(null)
     setModalData({})
     setCurrentReportPage(1)
+    setModoMultipleGastos(false)
+    setGastosDetalle([])
   }
 
   // Manejar envío del formulario financiero
@@ -1384,8 +1391,12 @@ const InventarioDetalleNuevo = () => {
         newFinancialData.ventasDelMes = parseFloat(data.monto) || 0
         break
       case 'gastos':
-        newEntry.categoria = data.categoria || 'Otros'
-        newFinancialData.gastosGenerales.push(newEntry)
+        if (modoMultipleGastos && gastosDetalle.length > 0) {
+          newFinancialData.gastosGenerales = [...newFinancialData.gastosGenerales, ...gastosDetalle]
+        } else {
+          newEntry.categoria = data.categoria || 'Otros'
+          newFinancialData.gastosGenerales.push(newEntry)
+        }
         break
       case 'cuentasPorCobrar':
         newEntry.cliente = data.cliente || 'Cliente'
@@ -4858,8 +4869,10 @@ const InventarioDetalleNuevo = () => {
                   </div>
                 </div>
 
-                {modalData.fields?.map((field, index) => (
-                  <div key={index}>
+                {modalData.fields?.map((field, index) => {
+                  const isHiddenInMultipleMode = modoMultipleGastos && ['monto', 'fecha', 'categoria', 'descripcion'].includes(field.key)
+                  return (
+                  <div key={index} className={isHiddenInMultipleMode ? 'hidden' : ''}>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       {field.label}
                       {field.required !== false && ' *'}
@@ -4930,14 +4943,100 @@ const InventarioDetalleNuevo = () => {
                         />
                       </div>
                     ) : field.type === 'checkbox' ? (
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          name={field.key}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <span className="ml-2 text-sm text-gray-600">Activar esta opción</span>
-                      </div>
+                      field.key === 'agregarMultiple' ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center">
+                            <input
+                              type="checkbox"
+                              name={field.key}
+                              id="agregarMultiple"
+                              checked={modoMultipleGastos}
+                              onChange={(e) => setModoMultipleGastos(e.target.checked)}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            />
+                            <span className="ml-2 text-sm text-gray-700 font-medium">Agregar varios gastos con descripción y monto</span>
+                          </div>
+                          
+                          {modoMultipleGastos && (
+                            <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                              <div className="flex justify-between items-center mb-3">
+                                <h4 className="font-medium text-blue-800">Detalles de Gastos</h4>
+                                <button
+                                  type="button"
+                                  onClick={() => setGastosDetalle([...gastosDetalle, { id: Date.now(), descripcion: '', monto: 0, categoria: 'Otros', fecha: new Date().toISOString().split('T')[0] }])}
+                                  className="text-sm px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                                >
+                                  + Agregar Gasto
+                                </button>
+                              </div>
+                              
+                              {gastosDetalle.length === 0 ? (
+                                <p className="text-sm text-gray-500 text-center py-2">No hay gastos agregados. Haz clic en "Agregar Gasto" para comenzar.</p>
+                              ) : (
+                                <div className="space-y-3 max-h-60 overflow-y-auto">
+                                  {gastosDetalle.map((gasto, index) => (
+                                    <div key={gasto.id} className="flex gap-2 items-start bg-white p-2 rounded border">
+                                      <div className="flex-1">
+                                        <input
+                                          type="text"
+                                          placeholder="Descripción del gasto"
+                                          value={gasto.descripcion}
+                                          onChange={(e) => {
+                                            const newGastos = [...gastosDetalle]
+                                            newGastos[index].descripcion = e.target.value
+                                            setGastosDetalle(newGastos)
+                                          }}
+                                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                                        />
+                                      </div>
+                                      <div className="w-24">
+                                        <input
+                                          type="number"
+                                          placeholder="Monto"
+                                          value={gasto.monto}
+                                          onChange={(e) => {
+                                            const newGastos = [...gastosDetalle]
+                                            newGastos[index].monto = parseFloat(e.target.value) || 0
+                                            setGastosDetalle(newGastos)
+                                          }}
+                                          className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                                          step="0.01"
+                                          min="0"
+                                        />
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const newGastos = gastosDetalle.filter((_, i) => i !== index)
+                                          setGastosDetalle(newGastos)
+                                        }}
+                                        className="text-red-500 hover:text-red-700 p-1"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              
+                              {gastosDetalle.length > 0 && (
+                                <div className="mt-3 pt-2 border-t border-blue-200 text-right">
+                                  <span className="font-medium text-blue-800">Total: RD$ {gastosDetalle.reduce((sum, g) => sum + (parseFloat(g.monto) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            name={field.key}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                          <span className="ml-2 text-sm text-gray-600">Activar esta opción</span>
+                        </div>
+                      )
                     ) : field.type === 'date' ? (
                       <input
                         type="date"
@@ -4967,7 +5066,7 @@ const InventarioDetalleNuevo = () => {
                       />
                     )}
                   </div>
-                ))}
+                )})}
 
                 <div className="flex justify-end space-x-3 pt-4 border-t">
                   <button

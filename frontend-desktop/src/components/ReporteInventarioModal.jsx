@@ -36,7 +36,17 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente, contadorData
         cuentasPorPagar: [],
         efectivoEnCajaYBanco: [],
         deudaANegocio: [],
-        activosFijos: 0
+        activosFijos: 0,
+        capitalAnterior: 0,
+        capitalAnteriorDescripcion: ''
+    })
+
+    const [distribucionData, setDistribucionData] = useState({
+        numeroSocios: 1,
+        socios: [],
+        fechaDesde: '',
+        fechaHasta: '',
+        comentarios: ''
     })
 
     const [contadorData, setContadorData] = useState({
@@ -47,10 +57,60 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente, contadorData
         email: ''
     })
 
+    const [isEditable, setIsEditable] = useState(false)
+    const [isSaving, setIsSaving] = useState(false)
+
     // Cargar datos de la sesión
     useEffect(() => {
         if (isOpen && sesion) {
-            if (sesion.datosFinancieros) setDatosFinancieros(sesion.datosFinancieros)
+            if (sesion.datosFinancieros) {
+                const df = sesion.datosFinancieros
+                const nuevosDatosFinancieros = {
+                    ventasDelMes: df.ventasDelMes || 0,
+                    gastosGenerales: Array.isArray(df.gastosGeneralesDetalle)
+                        ? df.gastosGeneralesDetalle
+                        : Array.isArray(df.gastosGenerales)
+                            ? df.gastosGenerales
+                            : (df.gastosGenerales ? [{ monto: df.gastosGenerales, descripcion: 'Gastos generales', categoria: 'Otros', nombre: 'Gasto General' }] : []),
+                    cuentasPorCobrar: Array.isArray(df.cuentasPorCobrarDetalle)
+                        ? df.cuentasPorCobrarDetalle
+                        : Array.isArray(df.cuentasPorCobrar)
+                            ? df.cuentasPorCobrar
+                            : (df.cuentasPorCobrar ? [{ monto: df.cuentasPorCobrar, descripcion: 'Cuenta por cobrar', cliente: 'Cliente', nombre: 'Cuenta por Cobrar' }] : []),
+                    cuentasPorPagar: Array.isArray(df.cuentasPorPagarDetalle)
+                        ? df.cuentasPorPagarDetalle
+                        : Array.isArray(df.cuentasPorPagar)
+                            ? df.cuentasPorPagar
+                            : (df.cuentasPorPagar ? [{ monto: df.cuentasPorPagar, descripcion: 'Cuenta por pagar', proveedor: 'Proveedor', nombre: 'Cuenta por Pagar' }] : []),
+                    efectivoEnCajaYBanco: Array.isArray(df.efectivoEnCajaYBancoDetalle)
+                        ? df.efectivoEnCajaYBancoDetalle
+                        : Array.isArray(df.efectivoEnCajaYBanco)
+                            ? df.efectivoEnCajaYBanco
+                            : (df.efectivoEnCajaYBanco ? [{ monto: df.efectivoEnCajaYBanco, descripcion: 'Efectivo en caja', tipoCuenta: 'Caja', nombre: 'Efectivo/Banco' }] : []),
+                    deudaANegocio: Array.isArray(df.deudaANegocioDetalle)
+                        ? df.deudaANegocioDetalle
+                        : Array.isArray(df.deudaANegocio)
+                            ? df.deudaANegocio
+                            : (df.deudaANegocio ? [{ monto: df.deudaANegocio, descripcion: 'Deuda de socio', deudor: 'Socio', nombre: 'Deuda Socio' }] : []),
+                    activosFijos: df.activosFijos || 0,
+                    costoMercancia: df.costoMercancia || 0,
+                    capitalAnterior: df.capitalAnterior || 0,
+                    capitalAnteriorDescripcion: df.capitalAnteriorDescripcion || ''
+                }
+                setDatosFinancieros(nuevosDatosFinancieros)
+            }
+            if (sesion.datosFinancieros?.distribucionData) {
+                setDistribucionData(sesion.datosFinancieros.distribucionData)
+            } else {
+                // Fallback a 1 socio genérico si no hay datos
+                setDistribucionData({
+                    numeroSocios: 1,
+                    socios: [{ nombre: 'Socio 1', porcentaje: 100, cuentaAdeudada: 0 }],
+                    fechaDesde: '',
+                    fechaHasta: '',
+                    comentarios: ''
+                })
+            }
             if (initialContadorData) {
                 setContadorData(initialContadorData)
             } else if (sesion.contadorData) {
@@ -107,9 +167,100 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente, contadorData
     }
 
     const calculateUtilidadesNetas = () => {
-        const ventas = datosFinancieros.ventasDelMes || 0
-        const gastos = getEditableTotal('gastosGenerales')
-        return ventas - gastos
+        const valorInventario = valorTotal || 0
+        const totalActivos = valorInventario + getEditableTotal('cuentasPorCobrar') + getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('deudaANegocio') + (parseFloat(datosFinancieros.activosFijos) || 0)
+        const totalPasivos = getEditableTotal('cuentasPorPagar')
+        const capitalActual = totalActivos - totalPasivos
+        const capitalAnterior = parseFloat(datosFinancieros.capitalAnterior) || 0
+
+        return capitalActual - capitalAnterior
+    }
+
+    const calculateUtilidadesBrutas = () => {
+        return calculateUtilidadesNetas() + getEditableTotal('gastosGenerales')
+    }
+
+    // Calcular la deuda de un socio dinámicamente desde deudaANegocio
+    // Busca por socioIndex (índice en el array de socios) o por nombre del socio
+    const calculateDeudaSocio = (socioIdx, socioNombre) => {
+        const deudas = datosFinancieros.deudaANegocio
+        if (!Array.isArray(deudas)) return 0
+        return deudas
+            .filter(d => {
+                if (!d.esSocio) return false
+                // Match por índice numérico (cuando se seleccionó del selector)
+                if (d.socioIndex !== undefined && d.socioIndex !== null && String(d.socioIndex) === String(socioIdx)) return true
+                // Fallback: match por nombre del socio (case insensitive)
+                if (socioNombre && d.deudor && d.deudor.toLowerCase().trim() === socioNombre.toLowerCase().trim()) return true
+                return false
+            })
+            .reduce((sum, d) => sum + (parseFloat(d.monto) || 0), 0)
+    }
+
+    // --- ACCIONES DE EDICIÓN ---
+    const handleFinancialInputChange = (key, value, index, field) => {
+        const newData = { ...datosFinancieros }
+        const items = [...(newData[key] || [])]
+        items[index] = { ...items[index], [field]: value }
+        newData[key] = items
+        setDatosFinancieros(newData)
+    }
+
+    const handleRemoveItem = (key, index) => {
+        const newData = { ...datosFinancieros }
+        const items = [...(newData[key] || [])]
+        items.splice(index, 1)
+        newData[key] = items
+        setDatosFinancieros(newData)
+    }
+
+    const handleSaveFinancials = async () => {
+        setIsSaving(true)
+        const toastId = toast.loading('Guardando cambios...')
+        try {
+            // Transformar datos para el backend (Similar a InventarioDetalleNuevo.jsx)
+            const df = { ...datosFinancieros }
+            const payload = {
+                ...df,
+                // Convertir arrays a totales para campos legacy
+                gastosGenerales: Array.isArray(df.gastosGenerales) ? df.gastosGenerales.reduce((sum, item) => sum + (parseFloat(item.monto) || 0), 0) : df.gastosGenerales,
+                gastosGeneralesDetalle: df.gastosGenerales,
+
+                cuentasPorCobrar: Array.isArray(df.cuentasPorCobrar) ? df.cuentasPorCobrar.reduce((sum, item) => sum + (parseFloat(item.monto) || 0), 0) : df.cuentasPorCobrar,
+                cuentasPorCobrarDetalle: df.cuentasPorCobrar,
+
+                cuentasPorPagar: Array.isArray(df.cuentasPorPagar) ? df.cuentasPorPagar.reduce((sum, item) => sum + (parseFloat(item.monto) || 0), 0) : df.cuentasPorPagar,
+                cuentasPorPagarDetalle: df.cuentasPorPagar,
+
+                efectivoEnCajaYBanco: Array.isArray(df.efectivoEnCajaYBanco) ? df.efectivoEnCajaYBanco.reduce((sum, item) => sum + (parseFloat(item.monto) || 0), 0) : df.efectivoEnCajaYBanco,
+                efectivoEnCajaYBancoDetalle: df.efectivoEnCajaYBanco,
+
+                deudaANegocio: Array.isArray(df.deudaANegocio) ? df.deudaANegocio.reduce((sum, item) => sum + (parseFloat(item.monto) || 0), 0) : df.deudaANegocio,
+                deudaANegocioDetalle: df.deudaANegocio,
+
+                // Otros campos (asegurar que sean números o strings limpios)
+                ventasDelMes: parseFloat(df.ventasDelMes) || 0,
+                activosFijos: parseFloat(df.activosFijos) || 0,
+                costoMercancia: parseFloat(df.costoMercancia) || 0,
+                capitalAnterior: parseFloat(df.capitalAnterior) || 0,
+                capitalAnteriorDescripcion: df.capitalAnteriorDescripcion || ''
+            }
+
+            await sesionesApi.updateFinancial(sesion.id || sesion._id, payload)
+
+            toast.success('Cambios guardados correctamente', { id: toastId })
+            setIsEditable(false)
+
+            // Refrescar datos localmente si es posible
+            if (typeof onClose === 'function') {
+                // onClose() 
+            }
+        } catch (error) {
+            console.error('Error al guardar financieros:', error)
+            toast.error('Error al guardar los cambios', { id: toastId })
+        } finally {
+            setIsSaving(false)
+        }
     }
 
     // --- ACCIONES ---
@@ -129,10 +280,13 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente, contadorData
                 },
                 distribucionData: {
                     utilidadesNetas: calculateUtilidadesNetas(),
-                    socios: [
-                        { nombre: "Socio 1", porcentaje: 50 },
-                        { nombre: "Socio 2", porcentaje: 50 }
-                    ]
+                    // Enviar socios reales con sus deudas calculadas dinámicamente
+                    socios: distribucionData.socios.map((socio, idx) => ({
+                        nombre: socio.nombre || `Socio ${idx + 1}`,
+                        porcentaje: Number(socio.porcentaje) || 0,
+                        // cuentaAdeudada calculada desde deudaANegocio en tiempo real
+                        cuentaAdeudada: calculateDeudaSocio(idx, socio.nombre)
+                    }))
                 },
                 tipoDocumento: tipoDocumento, // 'completo', 'productos', 'total'
                 incluirDistribucion: true
@@ -179,6 +333,58 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente, contadorData
         }
     }
 
+    // --- HELPERS DE RENDERIZADO (funciones normales, NO componentes React) ---
+    // IMPORTANTE: Se usa función en lugar de componente (<EditableCategory />) para evitar
+    // que React desmonte/remonte los inputs en cada re-render, lo que causaría pérdida de foco.
+    const renderEditableCategory = (title, dataKey, colorClass) => {
+        const items = Array.isArray(datosFinancieros[dataKey]) ? datosFinancieros[dataKey] : []
+        const total = getEditableTotal(dataKey)
+
+        return (
+            <div className="mb-4">
+                <div className="flex justify-between items-center mb-1">
+                    <span className={`font-bold text-xs uppercase tracking-wider ${colorClass}`}>{title}</span>
+                    <span className="font-bold text-gray-700">{formatearMoneda(total)}</span>
+                </div>
+
+                <div className="space-y-1.5 pl-3 border-l-2 border-gray-100 mt-2">
+                    {items.map((item, idx) => (
+                        <div key={idx} className="flex items-center gap-2 group">
+                            {isEditable ? (
+                                <>
+                                    <input
+                                        type="text"
+                                        value={item.nombre || ''}
+                                        onChange={(e) => handleFinancialInputChange(dataKey, e.target.value, idx, 'nombre')}
+                                        className="flex-1 text-[11px] px-1.5 py-0.5 border rounded bg-white focus:border-teal-400 focus:outline-none"
+                                        placeholder="Descripción"
+                                    />
+                                    <input
+                                        type="number"
+                                        value={item.monto || 0}
+                                        onChange={(e) => handleFinancialInputChange(dataKey, parseFloat(e.target.value) || 0, idx, 'monto')}
+                                        className="w-24 text-[11px] px-1.5 py-0.5 border rounded text-right bg-white focus:border-teal-400 focus:outline-none"
+                                    />
+                                    <button
+                                        onClick={() => handleRemoveItem(dataKey, idx)}
+                                        className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </>
+                            ) : (
+                                <div className="flex justify-between w-full text-[11px] text-gray-500 italic">
+                                    <span>• {item.nombre || (dataKey === 'gastosGenerales' ? 'Gasto' : 'Item')}</span>
+                                    <span>{formatearMoneda(item.monto)}</span>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )
+    }
+
     // --- RENDER ---
     return (
         <AnimatePresence>
@@ -203,6 +409,29 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente, contadorData
                         </div>
 
                         <div className="flex items-center space-x-2">
+                            <div className="flex items-center bg-white/10 px-3 py-1.5 rounded-lg mr-2 border border-white/20">
+                                <input
+                                    type="checkbox"
+                                    id="enable-edit"
+                                    checked={isEditable}
+                                    onChange={(e) => setIsEditable(e.target.checked)}
+                                    className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 cursor-pointer"
+                                />
+                                <label htmlFor="enable-edit" className="ml-2 text-sm font-medium cursor-pointer select-none">
+                                    Edición
+                                </label>
+                            </div>
+
+                            {isEditable && (
+                                <button
+                                    onClick={handleSaveFinancials}
+                                    disabled={isSaving}
+                                    className="px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg text-sm font-bold transition-colors shadow-lg flex items-center gap-2 mr-2"
+                                >
+                                    {isSaving ? '...' : 'Guardar'}
+                                </button>
+                            )}
+
                             <div className="relative">
                                 <button onClick={() => setShowReportMenu(!showReportMenu)} className="p-2 hover:bg-white/20 rounded-lg transition-colors flex items-center gap-2">
                                     <Menu className="w-6 h-6" />
@@ -398,20 +627,21 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente, contadorData
                                             <h4 className="font-bold text-blue-700 border-b-2 border-blue-600 mb-4 pb-1">ACTIVOS</h4>
 
                                             <h5 className="font-bold text-gray-700 mb-2">CORRIENTES</h5>
-                                            <div className="space-y-1 text-sm mb-6">
-                                                <div className="flex justify-between"><span>EFECTIVO Y CAJA</span><span className="font-medium">{formatearMoneda(getEditableTotal('efectivoEnCajaYBanco'))}</span></div>
-                                                {/* Detalle simple si existe */}
-                                                <div className="pl-4 text-xs text-gray-500 italic mb-1">
-                                                    <div>• Caja: {formatearMoneda(getEditableTotal('efectivoEnCajaYBanco'))} (aprox)</div>
+                                            <div className="space-y-4 text-sm mb-6">
+                                                {renderEditableCategory('EFECTIVO', 'efectivoEnCajaYBanco', 'text-gray-900')}
+                                                {renderEditableCategory('CUENTAS POR COBRAR', 'cuentasPorCobrar', 'text-gray-900')}
+
+                                                <div className="flex justify-between mt-2">
+                                                    <span className="font-bold text-xs uppercase tracking-wider text-gray-900">INVENTARIO DE MERCANCIA</span>
+                                                    <span className="font-bold text-gray-700">{formatearMoneda(valorTotal)}</span>
                                                 </div>
 
-                                                <div className="flex justify-between mt-2"><span>CUENTAS POR COBRAR</span><span className="font-medium">{formatearMoneda(getEditableTotal('cuentasPorCobrar'))}</span></div>
+                                                {renderEditableCategory('DEUDA A NEGOCIO', 'deudaANegocio', 'text-gray-900')}
 
-                                                <div className="flex justify-between mt-2"><span>INVENTARIO DE MERCANCIA</span><span className="font-medium">{formatearMoneda(valorTotal)}</span></div>
-
-                                                <div className="flex justify-between mt-2"><span>DEUDA A NEGOCIO</span><span className="font-medium">{formatearMoneda(getEditableTotal('deudaANegocio'))}</span></div>
-
-                                                <div className="flex justify-between font-bold border-t border-gray-300 pt-1 mt-2 text-gray-900"><span>TOTAL CORRIENTES</span><span>{formatearMoneda(getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('cuentasPorCobrar') + valorTotal + getEditableTotal('deudaANegocio'))}</span></div>
+                                                <div className="flex justify-between font-bold border-t-2 border-gray-300 pt-2 mt-4 text-gray-900">
+                                                    <span>TOTAL CORRIENTES</span>
+                                                    <span>{formatearMoneda(getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('cuentasPorCobrar') + valorTotal + getEditableTotal('deudaANegocio'))}</span>
+                                                </div>
                                             </div>
 
                                             <h5 className="font-bold text-gray-700 mb-2">FIJOS</h5>
@@ -431,9 +661,12 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente, contadorData
                                             <h4 className="font-bold text-red-700 border-b-2 border-red-600 mb-4 pb-1">PASIVOS Y CAPITAL</h4>
 
                                             <h5 className="font-bold text-gray-700 mb-2">PASIVOS</h5>
-                                            <div className="space-y-1 text-sm mb-6">
-                                                <div className="flex justify-between"><span>CUENTAS POR PAGAR</span><span className="font-medium">{formatearMoneda(getEditableTotal('cuentasPorPagar'))}</span></div>
-                                                <div className="flex justify-between font-bold border-t border-gray-300 pt-1 mt-2 text-gray-900"><span>TOTAL PASIVOS</span><span>{formatearMoneda(getEditableTotal('cuentasPorPagar'))}</span></div>
+                                            <div className="space-y-4 text-sm mb-6">
+                                                {renderEditableCategory('CUENTAS POR PAGAR', 'cuentasPorPagar', 'text-gray-900')}
+                                                <div className="flex justify-between font-bold border-t-2 border-gray-300 pt-2 mt-4 text-gray-900">
+                                                    <span>TOTAL PASIVOS</span>
+                                                    <span>{formatearMoneda(getEditableTotal('cuentasPorPagar'))}</span>
+                                                </div>
                                             </div>
 
                                             <h5 className="font-bold text-gray-700 mb-2">CAPITAL</h5>
@@ -441,9 +674,26 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente, contadorData
                                                 {(() => {
                                                     const totalActivos = getEditableTotal('efectivoEnCajaYBanco') + getEditableTotal('cuentasPorCobrar') + valorTotal + getEditableTotal('deudaANegocio') + (Number(datosFinancieros.activosFijos) || 0);
                                                     const totalPasivos = getEditableTotal('cuentasPorPagar');
-                                                    const capitalContable = totalActivos - totalPasivos;
+                                                    const capitalAnterior = parseFloat(datosFinancieros.capitalAnterior) || 0;
+                                                    const utilidadNeta = calculateUtilidadesNetas();
+                                                    const capitalTotal = totalActivos - totalPasivos;
+
                                                     return (
-                                                        <div className="flex justify-between"><span>CAPITAL CONTABLE</span><span className="font-bold">{formatearMoneda(capitalContable)}</span></div>
+                                                        <div className="space-y-1">
+                                                            <div className="flex justify-between">
+                                                                <div className="flex flex-col">
+                                                                    <span>CAPITAL ANTERIOR</span>
+                                                                    {datosFinancieros.capitalAnteriorDescripcion && (
+                                                                        <span className="text-[10px] text-gray-400 italic font-normal">
+                                                                            ({datosFinancieros.capitalAnteriorDescripcion})
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <span className="font-medium">{formatearMoneda(capitalAnterior)}</span>
+                                                            </div>
+                                                            <div className="flex justify-between"><span>UTILIDAD DEL EJERCICIO</span><span className="font-medium text-green-700">{formatearMoneda(utilidadNeta)}</span></div>
+                                                            <div className="flex justify-between font-bold border-t border-gray-300 pt-1 mt-2"><span>TOTAL CAPITAL</span><span className="font-bold">{formatearMoneda(capitalTotal)}</span></div>
+                                                        </div>
                                                     )
                                                 })()}
                                             </div>
@@ -456,14 +706,60 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente, contadorData
                                             {/* ESTADO DE RESULTADOS - VENTAS Y GASTOS */}
                                             <div className="mt-8 bg-blue-50 p-4 rounded border border-blue-100">
                                                 <h5 className="font-bold text-blue-700 mb-3 border-b border-blue-200 pb-1">VENTAS Y GASTOS</h5>
-                                                <div className="space-y-2 text-sm">
-                                                    <div className="flex justify-between text-green-700 font-medium"><span>VENTAS DEL MES</span><span>{formatearMoneda(datosFinancieros.ventasDelMes)}</span></div>
-                                                    <div className="flex justify-between text-red-600 font-medium"><span>GASTOS GENERALES</span><span>({formatearMoneda(getEditableTotal('gastosGenerales'))})</span></div>
-                                                    <div className="pl-4 text-xs text-red-400 italic">• Operativos: ({formatearMoneda(getEditableTotal('gastosGenerales'))})</div>
+                                                <div className="space-y-4 text-sm">
+                                                    <div className="flex justify-between text-green-700 font-bold text-base">
+                                                        <span>VENTAS DEL MES</span>
+                                                        <span>{formatearMoneda(datosFinancieros.ventasDelMes)}</span>
+                                                    </div>
 
-                                                    <div className="flex justify-between font-bold text-gray-900 text-base border-t border-blue-200 pt-2 mt-2">
+                                                    <div className="flex justify-between text-gray-700 font-medium">
+                                                        <span>COSTO MERCANCÍA</span>
+                                                        {(() => {
+                                                            const ventas = Number(datosFinancieros.ventasDelMes) || 0
+                                                            const bruta = calculateUtilidadesBrutas()
+                                                            const cogs = ventas - bruta
+                                                            return <span>({formatearMoneda(cogs)})</span>
+                                                        })()}
+                                                    </div>
+
+                                                    <div className="flex justify-between text-blue-700 font-bold border-t border-blue-200 pt-2">
+                                                        <span>UTILIDAD BRUTA</span>
+                                                        <span>{formatearMoneda(calculateUtilidadesBrutas())}</span>
+                                                    </div>
+
+                                                    <div className="flex justify-between text-red-600 font-medium">
+                                                        <span>GASTOS GENERALES</span>
+                                                        <span>({formatearMoneda(getEditableTotal('gastosGenerales'))})</span>
+                                                    </div>
+
+                                                    <div className="flex justify-between font-extrabold text-gray-900 text-lg border-t-2 border-blue-200 pt-2 mt-2">
                                                         <span>UTILIDAD NETA</span>
                                                         <span>{formatearMoneda(calculateUtilidadesNetas())}</span>
+                                                    </div>
+
+                                                    {/* Porcentajes de Rentabilidad */}
+                                                    <div className="grid grid-cols-2 gap-4 mt-2 pt-2 border-t border-blue-100 italic font-medium">
+                                                        {(() => {
+                                                            const ventas = Number(datosFinancieros.ventasDelMes) || 0
+                                                            const neta = calculateUtilidadesNetas()
+                                                            const bruta = calculateUtilidadesBrutas()
+
+                                                            const pBruto = ventas > 0 ? (bruta / ventas) * 100 : 0
+                                                            const pNeto = ventas > 0 ? (neta / ventas) * 100 : 0
+
+                                                            return (
+                                                                <>
+                                                                    <div className="flex justify-between text-blue-800">
+                                                                        <span>% BRUTO:</span>
+                                                                        <span>{pBruto.toFixed(2)}%</span>
+                                                                    </div>
+                                                                    <div className="flex justify-between text-teal-800">
+                                                                        <span>% NETO:</span>
+                                                                        <span>{pNeto.toFixed(2)}%</span>
+                                                                    </div>
+                                                                </>
+                                                            )
+                                                        })()}
                                                     </div>
                                                 </div>
                                             </div>
@@ -498,8 +794,7 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente, contadorData
                                         </div>
                                         <div>
                                             <span className="font-bold text-gray-700">Número de Socios:</span>
-                                            {/* Aquí simulamos 2 socios si no hay datos reales, para igualar visualmente la demo */}
-                                            <span className="ml-2 font-bold text-gray-900">{2}</span>
+                                            <span className="ml-2 font-bold text-gray-900">{distribucionData.socios.length}</span>
                                         </div>
                                     </div>
 
@@ -517,17 +812,18 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente, contadorData
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {/* FILAS SIMULADAS PARA DEMOSTRACION VISUAL SI NO HAY DATOS REALES DE DISTRIBUCION */}
-                                            {[1, 2].map((socioId) => {
+                                            {distribucionData.socios.map((socio, idx) => {
                                                 const utilidadTotal = calculateUtilidadesNetas();
-                                                const utilidadSocio = utilidadTotal / 2;
-                                                const deuda = socioId === 2 ? 625 : 0; // Ejemplo deuda
+                                                const porcentaje = Number(socio.porcentaje) || 0;
+                                                const utilidadSocio = (utilidadTotal * porcentaje) / 100;
+                                                // Calcular deuda dinámicamente desde deudaANegocio
+                                                const deuda = calculateDeudaSocio(idx, socio.nombre);
                                                 const saldo = utilidadSocio - deuda;
 
                                                 return (
-                                                    <tr key={socioId} className="border-b border-gray-100">
-                                                        <td className="py-4 px-2 font-bold text-gray-800">Socio {socioId}</td>
-                                                        <td className="py-4 px-2 text-center text-gray-600">50.00%</td>
+                                                    <tr key={idx} className="border-b border-gray-100">
+                                                        <td className="py-4 px-2 font-bold text-gray-800">{socio.nombre || `Socio ${idx + 1}`}</td>
+                                                        <td className="py-4 px-2 text-center text-gray-600">{porcentaje.toFixed(2)}%</td>
                                                         <td className="py-4 px-2 text-right font-medium">{formatearMoneda(utilidadSocio)}</td>
                                                         <td className="py-4 px-2 text-right font-medium">{formatearMoneda(utilidadSocio)}</td>
                                                         <td className="py-4 px-2 text-right text-red-500">{formatearMoneda(deuda)}</td>
@@ -538,12 +834,12 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente, contadorData
                                                 )
                                             })}
                                             <tr className="bg-gray-100 font-bold border-t-2 border-gray-200">
-                                                <td className="py-3 px-2 text-gray-600">TOTAL</td>
-                                                <td className="py-3 px-2 text-center text-white">100.00%</td>
-                                                <td className="py-3 px-2 text-right text-white">{formatearMoneda(calculateUtilidadesNetas())}</td>
-                                                <td className="py-3 px-2 text-right text-white">{formatearMoneda(calculateUtilidadesNetas())}</td>
-                                                <td className="py-3 px-2 text-right text-white">{formatearMoneda(625)}</td>
-                                                <td className="py-3 px-2 text-right text-white">{formatearMoneda(calculateUtilidadesNetas() - 625)}</td>
+                                                <td className="py-3 px-2 text-gray-900">TOTAL</td>
+                                                <td className="py-3 px-2 text-center text-gray-900">100.00%</td>
+                                                <td className="py-3 px-2 text-right text-gray-900">{formatearMoneda(calculateUtilidadesNetas())}</td>
+                                                <td className="py-3 px-2 text-right text-gray-900">{formatearMoneda(calculateUtilidadesNetas())}</td>
+                                                <td className="py-3 px-2 text-right text-red-600 font-bold">{formatearMoneda(distribucionData.socios.reduce((a, s, i) => a + calculateDeudaSocio(i, s.nombre), 0))}</td>
+                                                <td className="py-3 px-2 text-right text-green-700 font-bold">{formatearMoneda(calculateUtilidadesNetas() - distribucionData.socios.reduce((a, s, i) => a + calculateDeudaSocio(i, s.nombre), 0))}</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -551,12 +847,11 @@ const ReporteInventarioModal = ({ isOpen, onClose, sesion, cliente, contadorData
                                     <h4 className="font-bold text-gray-800 mb-20">Firmas</h4>
 
                                     <div className="flex justify-around pt-10">
-                                        <div className="border-t border-gray-400 w-1/3 text-center text-sm pt-2 text-gray-600">
-                                            Socio 1<br />Firma y Cédula
-                                        </div>
-                                        <div className="border-t border-gray-400 w-1/3 text-center text-sm pt-2 text-gray-600">
-                                            Socio 2<br />Firma y Cédula
-                                        </div>
+                                        {distribucionData.socios.map((socio, idx) => (
+                                            <div key={idx} className="border-t border-gray-400 w-1/3 text-center text-sm pt-2 text-gray-600">
+                                                {socio.nombre || `Socio ${idx + 1}`}<br />Firma y Cédula
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             )}
