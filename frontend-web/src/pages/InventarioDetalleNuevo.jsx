@@ -107,6 +107,7 @@ const InventarioDetalleNuevo = () => {
   const [isSearching, setIsSearching] = useState(false)
   // Estados para temporizador y modos de escaneo
   const [tiempoTranscurrido, setTiempoTranscurrido] = useState(0)
+  const sesionTimerRef = useRef(null)
   const [isQuickScanMode, setIsQuickScanMode] = useState(false)
   const [quickScanProduct, setQuickScanProduct] = useState(null)
   const [multipleProductsModal, setMultipleProductsModal] = useState(false)
@@ -318,36 +319,94 @@ const InventarioDetalleNuevo = () => {
   // Temporizador basado en cronómetro del backend
   useEffect(() => {
     if (!sesion) return
+    
+    // Actualizar la ref con los datos actuales de la sesión
+    sesionTimerRef.current = sesion
+    
     const tick = () => {
-      const acumulado = Number(sesion?.timerAcumuladoSegundos || 0)
-      const enMarcha = Boolean(sesion?.timerEnMarcha)
-      const ultimoInicio = sesion?.timerUltimoInicio ? new Date(sesion.timerUltimoInicio).getTime() : 0
-      let segundos = acumulado
-      if (enMarcha && ultimoInicio) {
-        const ahora = Date.now()
-        segundos += Math.max(0, Math.floor((ahora - ultimoInicio) / 1000))
+      const s = sesionTimerRef.current
+      if (!s) return
+      
+      const acumulado = Math.max(0, Number(s.timerAcumuladoSegundos || 0))
+      const enMarcha = Boolean(s.timerEnMarcha)
+      let ultimoInicio = 0
+      
+      // Validar y parsear la fecha de inicio
+      if (s.timerUltimoInicio) {
+        // Convertir formato SQLite 'YYYY-MM-DD HH:MM:SS' a ISO UTC 'YYYY-MM-DDTHH:MM:SSZ'
+        let fechaStr = s.timerUltimoInicio
+        if (fechaStr.includes(' ')) {
+          fechaStr = fechaStr.replace(' ', 'T')
+        }
+        // Agregar 'Z' para indicar que es UTC (SQLite CURRENT_TIMESTAMP es UTC)
+        if (!fechaStr.endsWith('Z')) {
+          fechaStr = fechaStr + 'Z'
+        }
+        const fechaInicio = new Date(fechaStr)
+        if (!isNaN(fechaInicio.getTime())) {
+          ultimoInicio = fechaInicio.getTime()
+        }
       }
+      
+      let segundos = acumulado
+      if (enMarcha && ultimoInicio > 0) {
+        const ahora = Date.now()
+        const diferencia = Math.floor((ahora - ultimoInicio) / 1000)
+        // Solo sumar si la diferencia es positiva (evitar problemas de reloj desincronizado)
+        if (diferencia > 0) {
+          segundos += diferencia
+        }
+      }
+      
+      // Asegurar que nunca sea negativo
+      segundos = Math.max(0, segundos)
       setTiempoTranscurrido(segundos)
     }
     tick()
     const interval = setInterval(tick, 1000)
     return () => clearInterval(interval)
-  }, [sesion])
+  }, [sesion, sesion?.timerEnMarcha, sesion?.timerUltimoInicio, sesion?.timerAcumuladoSegundos])
 
   // Función para formatear tiempo en HH:MM:SS
   const formatearTiempo = (segundos) => {
-    const horas = Math.floor(segundos / 3600)
-    const minutos = Math.floor((segundos % 3600) / 60)
-    const segs = segundos % 60
-    return `${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}:${String(segs).padStart(2, '0')}`
+    // Asegurar que sea un número válido y no negativo
+    const segs = Math.max(0, Math.floor(Number(segundos) || 0))
+    const horas = Math.floor(segs / 3600)
+    const minutos = Math.floor((segs % 3600) / 60)
+    const segundosFinal = segs % 60
+    return `${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}:${String(segundosFinal).padStart(2, '0')}`
   }
 
   // Mutaciones para agregar productos
   const addProductMutation = useMutation(
-    (data) => sesionesApi.addProduct(id, data),
+    async (data) => {
+      const esElPrimerProducto = productosContados.length === 0 && !sesion?.timerEnMarcha
+      
+      console.log('🔍 Verificando primer producto:', {
+        productosContadosLength: productosContados.length,
+        timerEnMarcha: sesion?.timerEnMarcha,
+        esElPrimerProducto
+      })
+
+      const resultado = await sesionesApi.addProduct(id, data)
+
+      if (esElPrimerProducto) {
+        try {
+          console.log('⏱️ Iniciando timer...')
+          const timerResponse = await sesionesApi.resumeTimer(id)
+          console.log('✅ Respuesta resumeTimer:', timerResponse?.data)
+          console.log('✅ Reloj iniciado con el primer producto')
+        } catch (error) {
+          console.error('Error al iniciar reloj:', error)
+        }
+      }
+
+      await refetch()
+      return resultado
+    },
     {
       onSuccess: () => {
-        refetch() // Refrescar datos de la sesión
+        queryClient.invalidateQueries(['sesion-inventario', id])
         toast.success('Producto agregado')
         setSelectedProducto(null)
         setCantidad('')
@@ -366,7 +425,6 @@ const InventarioDetalleNuevo = () => {
         console.error('❌ Detalles del error:', error.response?.data)
         console.error('❌ Datos enviados:', error.config?.data)
         
-        // Mensaje de error más específico
         if (error.response?.status === 400) {
           const mensaje = error.response?.data?.mensaje || 'Error al agregar producto'
           toast.error(mensaje)
@@ -539,6 +597,17 @@ const InventarioDetalleNuevo = () => {
   const handleAceptarProductos = async (productosSeleccionados) => {
     if (!colaboradorSeleccionado) return
 
+    // Iniciar reloj si es el primer producto
+    if (productosContados.length === 0 && !sesion?.timerEnMarcha && productosSeleccionados.length > 0) {
+      try {
+        await sesionesApi.resumeTimer(id)
+        console.log('✅ Reloj iniciado al aceptar productos de colaborador')
+        await refetch()
+      } catch (error) {
+        console.error('Error al iniciar reloj:', error)
+      }
+    }
+
     try {
       // Agregar cada producto a la sesión de inventario
       for (const productoOffline of productosSeleccionados) {
@@ -626,6 +695,17 @@ const InventarioDetalleNuevo = () => {
         toast.dismiss(toastId)
         toast.success('No hay productos pendientes')
         return
+      }
+
+      // Iniciar reloj si es el primer producto
+      if (productosContados.length === 0 && !sesion?.timerEnMarcha) {
+        try {
+          await sesionesApi.resumeTimer(id)
+          console.log('✅ Reloj iniciado en sincronización por lotes')
+          await refetch()
+        } catch (error) {
+          console.error('Error al iniciar reloj:', error)
+        }
       }
 
       // 2. Procesar en lotes de 20
@@ -4060,6 +4140,17 @@ const InventarioDetalleNuevo = () => {
                       if (productosValidos.length === 0) {
                         toast.error('Ingresa cantidad y costo válidos para al menos un producto')
                         return
+                      }
+
+                      // Iniciar reloj si es el primer producto
+                      if (productosContados.length === 0 && !sesion?.timerEnMarcha) {
+                        try {
+                          await sesionesApi.resumeTimer(id)
+                          console.log('✅ Reloj iniciado al agregar múltiples productos')
+                          await refetch()
+                        } catch (error) {
+                          console.error('Error al iniciar reloj:', error)
+                        }
                       }
 
                       // Agregar cada producto válido

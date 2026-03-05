@@ -121,6 +121,7 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
   // Estados de temporizador
   const [tiempoTranscurrido, setTiempoTranscurrido] = useState(0)
+  const sesionTimerRef = useRef(null)
 
   // Estados para nuevos productos
   const [newProductData, setNewProductData] = useState({
@@ -376,6 +377,17 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
       const productos = productosColaboradorPendientes[colaboradorId] || []
       if (productos.length === 0) return
 
+      // Iniciar reloj si es el primer producto
+      const productosContados = sesionData?.productosContados || []
+      if (productosContados.length === 0 && !sesionData?.timerEnMarcha) {
+        try {
+          await sesionesApi.resumeTimer(sesionId)
+          console.log('✅ Reloj iniciado en sincronización de colaborador')
+        } catch (error) {
+          console.error('Error al iniciar reloj:', error)
+        }
+      }
+
       // Procesar en lotes de 20
       const BATCH_SIZE = 20
       const batches = []
@@ -524,7 +536,31 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
   // Mutación para agregar producto
   const addProductMutation = useMutation(
-    (productData) => sesionesApi.addProduct(sesionId, productData),
+    async (productData) => {
+      const productosContados = sesionData?.productosContados || []
+      const esElPrimerProducto = productosContados.length === 0 && !sesionData?.timerEnMarcha
+      
+      console.log('🔍 Verificando primer producto:', {
+        productosContadosLength: productosContados.length,
+        timerEnMarcha: sesionData?.timerEnMarcha,
+        esElPrimerProducto
+      })
+
+      const resultado = await sesionesApi.addProduct(sesionId, productData)
+
+      if (esElPrimerProducto) {
+        try {
+          console.log('⏱️ Iniciando timer...')
+          const timerResponse = await sesionesApi.resumeTimer(sesionId)
+          console.log('✅ Respuesta resumeTimer:', timerResponse?.data)
+          console.log('✅ Reloj iniciado con el primer producto')
+        } catch (error) {
+          console.error('Error al iniciar reloj:', error)
+        }
+      }
+
+      return resultado
+    },
     {
       onSuccess: () => {
         queryClient.invalidateQueries(['sesion', sesionId]);
@@ -621,21 +657,54 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
   // Temporizador basado en timer del backend
   useEffect(() => {
+    if (!sesionData) return
+    
+    // Actualizar la ref con los datos actuales de la sesión
+    sesionTimerRef.current = sesionData
+    
     const tick = () => {
-      const acumulado = Number(sesionData?.timerAcumuladoSegundos || 0)
-      const enMarcha = Boolean(sesionData?.timerEnMarcha)
-      const ultimoInicio = sesionData?.timerUltimoInicio ? new Date(sesionData.timerUltimoInicio).getTime() : 0
-      let segundos = acumulado
-      if (enMarcha && ultimoInicio) {
-        const ahora = Date.now()
-        segundos += Math.max(0, Math.floor((ahora - ultimoInicio) / 1000))
+      const s = sesionTimerRef.current
+      if (!s) return
+      
+      const acumulado = Math.max(0, Number(s.timerAcumuladoSegundos || 0))
+      const enMarcha = Boolean(s.timerEnMarcha)
+      let ultimoInicio = 0
+      
+      // Validar y parsear la fecha de inicio
+      if (s.timerUltimoInicio) {
+        // Convertir formato SQLite 'YYYY-MM-DD HH:MM:SS' a ISO UTC 'YYYY-MM-DDTHH:MM:SSZ'
+        let fechaStr = s.timerUltimoInicio
+        if (fechaStr.includes(' ')) {
+          fechaStr = fechaStr.replace(' ', 'T')
+        }
+        // Agregar 'Z' para indicar que es UTC (SQLite CURRENT_TIMESTAMP es UTC)
+        if (!fechaStr.endsWith('Z')) {
+          fechaStr = fechaStr + 'Z'
+        }
+        const fechaInicio = new Date(fechaStr)
+        if (!isNaN(fechaInicio.getTime())) {
+          ultimoInicio = fechaInicio.getTime()
+        }
       }
+      
+      let segundos = acumulado
+      if (enMarcha && ultimoInicio > 0) {
+        const ahora = Date.now()
+        const diferencia = Math.floor((ahora - ultimoInicio) / 1000)
+        // Solo sumar si la diferencia es positiva (evitar problemas de reloj desincronizado)
+        if (diferencia > 0) {
+          segundos += diferencia
+        }
+      }
+      
+      // Asegurar que nunca sea negativo
+      segundos = Math.max(0, segundos)
       setTiempoTranscurrido(segundos)
     }
     tick()
     const interval = setInterval(tick, 1000)
     return () => clearInterval(interval)
-  }, [sesionData])
+  }, [sesionData, sesionData?.timerEnMarcha, sesionData?.timerUltimoInicio, sesionData?.timerAcumuladoSegundos])
 
   // Pausar cronómetro al desmontar
   useEffect(() => {
@@ -650,10 +719,12 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
   // Formatear tiempo
   const formatTime = (seconds) => {
-    const hrs = Math.floor(seconds / 3600)
-    const mins = Math.floor((seconds % 3600) / 60)
-    const secs = seconds % 60
-    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    // Asegurar que sea un número válido y no negativo
+    const secs = Math.max(0, Math.floor(Number(seconds) || 0))
+    const hrs = Math.floor(secs / 3600)
+    const mins = Math.floor((secs % 3600) / 60)
+    const segundosFinal = secs % 60
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${segundosFinal.toString().padStart(2, '0')}`
   }
 
   // Manejar escaneo de código de barras
@@ -764,6 +835,17 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
 
     setShowBarcodeProductModal(false);
 
+    // Iniciar reloj si es el primer producto
+    const productosContados = sesionData?.productosContados || []
+    if (productosContados.length === 0 && !sesionData?.timerEnMarcha) {
+      try {
+        await sesionesApi.resumeTimer(sesionId)
+        console.log('✅ Reloj iniciado al escanear producto')
+      } catch (error) {
+        console.error('Error al iniciar reloj:', error)
+      }
+    }
+
     try {
       const clienteId = sesionData?.clienteNegocio?._id;
       let productoId = scannedProduct._id || scannedProduct.id;
@@ -840,6 +922,17 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
     if (!searchedProduct) return;
 
     setShowSearchedProductModal(false);
+
+    // Iniciar reloj si es el primer producto
+    const productosContados = sesionData?.productosContados || []
+    if (productosContados.length === 0 && !sesionData?.timerEnMarcha) {
+      try {
+        await sesionesApi.resumeTimer(sesionId)
+        console.log('✅ Reloj iniciado al buscar producto')
+      } catch (error) {
+        console.error('Error al iniciar reloj:', error)
+      }
+    }
 
     try {
       const clienteId = sesionData?.clienteNegocio?._id;
@@ -939,6 +1032,17 @@ const InventarioDetalleScreen = ({ route, navigation }) => {
     if (!selectedProducto || !cantidad || parseFloat(cantidad) <= 0) {
       showMessage({ message: 'Selecciona un producto e ingresa una cantidad válida.', type: 'warning' });
       return;
+    }
+
+    // Iniciar reloj si es el primer producto
+    const productosContados = sesionData?.productosContados || []
+    if (productosContados.length === 0 && !sesionData?.timerEnMarcha) {
+      try {
+        await sesionesApi.resumeTimer(sesionId)
+        console.log('✅ Reloj iniciado al agregar producto')
+      } catch (error) {
+        console.error('Error al iniciar reloj:', error)
+      }
     }
 
     const cantidadNum = parseFloat(cantidad)
